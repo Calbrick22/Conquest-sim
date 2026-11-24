@@ -293,13 +293,14 @@ Only front-rank Stands shoot, unless a rule says otherwise.
 - When its Regiment acts, it fights and shoots alongside it: full Attacks if Engaged, otherwise 1 Support Attack.
 - **Entourage Activation:** after the Character's activation, the player may draw the next card. If it belongs to that Character's unactivated, non-Monster Regiment, that Regiment activates at once. Otherwise the card goes back on top of the Stack.
 - A Character can only be wounded by **Duels** and by rules that specifically wound Characters. Clash and Volley can't target it.
-- **Die Fighting:** if the Regiment is destroyed and the Character hasn't acted, it makes a free Clash, or is removed if nothing is in contact. This doesn't apply to Monster Characters.
+- **Die Fighting:** if the Regiment is destroyed and the Character hasn't acted, it makes a free Clash, or is removed if nothing is in contact. This doesn't apply to Monster Characters. The engine removes the Character after that Clash (AMB-35).
+- **Character Actions:** Snapshot (a small Volley) and Mighty Swing (a Clash) are automated. Other Character Actions stay manual.
 - **Duel** (Combat Action):
   - Challenge an enemy Character in a Regiment in contact.
   - **Decline:** the challenged Regiment can't seize, uses its lowest R, can't be Inspired and re-rolls successful Resolve tests of 1, all until the end of the Round.
   - **Accept:** both Characters attack each other at the same time. The loser's Regiment makes a free Combat Reform (AMB-12).
 - **Warlord:** chosen at list building. It provides the Supremacy Ability, which is one of [Always Active], [Battlefield] or [Activated]. An [Activated] ability is used once per game, in the Supremacy Phase, and lasts until the end of the Round.
-- Pack p.8 also mentions a **Seek New Escort** Action. Its text isn't in either PDF (AMB-13).
+- Pack p.8 also mentions a **Seek New Escort** Action. Its text isn't in either PDF (AMB-13), so it stays a manual tool.
 
 ## 18. Magic (core p.80–81)
 
@@ -336,6 +337,18 @@ Spires use "Practitioner" Actions instead. They are faction-specific and listed 
 | Fearsome | Enemies in contact must pass an R test before Combat Rally or Combat Reform, or lose the Action |
 | Terrifying (X) | Enemies in contact take −X R on Morale Tests against this Regiment's Wounds |
 | Fly | Marches and Charges over other Regiments; can't end overlapping |
+
+### Also automated (v1.2)
+
+The registry in `src/engine/rules/special/rules.ts` lists each rule with its page. In short:
+
+- **Hit and defense modifiers:** Brutal Impact, Linebreaker, Deadly Blades, Smite, Torrential Fire, Relentless Blows, Rapid Volley, Precise Shot, Flawless Strikes, Opportunists, Fiend Hunter, Parry, Hardened, Untouchable, Brittle, Tenacious, Phalanx, Shield and Loose Formation (core p.96–101).
+- **Morale:** Indomitable, Oblivious, Iron Discipline, Bravery, Dread, Dauntless and Unyielding (core p.96–101).
+- **Charging and moving:** Juggernaut, Glorious Charge, Fury, Shock, Trample, Pathfinders, Fluid Formation, Flawless Drill, Swift Retreat and Acute Senses (core p.96–101). A successful Charge may push the Charger up to 1″, or pivot the target, to make contact (core p.44; AMB-38).
+- **Triggers:** Aura of Death, Blessed, Bodyguards, Counter-Attack, Lethal Demise, Quicksilver Strike, Decay, Longshot and Weapon Platform (core p.96–101).
+- **Draw Events (core p.94–95):** Bastion, Double Time, Fire and Advance, Murderous Volley and Regeneration. Regeneration heals Wounds or restores Stands (core p.56).
+- **Spires:** Biotic Renewal, Flux-Powered, Strain Expression with Decay, Superior Creations, Lobotomytic Override, Suppress Higher Functions, Ferro-Ossified Carapace, Designate Target, Reprocessing, Just Desserts by Sect, and Character options such as Avatar Projection. Mechanics follow the rule text in the uploaded list. Strains are entered by the owner on the list review screen, because the export doesn't contain them (AMB-18).
+- **Combat flow:** a Clash is split between every enemy the Regiment's Stands touch, and Press the Attack follows Clashes and Charges (core p.46, p.61).
 
 ## 21. Objective Zones, Objective Markers and scoring (core p.106; pack p.8–9)
 

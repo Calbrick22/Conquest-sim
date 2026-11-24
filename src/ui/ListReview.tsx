@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { isImplemented } from '../engine/rules/special/registry';
 import { allEntries } from '../import/parseList';
 import { CHARACTERISTIC_KEYS, type ArmyList, type ListEntry, type RuleRef } from '../import/types';
+import { parseStrainText } from '../import/strains';
 
 /** Review and correct a parsed list before saving or playing with it. */
 export function ListReview({ list, onChange }: { list: ArmyList; onChange: (l: ArmyList) => void }) {
@@ -53,6 +54,14 @@ export function ListReview({ list, onChange }: { list: ArmyList; onChange: (l: A
             <EntryEditor
               key={ei}
               entry={e}
+              strain={list.strains?.[e.name]?.text ?? ''}
+              onStrain={(text) =>
+                update((l) => {
+                  l.strains = { ...(l.strains ?? {}) };
+                  if (text.trim()) l.strains[e.name] = parseStrainText(text);
+                  else delete l.strains[e.name];
+                })
+              }
               glossary={list.glossary}
               onChange={(ne) =>
                 update((l) => {
@@ -91,7 +100,7 @@ function RuleChip({ r, glossary }: { r: RuleRef; glossary: Record<string, string
   );
 }
 
-function EntryEditor({ entry, glossary, onChange }: { entry: ListEntry; glossary: Record<string, string>; onChange: (e: ListEntry) => void }) {
+function EntryEditor({ entry, glossary, onChange, strain, onStrain }: { entry: ListEntry; glossary: Record<string, string>; onChange: (e: ListEntry) => void; strain: string; onStrain: (t: string) => void }) {
   const [open, setOpen] = useState(entry.warnings.length > 0);
   const set = (mut: (e: ListEntry) => void) => {
     const c = structuredClone(entry);
@@ -136,6 +145,19 @@ function EntryEditor({ entry, glossary, onChange }: { entry: ListEntry; glossary
         {entry.warnings.map((w, i) => <p key={i} className="warn">{w}</p>)}
         {entry.specialRules.length > 0 && <div className="rules">{entry.specialRules.map((r, i) => <RuleChip key={i} r={r} glossary={glossary} />)}</div>}
         {entry.actions.length > 0 && <div className="rules"><span className="meta">Actions:</span>{entry.actions.map((r, i) => <RuleChip key={i} r={r} glossary={glossary} />)}</div>}
+        {entry.drawEvents.some((d) => d.startsWith('Strain Expression')) && (
+          <label className="field" data-testid={`strain-${entry.name}`}>
+            Strain ability{' '}
+            <span className="meta">(not in the export: type it from your faction book, e.g. “+1 Clash, Flurry”)</span>
+            <input className="grow" value={strain} onChange={(e) => onStrain(e.target.value)} placeholder="+1 Clash, Flurry" />
+            {strain && (
+              <span className="meta">
+                {' '}
+                → {Object.entries(parseStrainText(strain).stats).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join(', ')} {parseStrainText(strain).rules.join(', ')}
+              </span>
+            )}
+          </label>
+        )}
         {named('Supremacy', entry.supremacyAbilities)}
         {named('Draw Events', entry.drawEvents)}
         {named('Command Models', entry.commandModels)}

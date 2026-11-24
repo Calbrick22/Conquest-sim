@@ -7,12 +7,13 @@
  * It plays its own Regiments as if "manual" special rules were not there (the engine logs those
  * rules on every Activation, so the log shows where the simulation is approximate).
  */
-import { chargeProblems, clashTargets, enemiesInContact, footprintOf, planVolley } from '../engine/actions';
+import { chargeFacing, chargePlacement, chargeProblems, clashTargets, enemiesInContact, footprintOf, planVolley } from '../engine/actions';
 import { charStat, stat } from '../engine/combat';
 import { validate, type Action, type ActionBody } from '../engine/game';
 import { dist, normalizeAngle, type Vec } from '../engine/geometry/vec';
 import { applyPath, type MoveSeg } from '../engine/movement';
 import { markerAttackProblems, markerInContact } from '../engine/markers';
+import { baseName, CHARACTER_ABILITIES_AUTOMATED, characterAbilityProblems, drawEventProblems } from '../engine/activation';
 import type { CommandCard, GameState, PlayerId, RegimentState } from '../engine/model/types';
 import {
   attachedCharacter,
@@ -315,6 +316,8 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
   // Charges.
   for (const t of enemies) {
     if (chargeProblems(s, r, t).length) continue;
+    // Only declare Charges that can actually be placed in contact (no room = a wasted Activation).
+    if (!chargePlacement(s, r, t, chargeFacing(s, r, t)).pose) continue;
     const d = regimentDistance(s, r, t);
     const p = chargeChance(s, r, d);
     const gain = impactExpect(r, t) + meleeExpect(s, r, t);
@@ -365,16 +368,67 @@ function decideActivation(s: GameState): AiDecision {
   const act = s.activation!;
   const r = s.regiments[act.regimentId]!;
   if (act.characterId) {
-    // Character Actions are manual for the AI; end and let its Regiment act as an Entourage.
-    return { action: { type: 'endActivation', entourage: true }, reason: `ends ${s.characters[act.characterId]!.name}'s Activation and calls its Regiment (Entourage)` };
+    const c = s.characters[act.characterId]!;
+    if (act.actions.length === 0) {
+      // Automated Character abilities (Snapshot, Mighty Swing) on the weakest target they can reach.
+      for (const ab of c.actions.filter((x) => CHARACTER_ABILITIES_AUTOMATED.includes(x.name))) {
+        const targets = onTableRegiments(s).filter((e) => e.owner !== r.owner && characterAbilityProblems(s, c, ab.name, e.id).length === 0);
+        const t = targets.sort((a, b) => a.stands.length - b.stands.length)[0];
+        if (t) return { action: { type: 'characterAbility', characterId: c.id, name: ab.name, targetId: t.id }, reason: `${c.name} uses ${ab.name} on ${t.name}` };
+      }
+    }
+    return { action: { type: 'endActivation', entourage: true }, reason: `ends ${c.name}'s Activation and calls its Regiment (Entourage)` };
   }
   if (act.ended || act.actions.length >= 2) return finish(s, r);
+  const de = chooseDrawEvent(s, r);
+  if (de) return de;
   const cands = regimentCandidates(s, r);
   const best = cands.sort((a, b) => b.score - a.score)[0];
   if (!best || best.score < 0.4) return finish(s, r);
   const manual = manualRules(r.rules).map((x) => x.raw);
   const note = manual.length && act.actions.length === 0 ? ` (ignoring manual rules: ${manual.slice(0, 4).join(', ')}${manual.length > 4 ? '…' : ''})` : '';
   return { action: { ...best.action, why: `${r.name} ${best.reason}${note}` }, reason: best.reason };
+}
+
+/** Simple Draw Event choices before the first Action (core p.23, p.94–95). */
+function chooseDrawEvent(s: GameState, r: RegimentState): AiDecision | null {
+  const act = s.activation!;
+  if (act.actions.length || r.location !== 'table') return null;
+  const done = act.drawEvents ?? [];
+  const engaged = isEngaged(s, r);
+  const here = centreOf(s, r);
+  const nearEnemy = onTableRegiments(s).some((e) => e.owner !== r.owner && dist(here, centreOf(s, e)) < marchValue(s, r) + 10);
+  const threatened = exposure(s, r, here) > 2;
+  const wounded = r.stands.length < r.startingStands || r.stands.some((x) => x.wounds > 0);
+  const shoots = r.rules.some((x) => x.name === 'Barrage');
+  const pick = (name: string, extra: { option?: 'C' | 'A'; targetId?: string } = {}, why = ''): AiDecision | null => {
+    if (drawEventProblems(s, name, extra).length) return null;
+    return { action: { type: 'drawEvent', name, ...extra, why: `${r.name} uses ${name}${why ? `: ${why}` : ''}` }, reason: `uses ${name}` };
+  };
+  for (const n of r.drawEvents) {
+    const bn = baseName(n);
+    if (done.includes(bn)) continue;
+    if (bn === 'Strain Expression' && s.players[r.owner].strains[r.name] && (engaged || nearEnemy) && r.stands.length >= 2) {
+      const d = pick(n, {}, 'its Strain for the coming fight');
+      if (d) return d;
+    }
+  }
+  if (done.some((d) => d !== 'Strain Expression')) return null;
+  const options: [string, boolean, { option?: 'C' | 'A' }, string][] = [];
+  for (const n of r.drawEvents) {
+    const bn = baseName(n);
+    if (bn === 'Regeneration' || bn === 'Biotic Renewal') options.push([n, wounded, {}, 'heals']);
+    if (bn === 'Bastion' || bn === 'Ferro-Ossified Carapace') options.push([n, engaged || threatened, {}, 'braces for combat']);
+    if (bn === 'Flux-Powered') options.push([n, engaged || nearEnemy, { option: stat(r, 'C') >= 4 ? 'A' : 'C' }, 'for the fight']);
+    if (bn === 'Double Time') options.push([n, !nearEnemy && !engaged, {}, 'to cover ground']);
+    if (bn === 'Fire and Advance' || bn === 'Murderous Volley') options.push([n, shoots && !engaged, {}, 'to shoot']);
+  }
+  for (const [n, want, extra, why] of options) {
+    if (!want) continue;
+    const d = pick(n, extra, why);
+    if (d) return d;
+  }
+  return null;
 }
 
 function finish(s: GameState, r: RegimentState): AiDecision {

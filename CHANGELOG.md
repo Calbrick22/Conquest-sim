@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.2.0] - 2026-11-24 (roadmap 1.1–1.3)
+
+### Added
+- **Spires mechanics:**
+  - Strain Expression, with Strains entered on the list review screen. Decay and Superior Creations.
+  - Lobotomytic Override buttons on the drawn card.
+  - Designate Target, Lethal Demise, Reprocessing, Biotic Renewal, Flux-Powered, Suppress Higher Functions and Ferro-Ossified Carapace.
+  - Sect rules (Just Desserts), and Character options and grants (Avatar Projection, Imposing Excellence and others).
+- **Core special rules:** every core rule on core p.96–101 is automated, except Sureshot, which needs terrain. Draw Events: Bastion, Double Time, Fire and Advance, Murderous Volley and Regeneration.
+- **Core mechanics:**
+  - Die Fighting!
+  - Press the Attack.
+  - A Clash split between every enemy in contact.
+  - The Charge push and target pivot.
+  - The Character Actions Snapshot and Mighty Swing.
+  - The Swift Retreat facing choice.
+- Rule tests, named with their page references.
+
+### Fixed
+- A Regiment in contact could not end its Activation ("within 1″ of enemy"). This also caused the computer's "nudge" overrides.
+- The computer no longer declares Charges that can't be placed in contact.
+
+### Still manual
+- Seek New Escort (AMB-13), Pheromancy and Practitioner Actions, and other factions' rules until their PDFs are added.
+
 ## [1.1.0] - 2026-11-24 (feedback from the first games)
 
 ### Added

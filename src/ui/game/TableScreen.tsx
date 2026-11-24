@@ -19,6 +19,7 @@ import { dist, dot, type Vec } from '../../engine/geometry/vec';
 import { applyPath, parseMoveText, pathCost, type MoveSeg } from '../../engine/movement';
 import type { Edge, Pose, RegimentState } from '../../engine/model/types';
 import { duelTargets, enemiesInContact, withdrawPose } from '../../engine/actions';
+import { baseName, DRAW_EVENTS_AUTOMATED } from '../../engine/activation';
 import { isEngaged } from '../../engine/queries';
 import { barrageOf } from '../../engine/rules/special/rules';
 import { DiceTray } from './DiceTray';
@@ -46,7 +47,7 @@ import { useGame, type GameSession } from './useGame';
 export type { GameSession };
 
 type Mode = 'select' | 'march' | 'enter' | 'reform' | 'ruler' | 'override' | 'withdraw' | 'target' | 'placeCharge';
-type TargetKind = 'charge' | 'volley' | 'clash';
+type TargetKind = 'charge' | 'volley' | 'clash' | 'Snapshot' | 'Mighty Swing';
 
 const deg = (d: number) => (d * Math.PI) / 180;
 const fmt = (n: number) => `${(Math.round(n * 100) / 100).toFixed(2)}″`;
@@ -67,6 +68,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
   const [drag, setDrag] = useState<{ start: Vec; base: MoveSeg[] | Pose } | null>(null);
   const [targetKind, setTargetKind] = useState<TargetKind>('charge');
   const [crFiles, setCrFiles] = useState(2);
+  const [withdrawTurn, setWithdrawTurn] = useState(true);
 
   // With nothing selected, the active Regiment is shown (e.g. after an Entourage Activation).
   const sel: RegimentState | null = selectedId ? (s.regiments[selectedId] ?? null) : s.activation ? (s.regiments[s.activation.regimentId] ?? null) : null;
@@ -156,8 +158,8 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
     }
     if (mode === 'withdraw') {
       const width = footprint(formationInput(s, sel)).halfWidth * 2;
-      const pose = withdrawPose(s, sel, moves);
-      const action: Action = { type: 'withdraw', regimentId: sel.id, moves };
+      const pose = withdrawPose(s, sel, moves, withdrawTurn);
+      const action: Action = { type: 'withdraw', regimentId: sel.id, moves, turn: withdrawTurn };
       return { action, ghost: { polys: regimentPolys(s, sel, { pose }), valid: validate(s, action).ok }, cost: pathCost(moves, width), allowance: marchValue(s, sel) };
     }
     if (mode === 'override' && overridePose) {
@@ -169,14 +171,15 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
       return { action, ghost: { polys: regimentPolys(s, sel, { pose: overridePose }), valid: validate(s, action).ok } };
     }
     return null;
-  }, [s, sel, mode, moves, entry, reform, overridePose]);
+  }, [s, sel, mode, moves, entry, reform, overridePose, withdrawTurn]);
 
   const draftProblems = draft && mode !== 'override' && mode !== 'withdraw' ? validate(s, draft.action) : null;
 
   // ------------------------------------------------ table interaction
   const onMarkerDown = (id: string) => {
     if (mode === 'target' && sel) {
-      if (run({ type: targetKind, regimentId: sel.id, targetId: `${MARKER_PREFIX}${id}` })) setMode('select');
+      if (targetKind === 'charge' || targetKind === 'volley' || targetKind === 'clash')
+        if (run({ type: targetKind, regimentId: sel.id, targetId: `${MARKER_PREFIX}${id}` })) setMode('select');
     }
   };
 
@@ -186,7 +189,11 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
       return;
     }
     if (mode === 'target' && sel) {
-      if (run({ type: targetKind, regimentId: sel.id, targetId: id })) setMode('select');
+      const action: Action =
+        targetKind === 'Snapshot' || targetKind === 'Mighty Swing'
+          ? { type: 'characterAbility', characterId: s.activation!.characterId!, name: targetKind, targetId: id }
+          : { type: targetKind, regimentId: sel.id, targetId: id };
+      if (run(action)) setMode('select');
       return;
     }
     if ((mode === 'march' || mode === 'enter' || mode === 'withdraw') && id === selectedId) {
@@ -214,7 +221,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
     }
     const base = drag.base as MoveSeg[];
     const width = footprint(formationInput(s, sel, mode === 'enter' ? { files: entry.files } : {})).halfWidth * 2;
-    const from = mode === 'enter' ? entryPose(s, entry.edge, entry.along) : mode === 'withdraw' ? withdrawPose(s, sel, []) : sel.pose;
+    const from = mode === 'enter' ? entryPose(s, entry.edge, entry.along) : mode === 'withdraw' ? withdrawPose(s, sel, [], withdrawTurn) : sel.pose;
     const pose = applyPath(from, base, width);
     const fwd = { x: Math.cos(pose.angle), y: Math.sin(pose.angle) };
     const d = Math.max(0, dot({ x: p.x - drag.start.x, y: p.y - drag.start.y }, fwd));
@@ -303,15 +310,42 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
     const r = s.regiments[act.regimentId]!;
     const used = act.actions.length;
     const status = [act.inspired ? 'Inspired' : '', act.aimed ? 'Aimed Shot' : '', r.broken ? 'Broken' : '', act.ended ? 'Activation over' : ''].filter(Boolean).join(' · ');
-    const drawEventButtons = (names: string[]) =>
-      used === 0 && !act.drawEventDone && names.length > 0 && s.regiments[act.regimentId]!.location === 'table' ? (
+    const drawEventButtons = (names: string[]) => {
+      if (used !== 0 || !names.length || s.regiments[act.regimentId]!.location !== 'table') return null;
+      const done = act.drawEvents ?? [];
+      const avail = names.filter((n) => !done.includes(baseName(n)) && (baseName(n) === 'Strain Expression' || !done.some((d) => d !== 'Strain Expression')));
+      if (!avail.length) return null;
+      const friendsNear = Object.values(s.regiments).filter((x) => x.owner === r.owner && x.location === 'table' && distancePolys(regimentPolys(s, r), regimentPolys(s, x)) <= 12);
+      return (
         <div className="actions wrap">
-          <span className="meta">Draw Event (manual):</span>
-          {names.map((n) => (
-            <button key={n} type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n })}>{n}</button>
-          ))}
+          <span className="meta">Draw Event:</span>
+          {avail.map((n) => {
+            const auto = DRAW_EVENTS_AUTOMATED.includes(baseName(n));
+            if (baseName(n) === 'Flux-Powered')
+              return (
+                <span key={n} className="actions">
+                  <button type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n, option: 'C' })}>Flux-Powered +2 Clash</button>
+                  <button type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n, option: 'A' })}>+2 Attacks</button>
+                </span>
+              );
+            if (baseName(n) === 'Suppress Higher Functions')
+              return (
+                <span key={n} className="actions">
+                  {friendsNear.map((f) => (
+                    <button key={f.id} type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n, targetId: f.id })}>Suppress: {f.name} Fearless</button>
+                  ))}
+                </span>
+              );
+            return (
+              <button key={n} type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n })} data-testid={`draw-event-${baseName(n)}`}>
+                {n}
+                {auto ? '' : ' (manual)'}
+              </button>
+            );
+          })}
         </div>
-      ) : null;
+      );
+    };
     const tail = (
       <>
         <button type="button" className="secondary" onClick={() => run({ type: 'pass' })}>Pass</button>
@@ -332,9 +366,16 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
                 <button type="button" className="secondary" onClick={() => run({ type: 'duel', characterId: c.id, targetCharacterId: t.id, accept: false })}>…declined</button>
               </span>
             ))}
-            {used === 0 && c.actions.map((x) => (
-              <button key={x.raw} type="button" className="secondary" onClick={() => run({ type: 'characterAbility', characterId: c.id, name: x.raw })}>{x.raw} (manual)</button>
-            ))}
+            {used === 0 &&
+              c.actions.map((x) =>
+                x.name === 'Snapshot' || x.name === 'Mighty Swing' ? (
+                  <button key={x.raw} type="button" className="secondary" onClick={() => { setTargetKind(x.name as TargetKind); setMode('target'); }}>
+                    {x.raw}
+                  </button>
+                ) : (
+                  <button key={x.raw} type="button" className="secondary" onClick={() => run({ type: 'characterAbility', characterId: c.id, name: x.raw })}>{x.raw} (manual)</button>
+                ),
+              )}
             {tail}
             <button type="button" className="secondary" onClick={() => run({ type: 'endActivation', entourage: true })} data-testid="end-entourage">End, then Entourage</button>
           </div>
@@ -636,7 +677,17 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
             </div>
           )}
 
-          {mode === 'withdraw' && <p className="meta">Withdraw (core p.50–51): the Regiment turns to face away, then Marches. The ghost shows the March after turning; the roll and Wounds come first.</p>}
+          {mode === 'withdraw' && (
+            <p className="meta">
+              Withdraw (core p.50–51): the Regiment turns to face away, then Marches. The ghost shows the March after turning; the roll and Wounds come first.
+              {sel.rules.some((x) => x.name === 'Swift Retreat') && (
+                <label>
+                  {' '}
+                  <input type="checkbox" checked={!withdrawTurn} onChange={(e) => setWithdrawTurn(!e.target.checked)} /> Swift Retreat: keep facing
+                </label>
+              )}
+            </p>
+          )}
           {(mode === 'override' || mode === 'placeCharge') && overridePose && (
             <div className="move-panel">
               <p className="warn">{mode === 'placeCharge' ? 'Drag the Regiment into contact with its Charge target and turn it flush; Impact Attacks follow.' : 'Manual override: drag the Regiment anywhere and turn it.'} This is logged as an override.</p>

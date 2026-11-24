@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Action } from '../../engine/game';
 import type { CommandCard, GameState, PlayerId } from '../../engine/model/types';
 import { cardTargets, defaultStackOrder } from '../../engine/round';
+import { sectOf } from '../../engine/rules/special/grants';
 
 /**
  * Command Stack as a row of cards on the table: tap a card to pick it up, tap another to put it
@@ -69,6 +70,16 @@ export function DrawDeck({ s, dispatch, onSelect, aiPlayer }: { s: GameState; di
           {card.kind === 'character' && <span className="ckind">Character</span>}
         </div>
         <div className="actions wrap">
+          {sectOf(s, player) === 'directorate' && !s.players[player].lobotomyUsed && s.players[player].stack.length > 0 && (
+            <span className="actions">
+              <button type="button" className="secondary small" onClick={() => dispatch({ type: 'lobotomy', player, place: 'top' })} title="Set this card aside, draw the next; this card goes on top (Strain without Decay)">
+                Lobotomytic: to top
+              </button>
+              <button type="button" className="secondary small" onClick={() => dispatch({ type: 'lobotomy', player, place: 'bottom' })} title="Set this card aside, draw the next; this card goes to the bottom (+2 Attacks)">
+                to bottom
+              </button>
+            </span>
+          )}
           {targets.map((id) =>
             card.kind === 'character' ? (
               <button

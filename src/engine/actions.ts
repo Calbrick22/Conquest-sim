@@ -181,8 +181,13 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
   const angle = Math.atan2(-e.n.y, -e.n.x);
   const limit = Math.abs(edgeLen - width) / 2;
   const t0 = Math.max(-limit, Math.min(limit, (r.pose.x - mid.x) * dir.x + (r.pose.y - mid.y) * dir.y));
-  const candidates: number[] = [t0];
-  for (let k = 1; k <= 40; k++) for (const sgn of [-1, 1]) candidates.push(t0 + sgn * k * 0.25);
+  // Fully engaged positions first (nearest the charger's line), then partial overlaps of the
+  // facing, keeping at least 1″ of front edge in contact.
+  const reach = (edgeLen + width) / 2 - 1;
+  const candidates: number[] = [];
+  for (let off = -reach; off <= reach + 1e-9; off += 0.25) candidates.push(off);
+  const overlapLen = (off: number) => Math.max(0, Math.min(off + width / 2, edgeLen / 2) - Math.max(off - width / 2, -edgeLen / 2));
+  candidates.sort((a, b) => overlapLen(b) - overlapLen(a) || Math.abs(a - t0) - Math.abs(b - t0));
   const others = onTableRegiments(s).filter((o) => o.id !== r.id && o.id !== t.id);
   let blockedReason = 'no room to place the Regiment in contact';
   let pushOption: ChargePlacement | null = null;
@@ -196,19 +201,28 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
     }
     return true;
   };
+  const why = new Map<string, number>();
+  const note = (k: string) => why.set(k, (why.get(k) ?? 0) + 1);
   for (const off of candidates) {
     const P = add(mid, scale(dir, off));
     const pose: Pose = { x: P.x, y: P.y, angle };
     const polys = regimentPolys(s, r, { pose });
-    if (!onTable(s, polys)) continue;
+    if (!onTable(s, polys)) {
+      note('the table edge');
+      continue;
+    }
     // Must actually engage the target.
     if (distancePolys(polys, regimentPolys(s, t)) > TOL) continue;
     if (anyOverlap(polys, regimentPolys(s, t))) continue;
-    if (markerPolys(s).some((m) => polys.some((p) => overlaps(p, m)))) continue;
+    if (markerPolys(s).some((m) => polys.some((p) => overlaps(p, m)))) {
+      note('an Objective Marker');
+      continue;
+    }
     const blockers = others.filter((o) => {
       const op = regimentPolys(s, o);
       return anyOverlap(polys, op) || (o.owner !== r.owner && distancePolys(polys, op) <= TOL);
     });
+    for (const b of blockers) note(b.owner === r.owner ? b.name : `enemy ${b.name}`);
     if (blockers.length === 0) {
       if (!pathClear(pose)) {
         blockedReason = 'the path to the target is blocked';
@@ -265,7 +279,8 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
       }
     }
   }
-  return { pose: null, reason: blockedReason };
+  const top = [...why.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k]) => k);
+  return { pose: null, reason: top.length ? `${blockedReason}: blocked by ${top.join(' and ')}` : blockedReason };
 }
 
 /** Impact Attacks after a successful Charge (core p.36, p.100). */
