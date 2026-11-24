@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { playActions } from './helpers';
+import { endActivation, playActions } from './helpers';
 
 test('odds for each target while choosing a Volley, and the Reach / Threats overlays (roadmap 2.1, 2.2)', async ({ page }) => {
   await page.goto('/#play');
@@ -40,7 +40,7 @@ test('odds for each target while choosing a Volley, and the Reach / Threats over
     await page.getByTestId('reach').click();
     await page.getByTestId('threats').click();
     checked = true;
-    await page.getByTestId('end-activation').click();
+    await endActivation(page);
     return true;
   });
   expect(checked).toBe(true);

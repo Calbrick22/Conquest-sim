@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.0] - 2026-11-24 (interface overhaul)
+
+The interface was redesigned to look and work like a strategy game. The rules engine is unchanged, and the interface only displays the game state. The plan is in `docs/ui-design.md`.
+
+### Added
+- **Screen flow:** a title screen (Continue, New battle, Army lists, Scenarios, Settings), then New Game, the battle, a pause menu, and a Victory, Defeat or Draw summary.
+- **Battle HUD:** a Round counter, a phase track, each army with its cards left and the First Player crown, the score, the activating Regiment with its Actions used, and tool buttons (Ruler, Reach, Threats, Undo, Menu).
+- **Notifications:** short messages for scoring, Regiments destroyed, Broken or Shattered, Power Tokens and Supremacy.
+- **Selection panel:** on wide screens, the selected Regiment's stats and rules sit in a panel left of the table. Stats and rules have tooltips, and each rule shows whether it is automated or manual.
+- **Pause menu** (Esc or ☰): Resume, Settings, export the report, save the game file, or save and quit. The computer waits while the menu is open.
+- **Settings:** text size, reduced motion, outcome previews, role icons, a portrait table, and a confirmation before ending an activation early. Settings are saved on this device.
+- **Confirmation dialogs**, shown in the game's style, before ending an activation early, burning a zone, quitting, or deleting a list or a saved battle.
+- **Keyboard:** Esc opens the menu or cancels, Ctrl+Z undoes, Enter advances the computer, and R, G, T, D and E work as shortcuts. Dialogs keep keyboard focus inside them and return it when they close.
+
+### Changed
+- A dark theme with gold accents, serif headings and red and blue player colours. Text scales with the screen and with the text size setting. On phones the HUD is compact and shows only the current phase.
+
 ## [1.9.0] - 2026-11-24 (terrain and the 2026 scenarios)
 
 ### Added

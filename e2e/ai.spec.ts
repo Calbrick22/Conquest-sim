@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { closeCallout } from './helpers';
+import { closeCallout, endActivation } from './helpers';
 
 test('play against the computer: it takes its own decisions and explains them', async ({ page }) => {
   await page.goto('/#play');
@@ -37,10 +37,10 @@ test('play against the computer: it takes its own decisions and explains them', 
         await files.selectOption((await files.locator('option').last().getAttribute('value'))!);
         await page.getByLabel('Along').fill(String(10 + i * 9));
         await page.getByTestId('move-text').fill('forward 3');
-        await page.getByRole('button', { name: 'Set' }).click();
+        await page.getByRole('button', { name: 'Set', exact: true }).click();
         await page.getByTestId('commit-move').click();
       }
-      await page.getByTestId('end-activation').click();
+      await endActivation(page);
     } else await page.waitForTimeout(400);
   }
   await page.getByTestId('end-round').click();

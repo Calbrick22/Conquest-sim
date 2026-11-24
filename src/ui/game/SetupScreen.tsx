@@ -11,6 +11,7 @@ import { replay, type GameSession } from './useGame';
 import { LAYOUTS, terrainFor, type TerrainChoice } from '../../engine/terrainLayouts';
 import { ScenarioMap } from '../ScenarioPreview';
 import type { ScenarioDef } from '../../scenarios/types';
+import { useConfirm } from '../shell/overlay';
 
 const DEMO_ID = 'demo';
 
@@ -97,6 +98,7 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
     </>
   );
 
+  const confirm = useConfirm();
   const importFile = async (f: File) => {
     try {
       const g = JSON.parse(await f.text()) as SavedGame;
@@ -123,7 +125,7 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
                   Round {Math.min(g.round, g.initial.scenario.rounds)} · {g.vp.P1}–{g.vp.P2}
                   {g.ended ? ' · finished' : ''} · {new Date(g.savedAt).toLocaleString()}
                 </span>{' '}
-                <button type="button" className="secondary small" onClick={async () => { if (confirm(`Delete ${g.name}?`)) { await deleteGame(g.id); setGames(await listGames()); } }}>
+                <button type="button" className="secondary small" onClick={() => confirm.ask({ title: 'Delete saved battle?', body: `${g.name} will be removed from this device.`, confirmLabel: 'Delete', danger: true }, () => { void deleteGame(g.id).then(listGames).then(setGames); })}>
                   Delete
                 </button>
               </li>
@@ -205,6 +207,7 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
           </>
         )}
       </div>
+      {confirm.dialog}
     </section>
   );
 }

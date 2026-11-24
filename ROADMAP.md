@@ -39,9 +39,9 @@ This roadmap follows the MVP. It is ranked by **value to a player who uses the a
 
 | # | Item | Why it matters | Size |
 |---|---|---|---|
-| 4.1 | 🟡 *(v1.6.0: role icons on Stands)* **Graphics and art layer:** model art per Stand, faction colours, Wound markers, animated dice. Rendering is already separate from the engine. | Nicer to use, but not needed for rules practice. | M |
+| 4.1 | 🟡 *(v1.6.0: role icons on Stands; v2.0.0: game-style theme, HUD and screen flow)* **Graphics and art layer:** model art per Stand, faction colours, Wound markers, animated dice. Rendering is already separate from the engine. | Nicer to use, but not needed for rules practice. | M |
 | 4.2 | **List building:** build and edit lists in the app from data you enter yourself. Faction data cannot be bundled in this public repository. | Convenience; the Army Builder already covers this. | L |
-| 4.3 | 🟡 *(v1.4.0: side-by-side table and panels, portrait table, hide-panels toggle)* **Accessibility and tablet layout:** side-by-side table and panels, keyboard shortcuts, larger touch targets. | Comfort on bigger screens. | S |
+| 4.3 | ✅ *(v1.4.0 layout; v2.0.0: keyboard shortcuts, focus handling, text size and reduced-motion settings, larger touch targets)* **Accessibility and tablet layout:** side-by-side table and panels, keyboard shortcuts, larger touch targets. | Comfort on bigger screens. | S |
 | 4.4 | **Text-list import** in whatever format your opponents send, once a sample is available. | Saves asking opponents for PDFs. | S |
 
 ## Phase 5: optional online play

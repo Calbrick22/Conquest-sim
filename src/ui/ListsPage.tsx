@@ -3,6 +3,7 @@ import { parseArmyList } from '../import/parseList';
 import type { ArmyList } from '../import/types';
 import { deleteList, listLists, newId, saveList, type SavedList } from '../storage/db';
 import { ListReview } from './ListReview';
+import { useConfirm } from './shell/overlay';
 
 type Draft = { id: string; source: 'pdf' | 'text'; list: ArmyList };
 
@@ -12,6 +13,7 @@ export function ListsPage() {
   const [paste, setPaste] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const refresh = () => listLists().then(setSaved).catch((e: unknown) => setError(String(e)));
   useEffect(() => {
@@ -90,11 +92,12 @@ export function ListsPage() {
                 {s.name}
               </button>{' '}
               <span className="meta">{s.list.faction} · {s.list.points ?? '?'} pts · {new Date(s.savedAt).toLocaleDateString()}</span>{' '}
-              <button type="button" className="secondary small" onClick={async () => { if (confirm(`Delete ${s.name}?`)) { await deleteList(s.id); refresh(); } }}>Delete</button>
+              <button type="button" className="secondary small" onClick={() => confirm.ask({ title: 'Delete army list?', body: `${s.name} will be removed from this device.`, confirmLabel: 'Delete', danger: true }, () => { void deleteList(s.id).then(refresh); })}>Delete</button>
             </li>
           ))}
         </ul>
       </div>
+      {confirm.dialog}
     </section>
   );
 }

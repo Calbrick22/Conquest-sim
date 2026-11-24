@@ -21,11 +21,18 @@ export async function playActions(page: Page, special?: (name: string) => Promis
       const last = await files.locator('option').last().getAttribute('value');
       await files.selectOption(last!);
       await page.getByTestId('move-text').fill('forward 3');
-      await page.getByRole('button', { name: 'Set' }).click();
+      await page.getByRole('button', { name: 'Set', exact: true }).click();
       await page.getByTestId('commit-move').click();
     }
-    await page.getByTestId('end-activation').click();
+    await endActivation(page);
   }
+}
+
+/** Ends the Activation, confirming if the game asks (Actions left; Settings → confirm). */
+export async function endActivation(page: Page) {
+  await page.getByTestId('end-activation').click();
+  const ok = page.getByTestId('confirm-ok');
+  if (await ok.isVisible().catch(() => false)) await ok.click();
 }
 
 

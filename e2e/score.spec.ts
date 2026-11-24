@@ -75,7 +75,10 @@ test('import two lists, play Forlorn Hope, move a Regiment onto a zone, end the 
   await expect(page.getByTestId('log')).toContainText('P1 scores 2 VP in Round 2');
 
   // The game was saved: it can be resumed from the setup screen.
-  await page.getByRole('button', { name: 'Quit' }).click();
-  await page.getByTestId('resume-game').first().click();
+  await page.getByTestId('menu').click();
+  await page.getByTestId('quit').click();
+  await page.getByTestId('confirm-ok').click();
+  // Back on the title screen: Continue resumes the saved battle.
+  await page.getByTestId('continue').click();
   await expect(page.getByTestId('score')).toHaveText('P1 2 – 0 P2');
 });

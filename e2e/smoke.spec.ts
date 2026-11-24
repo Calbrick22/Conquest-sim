@@ -1,12 +1,16 @@
 import { expect, test } from '@playwright/test';
 
-// M1 smoke test: the app loads, the engine rolls dice, and the PWA manifest is served.
-// Milestone 5 replaces this with the full import → scenario → move → score flow.
-test('app loads and rolls dice', async ({ page }) => {
+test('the title screen loads with its menu and focuses the first choice', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Conquest Sim' })).toBeVisible();
-  await page.getByTestId('roll').click();
-  await expect(page.getByTestId('dice').locator('.die')).toHaveCount(6);
+  await expect(page.getByTestId('new-battle')).toBeVisible();
+  // game-ui-ux: a control is focused when a screen opens.
+  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).not.toBe('BODY');
+  await page.getByTestId('open-settings').click();
+  await expect(page.getByTestId('settings')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label'))).toBe('Text size');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('settings')).toBeHidden();
 });
 
 test('serves a web app manifest', async ({ page, request }) => {

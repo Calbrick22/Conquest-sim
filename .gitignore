@@ -5,3 +5,8 @@ dev-dist/
 test-results/
 playwright-report/
 *.local
+
+# Locally installed agent skills (third-party tooling, not part of the app)
+.claude/skills/
+skills-lock.json
+e2e/*.local.spec.ts

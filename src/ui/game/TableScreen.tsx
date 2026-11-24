@@ -39,6 +39,12 @@ import { PractitionerButtons } from './SpiresPanel';
 import { usePreviews } from './usePreviews';
 import { useAutoplay, wipedOut } from './useAutoplay';
 import { EndGameSummary } from './EndGameSummary';
+import { Hud } from './Hud';
+import { Toasts } from './Toasts';
+import { PauseMenu } from './PauseMenu';
+import { Tooltip } from '../shell/Tooltip';
+import { useConfirm, anyModalOpen } from '../shell/overlay';
+import { useSettings } from '../shell/settings';
 import { chargeBands, frontReachPolygon, maxReach } from '../../engine/reach';
 import type { OutcomePreview } from '../../engine/preview';
 import { volleyAimed, volleyLines } from '../../engine/actions';
@@ -73,7 +79,7 @@ type TargetKind = 'charge' | 'volley' | 'clash' | 'Snapshot' | 'Mighty Swing';
 const deg = (d: number) => (d * Math.PI) / 180;
 const fmt = (n: number) => `${(Math.round(n * 100) / 100).toFixed(2)}″`;
 
-export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => void }) {
+export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQuit: () => void; onSettings?: () => void }) {
   const { session, dispatch, undo, undoHuman, error, setError } = useGame(game.session);
   const aiPlayer = game.mode === 'ai' ? (game.you === 'P1' ? 'P2' : 'P1') : null;
   const [paused, setPaused] = useState(false);
@@ -108,7 +114,19 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
   const auto = useAutoplay(s, dispatch);
   const wiped = (['P1', 'P2'] as const).find((p) => wipedOut(s, p)) ?? null;
   const [summaryClosed, setSummaryClosed] = useState(false);
-  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused || auto.running, dispatch, needsAck);
+  const { settings, update: updateSettings } = useSettings();
+  const [menuOpen, setMenuOpen] = useState(false);
+  // The computer waits while the pause menu is open.
+  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused || auto.running || menuOpen, dispatch, needsAck);
+  // Wide screens show the selected Regiment in a side panel instead of a floating card.
+  const [wide, setWide] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(min-width: 1280px)').matches);
+  useEffect(() => {
+    if (typeof matchMedia === 'undefined') return;
+    const m = matchMedia('(min-width: 1280px)');
+    const on = () => setWide(m.matches);
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, []);
   const aiActing = !!aiPlayer && (active?.owner === aiPlayer || (s.step === 'action' && !active && (s.drawn?.player ?? s.turn) === aiPlayer));
 
   // Autosave on this device after every action (replayable from seed + actions).
@@ -152,13 +170,81 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
     setDrag(null);
   };
 
-  const run = (a: Action) => {
+  const runRaw = (a: Action) => {
     if (dispatch(a)) {
       resetModes();
       return true;
     }
     return false;
   };
+  const confirm = useConfirm();
+  /**
+   * Every Action from the panels goes through here: irreversible or easy-to-misclick ones ask
+   * first (ending an Activation with Actions left, Burning a zone). Returns whether it ran now.
+   */
+  const run = (a: Action): boolean => {
+    const act = s.activation;
+    if (a.type === 'endActivation' && act && !act.ended && settings.confirmEarlyEnd && !auto.running) {
+      const r = s.regiments[act.regimentId];
+      const limit = act.characterId ? 1 : 2;
+      const left = limit - act.actions.length;
+      if (left > 0 && r?.location === 'table' && s.phase === 'play') {
+        confirm.ask(
+          { title: 'End the Activation?', body: <p>{act.characterId ? s.characters[act.characterId]?.name : r.name} still has {left} Action{left > 1 ? 's' : ''} left. Unused Actions are lost.</p>, confirmLabel: 'End Activation' },
+          () => runRaw(a),
+        );
+        return false;
+      }
+    }
+    if (a.type === 'burnZone') {
+      confirm.ask({ title: `Burn zone ${a.zoneId}?`, body: <p>The zone is removed from the game for both sides. You score 4 VP this Round (ns p.5).</p>, confirmLabel: 'Burn it', danger: true }, () => runRaw(a));
+      return false;
+    }
+    return runRaw(a);
+  };
+  const toggleRuler = () => {
+    resetModes();
+    setRuler(null);
+    setMode(mode === 'ruler' ? 'select' : 'ruler');
+  };
+  const doUndo = () => {
+    resetModes();
+    if (aiPlayer) {
+      setPaused(true);
+      undoHuman();
+    } else undo();
+  };
+  const exportGameFile = () =>
+    download(
+      `${fileBase}.json`,
+      JSON.stringify({ id: game.id, name: `${s.scenario.name}`, createdAt: game.createdAt, savedAt: new Date().toISOString(), you: game.you, initial: session.initial, initialRng: session.initialRng, initialEvents: session.initialEvents, actions: session.actions, round: s.round, vp: { P1: s.players.P1.vp, P2: s.players.P2.vp }, ended: s.phase === 'ended', events: session.events }, null, 1),
+      'application/json',
+    );
+  // Keyboard (game-ui-ux: every action reachable without a mouse). Ignored while typing or in a dialog.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (anyModalOpen() || (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName))) return;
+      const click = (id: string) => (document.querySelector(`[data-testid="${id}"]`) as HTMLButtonElement | null)?.click();
+      if (e.key === 'Escape') {
+        if (mode !== 'select') resetModes();
+        else setMenuOpen(true);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        click('undo');
+      } else if (e.ctrlKey || e.metaKey || e.altKey) return;
+      else if (e.key === 'Enter' && t?.tagName !== 'BUTTON') click('ai-next');
+      else if (e.key === 'd') click('draw-card');
+      else if (e.key === 'e') click('end-activation');
+      else if (e.key === 'r') click('ruler');
+      else if (e.key === 'g') click('reach');
+      else if (e.key === 't') click('threats');
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  });
+  const quit = () =>
+    confirm.ask({ title: 'Quit to the title screen?', body: <p>The battle is saved on this device and can be continued from the title screen.</p>, confirmLabel: 'Save and quit', danger: true }, onQuit);
 
   // ------------------------------------------------ draft action and ghost
   const draft = useMemo((): { action: Action; ghost: Ghost; cost?: number; allowance?: number } | null => {
@@ -202,7 +288,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
   }, [s, sel, mode, moves, entry, reform, overridePose, withdrawTurn]);
 
   // Outcome previews for each legal target while choosing a Charge, Volley or Clash (roadmap 2.1).
-  const previewKind = mode === 'target' && sel && s.activation?.regimentId === sel.id && (targetKind === 'charge' || targetKind === 'volley' || targetKind === 'clash') ? targetKind : null;
+  const previewKind = settings.previews && mode === 'target' && sel && s.activation?.regimentId === sel.id && (targetKind === 'charge' || targetKind === 'volley' || targetKind === 'clash') ? targetKind : null;
   const { previews, busy: previewBusy } = usePreviews(s, previewKind, previewKind ? sel!.id : null);
 
   const areas = useMemo(() => {
@@ -584,7 +670,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
       if (t?.location !== 'table') continue;
       overlays.push({ id: `pv-${p.targetId}`, at: footprint(formationInput(s, t)).c, className: 'preview-badge', node: <PreviewBadge p={p} /> });
     }
-  } else if (sel && showUnit && mode === 'select' && sel.location === 'table') {
+  } else if (!wide && sel && showUnit && mode === 'select' && sel.location === 'table') {
     const fpSel = footprint(formationInput(s, sel));
     overlays.push({ id: 'unit', at: fpSel.c, clear: Math.hypot(fpSel.halfWidth, fpSel.halfDepth), node: <UnitCallout s={s} r={sel} onClose={() => setShowUnit(false)} /> });
   }
@@ -596,39 +682,40 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
 
   return (
     <section className="game-screen">
-      <div className="topbar">
-        <strong>
-          {s.scenario.name} · Round {Math.min(s.round, s.scenario.rounds)}/{s.scenario.rounds}
-        </strong>
-        <span className="score" data-testid="score">
-          P1 {s.players.P1.vp} – {s.players.P2.vp} P2
-        </span>
-        <span className="meta">
-          {s.phase === 'setup' ? 'Setup' : s.phase === 'ended' ? 'Game over' : active ? `Active: ${active.name}` : 'Choose a Regiment to activate'}
-        </span>
-        <div className="actions">
-          <button type="button" className={`secondary small ${mode === 'ruler' ? 'on' : ''}`} onClick={() => { resetModes(); setRuler(null); setMode(mode === 'ruler' ? 'select' : 'ruler'); }} data-testid="ruler">
-            Ruler
+      <Hud s={s} you={game.you} mode={game.mode}>
+        <Tooltip tip="Measure (R)">
+          <button type="button" className={`icon-btn ${mode === 'ruler' ? 'on' : ''}`} onClick={toggleRuler} data-testid="ruler" aria-label="Ruler">
+            📏<span className="btn-label">Ruler</span>
           </button>
-          <button type="button" className={`secondary small ${showReach ? 'on' : ''}`} onClick={() => setShowReach(!showReach)} title="Charge reach of the selected Regiment, with the chance of each distance" data-testid="reach">
-            Reach
+        </Tooltip>
+        <Tooltip tip="Charge reach of the selected Regiment (G)">
+          <button type="button" className={`icon-btn ${showReach ? 'on' : ''}`} onClick={() => setShowReach(!showReach)} data-testid="reach" aria-label="Charge reach">
+            ⤳<span className="btn-label">Reach</span>
           </button>
-          <button type="button" className={`secondary small ${showThreats ? 'on' : ''}`} onClick={() => setShowThreats(!showThreats)} title="How far each enemy Regiment could Charge" data-testid="threats">
-            Threats
+        </Tooltip>
+        <Tooltip tip="How far each enemy could Charge (T)">
+          <button type="button" className={`icon-btn ${showThreats ? 'on' : ''}`} onClick={() => setShowThreats(!showThreats)} data-testid="threats" aria-label="Threats">
+            ⚠<span className="btn-label">Threats</span>
           </button>
-          {aiPlayer && (
-            <button type="button" className={`secondary small ${paused ? 'on' : ''}`} onClick={() => setPaused(!paused)} data-testid="pause-ai">
-              {paused ? 'Resume computer' : 'Pause computer'}
+        </Tooltip>
+        {aiPlayer && (
+          <Tooltip tip={paused ? 'Let the computer play on' : 'Stop the computer after its current Action'}>
+            <button type="button" className={`icon-btn ${paused ? 'on' : ''}`} onClick={() => setPaused(!paused)} data-testid="pause-ai" aria-label={paused ? 'Resume computer' : 'Pause computer'}>
+              {paused ? '▶' : '⏸'}<span className="btn-label">{paused ? 'Resume computer' : 'Pause computer'}</span>
             </button>
-          )}
-          <button type="button" className="secondary small" onClick={() => { resetModes(); if (aiPlayer) { setPaused(true); undoHuman(); } else undo(); }} disabled={session.actions.length === 0} data-testid="undo">
-            Undo
+          </Tooltip>
+        )}
+        <Tooltip tip="Undo the last Action (Ctrl+Z)">
+          <button type="button" className="icon-btn" onClick={doUndo} disabled={session.actions.length === 0} data-testid="undo" aria-label="Undo">
+            ↶<span className="btn-label">Undo</span>
           </button>
-          <button type="button" className="secondary small" onClick={onQuit}>
-            Quit
+        </Tooltip>
+        <Tooltip tip="Pause menu (Esc)">
+          <button type="button" className="icon-btn" onClick={() => setMenuOpen(true)} data-testid="menu" aria-label="Menu">
+            ☰<span className="btn-label">Menu</span>
           </button>
-        </div>
-      </div>
+        </Tooltip>
+      </Hud>
 
       <div className="game-table">
       <TableView
@@ -644,12 +731,21 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
         onDragEnd={() => setDrag(null)}
         dragging={!!drag}
         areas={areas}
+        showIcons={settings.standIcons}
+        onToggleIcons={() => updateSettings({ standIcons: !settings.standIcons })}
+        defaultRotated={settings.portraitTable}
         lines={mode === 'target' && targetKind === 'volley' && sel ? volleyLines(s, sel).map((l) => ({ a: l.a, b: l.b, cls: l.kind, ...(l.label ? { label: l.label } : {}) })) : undefined}
         overlays={overlays}
       >
         {s.phase === 'play' && !needsAck && <DrawDeck s={s} dispatch={dispatch} onSelect={setSelectedId} aiPlayer={paused ? null : aiPlayer} />}
+        {!auto.running && <Toasts events={session.last?.events ?? []} stamp={session.actions.length} />}
       </TableView>
       </div>
+      {wide && (
+        <aside className="game-left panel" aria-label="Selected Regiment">
+          {sel ? <UnitCallout s={s} r={sel} variant="panel" onClose={() => setSelectedId(null)} /> : <p className="meta empty-hint">Tap a Regiment on the table to see its profile, rules and status here.</p>}
+        </aside>
+      )}
       <div className="game-side">
       {s.phase === 'play' && s.step === 'command' && stackPlayer && !needsAck && (
         <StackBuilder key={`${s.round}-${stackPlayer}`} s={s} p={stackPlayer} dispatch={dispatch} onPreview={(id) => { setSelectedId(id); setShowUnit(true); }} />
@@ -917,13 +1013,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
           <button
             type="button"
             className="secondary small"
-            onClick={() =>
-              download(
-                `${fileBase}.json`,
-                JSON.stringify({ id: game.id, name: `${s.scenario.name}`, createdAt: game.createdAt, savedAt: new Date().toISOString(), you: game.you, initial: session.initial, initialRng: session.initialRng, initialEvents: session.initialEvents, actions: session.actions, round: s.round, vp: { P1: s.players.P1.vp, P2: s.players.P2.vp }, ended: s.phase === 'ended', events: session.events }, null, 1),
-                'application/json',
-              )
-            }
+            onClick={exportGameFile}
           >
             Export game file (JSON)
           </button>
@@ -944,6 +1034,22 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
         </ol>
       </details>
       </div>
+      {confirm.dialog}
+      {menuOpen && (
+        <PauseMenu
+          onResume={() => setMenuOpen(false)}
+          onSettings={() => {
+            setMenuOpen(false);
+            onSettings?.();
+          }}
+          onExportReport={() => download(`${fileBase}.md`, markdown(), 'text/markdown')}
+          onExportGame={exportGameFile}
+          onQuit={() => {
+            setMenuOpen(false);
+            quit();
+          }}
+        />
+      )}
     </section>
   );
 }

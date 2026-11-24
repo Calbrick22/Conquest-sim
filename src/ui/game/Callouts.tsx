@@ -5,11 +5,23 @@ import { attachedCharacter, hasFlank, marchValue } from '../../engine/queries';
 import { isImplemented } from '../../engine/rules/special/registry';
 import { isAnimateVessel, regimentDarkTier } from '../../engine/factions/oldDominion';
 import { OWNER_COLOR } from './TableView';
+import { Tooltip } from '../shell/Tooltip';
 
 const KEYS: (keyof Profile)[] = ['M', 'V', 'C', 'A', 'W', 'R', 'D', 'E'];
 
 /** Stats card shown next to a Regiment when it is tapped. */
-export function UnitCallout({ s, r, onClose }: { s: GameState; r: RegimentState; onClose: () => void }) {
+const STAT_TIPS: Record<keyof Profile, string> = {
+  M: 'March: inches per March; Charge Distance is a die + March (core p.15, p.31)',
+  V: 'Volley: Hit on this or less when shooting (core p.15)',
+  C: 'Clash: Hit on this or less in melee (core p.15)',
+  A: 'Attacks: dice per Stand in a Clash (core p.15)',
+  W: 'Wounds per Stand (core p.15)',
+  R: 'Resolve: pass Morale Tests on this or less (core p.15, p.59)',
+  D: 'Defense: save Hits on this or less (core p.15)',
+  E: 'Evasion: save on this or less if better than Defense (core p.15)',
+};
+
+export function UnitCallout({ s, r, onClose, variant = 'callout' }: { s: GameState; r: RegimentState; onClose: () => void; variant?: 'callout' | 'panel' }) {
   const c = attachedCharacter(s, r.id);
   const wounded = r.stands.filter((x) => x.wounds > 0).map((x) => x.wounds);
   const status = [
@@ -22,8 +34,8 @@ export function UnitCallout({ s, r, onClose }: { s: GameState; r: RegimentState;
     [...r.roundMods, ...(r.grantMods ?? [])].length ? [...r.roundMods, ...(r.grantMods ?? [])].map((m) => `${m.stat}${m.delta > 0 ? '+' : ''}${m.delta} (${m.source})`).join(' ') : '',
   ].filter(Boolean);
   return (
-    <div data-testid="unit-callout">
-      <button type="button" className="secondary small close" onClick={onClose} aria-label="Close">✕</button>
+    <div data-testid={variant === 'panel' ? 'selection-panel' : 'unit-callout'} className={`unit-card ${variant}`}>
+      {variant === 'callout' && <button type="button" className="secondary small close" onClick={onClose} aria-label="Close">✕</button>}
       <h4>
         <span className="swatch" style={{ background: OWNER_COLOR[r.owner] }} /> {r.name}
       </h4>
@@ -36,7 +48,11 @@ export function UnitCallout({ s, r, onClose }: { s: GameState; r: RegimentState;
         <thead>
           <tr>
             <th />
-            {KEYS.map((k) => <th key={k}>{k}</th>)}
+            {KEYS.map((k) => (
+              <th key={k}>
+                <Tooltip tip={STAT_TIPS[k]}>{k}</Tooltip>
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -54,8 +70,8 @@ export function UnitCallout({ s, r, onClose }: { s: GameState; r: RegimentState;
           )}
         </tbody>
       </table>
-      <RuleLine label="Rules" names={r.rules.map((x) => x.raw)} />
-      {c && <RuleLine label={`${c.name}${c.isWarlord ? ' (Warlord)' : ''}`} names={[...c.rules.map((x) => x.raw), ...c.options]} />}
+      <RuleLine label="Rules" names={r.rules.map((x) => x.raw)} glossary={s.players[r.owner].glossary} />
+      {c && <RuleLine label={`${c.name}${c.isWarlord ? ' (Warlord)' : ''}`} names={[...c.rules.map((x) => x.raw), ...c.options]} glossary={s.players[r.owner].glossary} />}
       {r.drawEvents.length > 0 && <div className="rules-line">Draw Events: {r.drawEvents.join(', ')}</div>}
       {r.commandModels.length > 0 && <div className="rules-line">Command: {r.commandModels.join(', ')}</div>}
       {(r.memories?.length || r.memoriesText) && (
@@ -69,17 +85,25 @@ export function UnitCallout({ s, r, onClose }: { s: GameState; r: RegimentState;
   );
 }
 
-function RuleLine({ label, names }: { label: string; names: string[] }) {
+/** Rules as chips with a tooltip: automated or manual, and the list's own text for it. */
+function RuleLine({ label, names, glossary = {} }: { label: string; names: string[]; glossary?: Record<string, string> }) {
   if (!names.length) return null;
   return (
     <div className="rules-line">
-      {label}:{' '}
-      {names.map((n, i) => (
-        <span key={i} className={isImplemented(n.replace(/\s*[([].*$/, '')) ? '' : 'manual-rule'}>
-          {n}
-          {i < names.length - 1 ? ', ' : ''}
-        </span>
-      ))}
+      <span className="rules-label">{label}:</span>{' '}
+      {names.map((n, i) => {
+        const base = n.replace(/\s*[([].*$/, '');
+        const auto = isImplemented(base);
+        const text = glossary[base] ?? glossary[n];
+        return (
+          <Tooltip key={i} className={`rule-chip ${auto ? 'auto' : 'manual-rule'}`} tip={<>
+            <strong>{n}</strong> · {auto ? 'automated' : 'manual: apply it with the manual tools'}
+            {text && <span className="tip-text">{text.length > 320 ? `${text.slice(0, 320)}…` : text}</span>}
+          </>}>
+            {n}
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }

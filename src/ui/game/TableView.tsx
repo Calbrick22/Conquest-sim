@@ -47,6 +47,11 @@ interface Props {
   lines?: { a: Vec; b: Vec; cls: string; label?: string }[];
   /** Fixed HTML (e.g. the Command deck) drawn over the bottom of the table. */
   children?: ReactNode;
+  /** Role icons on Stands, and the button that toggles them (from Settings). */
+  showIcons?: boolean;
+  onToggleIcons?: () => void;
+  /** Start turned to portrait (Settings). */
+  defaultRotated?: boolean;
 }
 
 const PAD = 4;
@@ -59,29 +64,18 @@ export function TableView(props: Props) {
   // Portrait: the table turned a quarter so its long side runs down the screen (phones).
   const [rotated, setRotated] = useState(() => {
     try {
-      return localStorage.getItem('table-rotated') === '1';
+      const v = localStorage.getItem('table-rotated');
+      return v === null ? !!props.defaultRotated : v === '1';
     } catch {
-      return false;
+      return !!props.defaultRotated;
     }
   });
   // Hide callouts and the deck to see the whole table.
   const [peek, setPeek] = useState(false);
-  // Role icons on Stands (ranged, melee, caster).
-  const [showIcons, setShowIcons] = useState(() => {
-    try {
-      return localStorage.getItem('stand-icons') !== '0';
-    } catch {
-      return true;
-    }
-  });
-  const toggleIcons = () => {
-    setShowIcons(!showIcons);
-    try {
-      localStorage.setItem('stand-icons', showIcons ? '0' : '1');
-    } catch {
-      /* per-device convenience only */
-    }
-  };
+  // Role icons on Stands (ranged, melee, caster): a Setting, toggled from the table too.
+  const [localIcons, setLocalIcons] = useState(true);
+  const showIcons = props.showIcons ?? localIcons;
+  const toggleIcons = () => (props.onToggleIcons ? props.onToggleIcons() : setLocalIcons(!localIcons));
   const fit = (rot: boolean) => (rot ? { x: -PAD, y: -PAD, w: H + 2 * PAD, h: W + 2 * PAD } : { x: -PAD, y: -PAD, w: W + 2 * PAD, h: H + 2 * PAD });
   const [view, setView] = useState(() => fit(rotated));
   const toggleRotate = () => {

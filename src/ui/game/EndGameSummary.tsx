@@ -1,5 +1,6 @@
 import type { GameState, PlayerId } from '../../engine/model/types';
 import { scoreGroups } from '../../engine/scoring/victory';
+import { Modal } from '../shell/overlay';
 
 /**
  * The end-of-battle screen: result, final score and a Round-by-Round breakdown, with
@@ -13,8 +14,8 @@ export function EndGameSummary({ s, you, mode, onHome, onExport, onClose }: { s:
   const title = !winner ? 'Draw' : mode === 'ai' ? (winner === you ? 'Victory' : 'Defeat') : `${winner} is victorious`;
   const tone = !winner ? 'draw' : mode === 'ai' && winner !== you ? 'defeat' : 'victory';
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="end-title" data-testid="end-summary">
-      <div className={`modal end-summary ${tone}`}>
+    <Modal onClose={onClose} className={`end-summary ${tone}`} labelledBy="end-title" wide>
+      <div data-testid="end-summary">
         <div className="end-banner">
           <span className="eyebrow">{s.scenario.name} · Battle over</span>
           <h2 id="end-title">{title}</h2>
@@ -74,7 +75,7 @@ export function EndGameSummary({ s, you, mode, onHome, onExport, onClose }: { s:
         </div>
         <p className="meta">z = zones, k = kills and Markers. Hover or long-press a score for its breakdown.</p>
         <div className="actions wrap end-actions">
-          <button type="button" onClick={onHome} data-testid="save-home">
+          <button type="button" onClick={onHome} data-testid="save-home" data-autofocus>
             Save and return home
           </button>
           <button type="button" className="secondary" onClick={onExport}>
@@ -85,6 +86,6 @@ export function EndGameSummary({ s, you, mode, onHome, onExport, onClose }: { s:
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
