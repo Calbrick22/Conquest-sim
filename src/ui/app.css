@@ -82,3 +82,38 @@ button.link { background: none; border: none; color: var(--accent); padding: 0; 
 .map .zlabel { font-weight: 600; }
 .map .mlabel { text-anchor: start; font-weight: 700; }
 .map .edge { font-size: 1.6px; font-weight: 600; }
+.app:has(.game-screen) { max-width: 1100px; }
+.topbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 8px 0; }
+.topbar .actions { margin: 0 0 0 auto; }
+.actions.wrap { flex-wrap: wrap; }
+button.on { background: var(--accent); color: #fff; }
+.table-wrap { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card); }
+.map.game { touch-action: none; user-select: none; -webkit-user-select: none; max-height: 70vh; }
+.zoom { position: absolute; right: 6px; bottom: 6px; display: flex; gap: 4px; }
+.zoom button { background: var(--card); color: var(--fg); border-color: var(--line); min-width: 36px; }
+.map .stand { stroke: #1f1712; stroke-width: 0.06; fill-opacity: 0.85; }
+.map .stand.command { fill-opacity: 1; }
+.map .stand.character { stroke: #e2b13c; stroke-width: 0.25; }
+.map .regiment .front { stroke: #fff6d8; stroke-width: 0.3; }
+.map .regiment.selected .stand { stroke: #ffd34d; stroke-width: 0.2; }
+.map .regiment.done .stand { fill-opacity: 0.5; }
+.map .rlabel { font-size: 1.1px; font-weight: 600; fill: #fff; paint-order: stroke; stroke: #1f1712; stroke-width: 0.25px; }
+.map .ghost polygon { fill: none; stroke-width: 0.15; stroke-dasharray: 0.4 0.25; }
+.map .ghost.ok polygon { stroke: #15803d; fill: rgba(21, 128, 61, 0.15); }
+.map .ghost.bad polygon { stroke: #b91c1c; fill: rgba(185, 28, 28, 0.15); }
+.map .ruler line { stroke: #111; stroke-width: 0.15; }
+.map .ruler circle { fill: #111; }
+.map .ruler text { font-size: 1.6px; font-weight: 700; fill: #111; paint-order: stroke; stroke: #fff; stroke-width: 0.3px; }
+.map .entry-ok { stroke: #15803d; stroke-width: 0.8; stroke-opacity: 0.8; }
+.map .entry-bad { stroke: #b91c1c; stroke-width: 0.8; }
+.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: middle; }
+.move-panel { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
+.problems { padding-left: 18px; margin: 6px 0; }
+input.grow { flex: 1; font: inherit; padding: 8px; min-height: 40px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); }
+.log ol { max-height: 260px; overflow: auto; padding-left: 28px; font-size: 0.9rem; }
+.log li.override { color: var(--warn); }
+.reserve-row { padding: 6px 0; border-bottom: 1px solid var(--line); }
+@media (max-width: 700px) {
+  .table-wrap { position: sticky; top: 0; z-index: 3; }
+  .map.game { max-height: 42vh; }
+}

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { createRng, rollD6s, type RngState } from '../engine/rng';
+import { GamePage } from './game/GamePage';
 import { ListsPage } from './ListsPage';
 import { ScenarioPreview } from './ScenarioPreview';
 
-type Page = 'home' | 'lists' | 'scenarios';
+type Page = 'home' | 'play' | 'lists' | 'scenarios';
 const PAGES: { id: Page; label: string }[] = [
   { id: 'home', label: 'Home' },
+  { id: 'play', label: 'Play' },
   { id: 'lists', label: 'Lists' },
   { id: 'scenarios', label: 'Scenarios' },
 ];
@@ -13,7 +15,7 @@ const PAGES: { id: Page; label: string }[] = [
 const MILESTONES: { id: string; label: string; done: boolean }[] = [
   { id: 'M1', label: 'Skeleton, PWA, CI and deploy', done: true },
   { id: 'M2', label: 'Army list import and scenarios', done: true },
-  { id: 'M3', label: 'Table and movement', done: false },
+  { id: 'M3', label: 'Table and movement', done: true },
   { id: 'M4', label: 'Round loop and combat', done: false },
   { id: 'M5', label: 'Scoring, save and log', done: false },
   { id: 'M6', label: 'Computer opponent', done: false },
@@ -45,6 +47,7 @@ export function App() {
         </nav>
       </header>
       {page === 'home' && <Home />}
+      {page === 'play' && <GamePage />}
       {page === 'lists' && <ListsPage />}
       {page === 'scenarios' && <ScenarioPreview />}
       <footer>Unofficial fan tool. No rules text is included; unit data is loaded from your own army list files.</footer>
