@@ -1,9 +1,10 @@
-import { charStat, highestR, moraleTest, allocateWounds, killCharacter, resolveAttack, stat, type AttackPool } from './combat';
+import { recordAction } from './activation';
+import { type AttackPool, allocateWounds, charStat, highestR, killCharacter, moraleTest, reprocess, resolveAttack, stat } from './combat';
 import { ev, rollN, rollTest, type Ctx } from './dice';
 import { arcsOf, majorityArc, type Arc } from './geometry/arcs';
 import { STAND_SIZE } from './geometry/bases';
 import { losLineObstructed, volleyLineObstructed, type Obstacle } from './geometry/los';
-import { intersectionArea, overlaps, polyDistance, rectCorners, rectPoly, type Poly, type Rect } from './geometry/polygon';
+import { closestPair, intersectionArea, overlaps, polyDistance, rectCorners, rectPoly, type Poly, type Rect } from './geometry/polygon';
 import { add, dist, normalizeAngle, scale, sub, TOL, type Vec } from './geometry/vec';
 import { footprint, layout, poseFrame } from './formation';
 import { applyPath, samplePath, type MoveSeg } from './movement';
@@ -23,6 +24,7 @@ import {
   regimentPolys,
 } from './queries';
 import { barrageOf, flatRules, hasRule, ruleX } from './rules/special/rules';
+import { magnanimity, poolMods } from './rules/special/effects';
 
 // ---------------------------------------------------------------- shared geometry helpers
 
@@ -98,8 +100,9 @@ export function hasLineOfSight(s: GameState, r: RegimentState, t: RegimentState)
 
 // ---------------------------------------------------------------- Charge (core p.31–36)
 
-export function maxChargeReach(s: GameState, r: RegimentState): number {
-  return marchValue(s, r) + 6;
+export function maxChargeReach(s: GameState, r: RegimentState, t: RegimentState | null = null): number {
+  const c = chargeDistanceRule(s, r, t);
+  return c.fixed ?? marchValue(s, r) + 6 + c.bonus;
 }
 
 export function chargeProblems(s: GameState, r: RegimentState, t: RegimentState | undefined): string[] {
@@ -110,7 +113,7 @@ export function chargeProblems(s: GameState, r: RegimentState, t: RegimentState 
   if (isEngaged(s, r)) return ['A Regiment in contact with an enemy cannot Charge (core p.24).'];
   if (!hasLineOfSight(s, r, t)) return [`${t.name} is not in the front arc and Line of Sight (core p.31).`];
   const d = distancePolys(regimentPolys(s, r), regimentPolys(s, t));
-  if (d > maxChargeReach(s, r) + TOL) return [`${t.name} is ${d.toFixed(2)}″ away, beyond the maximum Charge of ${maxChargeReach(s, r)}″ (core p.31).`];
+  if (d > maxChargeReach(s, r, t) + TOL) return [`${t.name} is ${d.toFixed(2)}″ away, beyond the maximum Charge of ${maxChargeReach(s, r, t)}″ (core p.31).`];
   return [];
 }
 
@@ -212,24 +215,47 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
 }
 
 /** Impact Attacks after a successful Charge (core p.36, p.100). */
-export function resolveImpact(ctx: Ctx, r: RegimentState, t: RegimentState, facing: Arc): void {
+export function resolveImpact(ctx: Ctx, r: RegimentState, t: RegimentState, facing: Arc, opts: { resounding?: boolean } = {}): void {
   const s = ctx.s;
+  // Loose Formation: the Regiment cannot inflict Impact Attacks (core p.99).
+  if (hasRule(r.rules, 'Loose Formation')) return;
   const pools: AttackPool[] = [];
+  const blessed = takeBlessed(r);
   const impact = ruleX(r.rules, 'Impact');
+  // Glorious Charge: Impact Attacks at +1 Clash (core p.99).
+  const glorious = hasRule(r.rules, 'Glorious Charge') ? 1 : 0;
   if (impact > 0) {
-    pools.push({
-      label: `${r.name} Impact (${impact}) × ${r.stands.length}`,
-      dice: impact * r.stands.length,
-      skill: stat(r, 'C'),
-      reduceD: ruleX(r.rules, 'Brutal Impact'),
-      ignoreShield: hasRule(r.rules, 'Linebreaker'),
-    });
+    const skill = stat(r, 'C') + glorious;
+    pools.push({ label: `${r.name} Impact (${impact}) × ${r.stands.length}`, dice: impact * r.stands.length, skill, ...poolMods(r.rules, t, 'impact', facing, skill, { blessed }), extraWoundOnSix: !!opts.resounding });
   }
   const c = attachedCharacter(s, r.id);
   const ci = c ? ruleX(c.rules, 'Impact') : 0;
-  if (c && ci > 0) pools.push({ label: `${c.name} Impact (${ci})`, dice: ci, skill: charStat(c, 'C'), reduceD: ruleX(c.rules, 'Brutal Impact'), ignoreShield: hasRule(c.rules, 'Linebreaker') });
+  if (c && ci > 0) {
+    const skill = charStat(c, 'C') + glorious;
+    pools.push({ label: `${c.name} Impact (${ci})`, dice: ci, skill, ...poolMods(c.rules, t, 'impact', facing, skill), extraWoundOnSix: !!opts.resounding });
+  }
   if (!pools.length) return;
-  resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: t.id, arc: facing, pools, morale: true, terrifying: ruleX(r.rules, 'Terrifying'), what: `${r.name} Impact Attacks` });
+  resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: t.id, arc: facing, pools, morale: true, terrifying: ruleX(r.rules, 'Terrifying'), what: `${r.name} Impact Attacks`, kind: 'impact' });
+}
+
+/** Blessed (core p.97): once per Round, re-roll failed Hit Rolls in a Clash or Charge (RULE-AMBIGUITY: AMB-37). */
+export function takeBlessed(r: RegimentState): boolean {
+  if (!hasRule(r.rules, 'Blessed') || r.flags.blessedUsed) return false;
+  r.flags.blessedUsed = true;
+  return true;
+}
+
+/**
+ * Charge Distance (core p.31): die + lowest March. Juggernaut: always March + 5″, not modified
+ * (core p.99). Phalanx: always March + 3″ (core p.100). Designate Target: +2″ against a Marked
+ * enemy (Spires rule text).
+ */
+export function chargeDistanceRule(s: GameState, r: RegimentState, t: RegimentState | null): { fixed: number | null; bonus: number } {
+  const M = marchValue(s, r);
+  if (hasRule(r.rules, 'Juggernaut')) return { fixed: M + 5, bonus: 0 };
+  const bonus = t?.flags.marked ? 2 : 0;
+  if (hasRule(r.rules, 'Phalanx')) return { fixed: M + 3 + bonus, bonus };
+  return { fixed: null, bonus };
 }
 
 /** Furthest a failed Charge can move straight forward: up to the die, halting 1″ from enemies (core p.36). */
@@ -251,28 +277,39 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
   const M = marchValue(s, r);
   const facing = chargeFacing(s, r, t);
   const idx = ctx.rng.index;
-  let [die] = rollN(ctx, 1) as [number];
-  const notes = [`Charge Distance = die + March ${M}; need ${d.toFixed(2)}″`];
-  let total = die + M;
-  const unstoppable = hasRule(r.rules, 'Unstoppable') || (r.commandModels.includes('Standard Bearer') && r.stands.some((x) => x.isCommand));
-  if (total < d - TOL && unstoppable) {
-    const first = die;
+  const rule = chargeDistanceRule(s, r, t);
+  const act = s.activation!;
+  // Resounding Malevolence: a March immediately followed by this Charge.
+  const resounding = hasRule(r.rules, 'Resounding Malevolence') && act.actions[act.actions.length - 1] === 'march';
+  let die = 0;
+  let total: number;
+  const notes: string[] = [];
+  if (rule.fixed !== null) {
+    total = rule.fixed;
+    notes.push(hasRule(r.rules, 'Juggernaut') ? 'Juggernaut: March + 5″ (core p.99)' : 'Phalanx: March + 3″ (core p.100)');
+  } else {
     [die] = rollN(ctx, 1) as [number];
-    total = die + M;
-    notes.push(`Unstoppable re-roll ${first}→${die} (core p.101)`);
+    notes.push(`Charge Distance = die + March ${M}${rule.bonus ? ` + ${rule.bonus} (Marked)` : ''}; need ${d.toFixed(2)}″`);
+    total = die + M + rule.bonus;
+    const unstoppable = hasRule(r.rules, 'Unstoppable') || (r.commandModels.includes('Standard Bearer') && r.stands.some((x) => x.isCommand));
+    if (total < d - TOL && unstoppable) {
+      const first = die;
+      [die] = rollN(ctx, 1) as [number];
+      total = die + M + rule.bonus;
+      notes.push(`Unstoppable re-roll ${first}→${die} (core p.101)`);
+    }
   }
   const success = total >= d - TOL;
   ev(ctx, {
     type: 'dice',
-    text: `${r.name} charges ${t.name} (${facing}): rolled ${die} + ${M} = ${total}″ against ${d.toFixed(2)}″ — ${success ? 'success' : 'failed'}.`,
-    dice: { purpose: `${r.name}: Charge Roll`, seed: ctx.rng.seed, index: idx, values: [die], notes },
+    text: `${r.name} charges ${t.name} (${facing}): ${rule.fixed !== null ? `fixed ${total}″` : `rolled ${die} + ${M}${rule.bonus ? ` + ${rule.bonus}` : ''} = ${total}″`} against ${d.toFixed(2)}″ — ${success ? 'success' : 'failed'}.`,
+    dice: { purpose: `${r.name}: Charge Roll`, seed: ctx.rng.seed, index: idx, values: rule.fixed !== null ? [] : [die], notes },
     player: r.owner,
     regimentId: r.id,
   });
-  const act = s.activation!;
-  act.actions.push('charge');
+  recordAction(act, 'charge');
   if (!success) {
-    const move = failedChargeDistance(s, r, die);
+    const move = failedChargeDistance(s, r, die || total - M);
     if (move > 0) r.pose = applyPath(r.pose, [{ kind: 'forward', d: move }], footprintOf(s, r).halfWidth * 2);
     act.ended = true;
     ev(ctx, { type: 'charge', text: `Failed Charge: ${r.name} moves ${move}″ forward and its Activation ends (core p.36).`, player: r.owner, regimentId: r.id });
@@ -285,14 +322,21 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
     return;
   }
   r.pose = place.pose;
-  completeCharge(ctx, r, t, facing as Arc);
+  completeCharge(ctx, r, t, facing as Arc, { resounding });
 }
 
 /** After the charger is in contact: Impact Attacks and Inspired (core p.35–36). */
-export function completeCharge(ctx: Ctx, r: RegimentState, t: RegimentState, facing: Arc): void {
+export function completeCharge(ctx: Ctx, r: RegimentState, t: RegimentState, facing: Arc, opts: { resounding?: boolean } = {}): void {
   ev(ctx, { type: 'charge', text: `${r.name} contacts ${t.name}'s ${facing} and gains Inspired until the end of its Activation (core p.35).`, player: r.owner, regimentId: r.id });
   ctx.s.activation!.inspired = true;
-  resolveImpact(ctx, r, t, facing);
+  // Fury: +1 Attacks until the end of the Round (core p.98). Shock: +1 Clash (core p.100).
+  // Glorious Charge: Terrifying (1) until the end of the Round (core p.99).
+  if (hasRule(r.rules, 'Fury')) r.roundMods.push({ stat: 'A', delta: 1, source: 'Fury' });
+  if (hasRule(r.rules, 'Shock')) r.roundMods.push({ stat: 'C', delta: 1, source: 'Shock' });
+  if (hasRule(r.rules, 'Glorious Charge') && !r.roundRules.some((x) => x.name === 'Terrifying')) r.roundRules.push({ name: 'Terrifying', x: 1, raw: 'Terrifying (1)' });
+  const engagedWith = [t.id];
+  resolveImpact(ctx, r, t, facing, opts);
+  pressTheAttack(ctx, r, engagedWith);
 }
 
 // ---------------------------------------------------------------- Clash (core p.44–46)
@@ -308,59 +352,88 @@ function inspiredSkill(c: number, inspired: boolean): { skill: number; rerollSix
   return c + 1 >= 5 ? { skill: c, rerollSixes: true } : { skill: c + 1, rerollSixes: false };
 }
 
+/**
+ * Clash (core p.44–46). Each Engaged Stand attacks the enemy Regiment it is in contact with
+ * (the chosen target if it touches several); Unengaged Stands support the chosen target
+ * (core p.45). Each enemy is resolved as a separate pool, from Hits to Morale.
+ */
 export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
   const s = ctx.s;
-  const tfp = rectPoly(footprintOf(s, t));
+  const enemies = enemiesInContact(s, r);
+  const fps = new Map(enemies.map((e) => [e.id, rectPoly(footprintOf(s, e))]));
   const slots = layout(formationInput(s, r));
-  const polys = slots.map((sl) => rectPoly(sl.rect));
-  const engaged = slots.map((_, i) => polyDistance(polys[i]!, tfp) <= TOL);
-  // Inspired is not available to Broken Regiments, to a Regiment whose Character declined a Duel, or against Dread.
-  const inspiredAllowed = !r.broken && !r.flags.declinedDuel && !enemiesInContact(s, r).some((e) => hasRule(e.rules, 'Dread'));
-  const inspired = !!s.activation?.inspired && inspiredAllowed;
-  const support = engagedFlankOrRear(s, r) ? 1 : ruleX(r.rules, 'Support') || 1;
+  // Inspired is not available to Broken Regiments, to a Regiment whose Character declined a Duel,
+  // or against Dread (core p.60, p.76, p.97). Dauntless always counts as Inspired (core p.97).
+  const dread = enemies.some((e) => hasRule(e.rules, 'Dread'));
+  const inspiredAllowed = !r.broken && !r.flags.declinedDuel && !dread;
+  const support = engagedFlankOrRear(s, r) && !hasRule(r.rules, 'Iron Discipline') ? 1 : ruleX(r.rules, 'Support') || 1;
   const leader = r.commandModels.includes('Leader');
-  let engagedAttacks = 0;
-  let supportAttacks = 0;
-  slots.forEach((sl, i) => {
-    if (sl.isCharacter) return;
-    if (engaged[i]) engagedAttacks += stat(r, 'A') + (sl.isCommand && leader ? 1 : 0);
-    else supportAttacks += support;
-  });
-  const C = stat(r, 'C');
-  const ins = inspiredSkill(C, inspired);
-  const pools: AttackPool[] = [
-    {
-      label: `${r.name} (${engagedAttacks} engaged + ${supportAttacks} support)`,
-      dice: engagedAttacks + supportAttacks,
-      skill: ins.skill,
-      rerollSixes: ins.rerollSixes,
-      rerollFailed: hasRule(r.rules, 'Flurry'),
-      extraOnOne: ins.skill >= 6,
-      reduceD: ruleX(r.rules, 'Cleave'),
-      ignoreShield: hasRule(r.rules, 'Linebreaker'),
-      deadly6: hasRule(r.rules, 'Deadly Blades'),
-    },
-  ];
   const c = attachedCharacter(s, r.id);
-  if (c) {
-    const ci = slots.findIndex((x) => x.isCharacter);
-    const n = ci >= 0 && engaged[ci] ? charStat(c, 'A') : 1;
-    const cins = inspiredSkill(charStat(c, 'C'), inspired);
-    pools.push({
-      label: `${c.name} (${ci >= 0 && engaged[ci] ? 'engaged' : 'support'})`,
-      dice: n,
-      skill: cins.skill,
-      rerollSixes: cins.rerollSixes,
-      rerollFailed: hasRule(c.rules, 'Flurry'),
-      extraOnOne: cins.skill >= 6,
-      reduceD: ruleX(c.rules, 'Cleave'),
-      ignoreShield: hasRule(c.rules, 'Linebreaker'),
-      deadly6: hasRule(c.rules, 'Deadly Blades'),
-    });
+  const perTarget = new Map<string, { engaged: number; support: number; charAttacks: number; charEngaged: boolean }>();
+  const bucket = (id: string) => perTarget.get(id) ?? (perTarget.set(id, { engaged: 0, support: 0, charAttacks: 0, charEngaged: false }), perTarget.get(id)!);
+  for (const sl of slots) {
+    const p = rectPoly(sl.rect);
+    const touching = enemies.filter((e) => polyDistance(p, fps.get(e.id)!) <= TOL);
+    const target = touching.find((e) => e.id === t.id) ?? touching[0] ?? t;
+    const b = bucket(target.id);
+    if (sl.isCharacter) {
+      b.charAttacks += touching.length && c ? charStat(c, 'A') : 1;
+      b.charEngaged = touching.length > 0;
+    } else if (touching.length) b.engaged += stat(r, 'A') + (sl.isCommand && leader ? 1 : 0);
+    else b.support += support;
   }
-  const arc = arcOfAttack(s, r, t);
-  if (inspired) ev(ctx, { type: 'note', text: `${r.name} is Inspired: ${ins.rerollSixes ? 're-rolls natural 6s' : `Clash ${C}→${ins.skill}`} (core p.99).` });
-  resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: t.id, arc, pools, morale: true, terrifying: ruleX(r.rules, 'Terrifying'), what: `${r.name} Clash` });
+  for (const [tid, b] of perTarget) {
+    const target = s.regiments[tid]!;
+    if (target.location !== 'table') continue;
+    const arc = arcOfAttack(s, r, target);
+    const inspired = ((!!s.activation?.inspired || hasRule(r.rules, 'Dauntless') || magnanimity(s, r, target)) && inspiredAllowed) || (hasRule(r.rules, 'Dauntless') && !dread);
+    const C = stat(r, 'C');
+    const ins = inspiredSkill(C, inspired);
+    const blessed = takeBlessed(r);
+    const pools: AttackPool[] = [
+      {
+        label: `${r.name} (${b.engaged} engaged + ${b.support} support)`,
+        dice: b.engaged + b.support,
+        skill: ins.skill,
+        rerollSixes: ins.rerollSixes,
+        ...poolMods(r.rules, target, 'clash', arc, ins.skill, { blessed }),
+      },
+    ];
+    if (c && b.charAttacks) {
+      const cins = inspiredSkill(charStat(c, 'C'), inspired);
+      pools.push({ label: `${c.name} (${b.charEngaged ? 'engaged' : 'support'})`, dice: b.charAttacks, skill: cins.skill, rerollSixes: cins.rerollSixes, ...poolMods(c.rules, target, 'clash', arc, cins.skill) });
+    }
+    if (inspired) ev(ctx, { type: 'note', text: `${r.name} is Inspired: ${ins.rerollSixes ? 're-rolls natural 6s' : `Clash ${C}→${ins.skill}`} (core p.99).` });
+    if (perTarget.size > 1) ev(ctx, { type: 'note', text: `${r.name} directs ${pools.reduce((a, p) => a + p.dice, 0)} Attacks at ${target.name} (core p.45).` });
+    resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: target.id, arc, pools, morale: true, terrifying: ruleX(r.rules, 'Terrifying'), what: `${r.name} Clash`, kind: 'clash' });
+    if (r.location === 'destroyed') break;
+  }
+  pressTheAttack(ctx, r, enemies.map((e) => e.id));
+}
+
+/**
+ * Press the Attack (core p.61): after casualties, the active player pushes their Stranded
+ * Regiment back into contact with the enemy it was fighting, by the shortest distance, keeping
+ * its facing. If that cannot be done legally it stays put and is no longer engaged.
+ */
+export function pressTheAttack(ctx: Ctx, r: RegimentState, wereEngagedWith: string[]): void {
+  const s = ctx.s;
+  if (r.location !== 'table' || !wereEngagedWith.length) return;
+  const still = wereEngagedWith.map((id) => s.regiments[id]).filter((e): e is RegimentState => !!e && e.location === 'table');
+  if (!still.length) return;
+  if (enemiesInContact(s, r).some((e) => wereEngagedWith.includes(e.id))) return;
+  const target = still[0]!;
+  const [a, b] = closestPair(regimentPolys(s, r), regimentPolys(s, target));
+  const move = { x: b.x - a.x, y: b.y - a.y };
+  const pose = { ...r.pose, x: r.pose.x + move.x, y: r.pose.y + move.y };
+  const polys = regimentPolys(s, r, { pose });
+  const others = onTableRegiments(s).filter((o) => o.id !== r.id);
+  if (others.some((o) => anyOverlap(polys, regimentPolys(s, o))) || !onTable(s, polys)) {
+    ev(ctx, { type: 'note', text: `${r.name} is Stranded and cannot be pushed back into contact (core p.61).` });
+    return;
+  }
+  r.pose = pose;
+  ev(ctx, { type: 'note', text: `Press the Attack: ${r.name} is pushed ${Math.hypot(move.x, move.y).toFixed(2)}″ back into contact with ${target.name} (core p.61).`, regimentId: r.id });
 }
 
 // ---------------------------------------------------------------- Volley (core p.38–41)
@@ -373,6 +446,14 @@ export interface VolleyStandPlan {
   skill: number;
   ap: number;
   deadly: boolean;
+  effective?: boolean;
+}
+
+/** Arcs a Regiment may shoot into and see through (core p.14, p.38; Acute Senses p.97, Weapon Platform p.101, Fluid Formation p.98). */
+export function shootingArcs(r: RegimentState): Arc[] {
+  if (hasRule(r.rules, 'Acute Senses') || hasRule(r.rules, 'Fluid Formation')) return ['front', 'left', 'right', 'rear'];
+  if (hasRule(r.rules, 'Weapon Platform')) return ['front', 'left', 'right'];
+  return ['front'];
 }
 
 /** Works out each front-rank Stand's shots (core p.38–40). */
@@ -384,11 +465,16 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
   const fp = footprintOf(s, r);
   const tfp = footprintOf(s, t);
   const tPolys = regimentPolys(s, t);
-  if (!tPolys.some((p) => arcsOf(fp, p).includes('front'))) problems.push(`${t.name} is not in the front arc (core p.38).`);
+  const arcs = shootingArcs(r);
+  if (!tPolys.some((p) => arcsOf(fp, p).some((a) => arcs.includes(a)))) problems.push(`${t.name} is not in the front arc (core p.38).`);
   const obs = obstacles(s, [r.id, t.id]);
   const c = attachedCharacter(s, r.id);
   const plans: VolleyStandPlan[] = [];
   const front = layout(formationInput(s, r)).filter((x) => x.rank === 0);
+  // Longshot: Effective Range equals the full Barrage range (core p.99).
+  const longshot = hasRule(r.rules, 'Longshot');
+  // Loose Formation (target): each Stand's Barrage X is halved, rounding up (core p.99).
+  const loose = hasRule(t.rules, 'Loose Formation');
   for (const sl of front) {
     const rules = sl.isCharacter && c ? c.rules : r.rules;
     const b = barrageOf(rules);
@@ -424,10 +510,11 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
     }
     let shots = b.shots + (sl.isCommand && r.commandModels.includes('Leader') ? 1 : 0);
     // Effective Range: closer than half range gives +1 (core p.39). RULE-AMBIGUITY: AMB-09.
-    const effective = bestD < b.range / 2;
+    const effective = longshot || bestD < b.range / 2;
     if (effective) shots += 1;
+    if (loose) shots = Math.ceil(shots / 2);
     const arc = majorityArc(tfp, rectPoly(sl.rect)) ?? 'front';
-    plans.push({ label: `${label}${effective ? ' (Effective Range +1)' : ''}`, shots, arc, skill: vAimed, ap, deadly });
+    plans.push({ label: `${label}${effective ? ' (Effective Range +1)' : ''}${loose ? ' (Loose Formation: halved)' : ''}`, shots, arc, skill: vAimed, ap, deadly, effective });
   }
   if (!plans.some((p) => p.shots > 0) && !problems.length) problems.push('No Stand can shoot at that Regiment (range or obstruction).');
   return { plans, problems };
@@ -435,26 +522,42 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
 
 export function applyVolley(ctx: Ctx, r: RegimentState, t: RegimentState): void {
   const s = ctx.s;
-  const aimed = !!s.activation?.aimed;
+  const act = s.activation;
+  const aimed = !!act?.aimed || hasRule(r.rules, 'Deadshots') || magnanimity(s, r, t);
+  // Reprocessing Agents: the target suffers −1 Defense as soon as it is targeted.
+  if (hasRule(r.rules, 'Reprocessing Agents')) reprocess(ctx, t);
   const { plans } = planVolley(s, r, t, aimed);
   const byArc = new Map<Arc, VolleyStandPlan[]>();
   for (const p of plans) if (p.shots > 0 && p.arc) byArc.set(p.arc, [...(byArc.get(p.arc) ?? []), p]);
   for (const p of plans) if (p.shots === 0) ev(ctx, { type: 'note', text: `${p.label}: no shots (${p.reason}).` });
+  // Murderous Volley: after Take Aim, Wounds to targets within 12″ cause Morale Tests (core p.95).
+  const murderous = hasRule(r.rules, 'Murderous Volley') && !!act?.actions.includes('takeAim') && distancePolys(regimentPolys(s, r), regimentPolys(s, t)) <= 12 + TOL;
+  let ones = 0;
   // Stands in different arcs are resolved separately but simultaneously (core p.40).
   for (const [arc, ps] of byArc) {
     // Stands with identical profiles share one pool of dice (same Hit and Defense rolls).
     const pools: AttackPool[] = [];
     for (const p of ps) {
-      const same = pools.find((q) => q.skill === p.skill && q.reduceD === p.ap && q.deadly6 === p.deadly);
+      const mods = poolMods(r.rules, t, 'volley', arc, p.skill, { effectiveRange: !!p.effective });
+      const same = pools.find((q) => q.skill === p.skill && q.reduceD === p.ap && q.deadly6 === p.deadly && q.torrential === mods.torrential);
       if (same) {
         same.dice += p.shots;
         same.label += ` + ${p.shots}`;
       } else
-        pools.push({ label: `${r.name} Volley → ${arc} (${p.shots}`, dice: p.shots, skill: p.skill, rerollSixes: aimed && p.skill >= 5, extraOnOne: p.skill >= 6, reduceD: p.ap, deadly6: p.deadly });
+        pools.push({ label: `${r.name} Volley → ${arc} (${p.shots}`, dice: p.shots, skill: p.skill, rerollSixes: aimed && p.skill >= 5, ...mods, reduceD: p.ap, deadly6: p.deadly });
     }
     for (const q of pools) q.label += ' shots)';
-    resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: t.id, arc, pools, morale: false, terrifying: 0, what: `${r.name} Volley` });
+    const res = resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: t.id, arc, pools, morale: murderous, terrifying: 0, what: `${r.name} Volley`, kind: 'volley' });
+    ones += res.naturalOnes;
     if (s.regiments[t.id]!.location === 'destroyed') break;
+  }
+  // Visceral Bombardment: each natural 1 is a Hit on every other enemy within 3″ of the target (no Morale).
+  if (ones && hasRule(r.rules, 'Visceral Bombardment')) {
+    const tp = regimentPolys(s, t);
+    const ap = Math.max(0, ...plans.map((p) => p.ap));
+    for (const e of onTableRegiments(s).filter((x) => x.owner === t.owner && x.id !== t.id && distancePolys(regimentPolys(s, x), tp) <= 3 + TOL)) {
+      resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: e.id, arc: 'front', pools: [{ label: 'Visceral Bombardment', dice: 0, skill: 0, autoHits: ones, reduceD: ap }], morale: false, terrifying: 0, what: 'Visceral Bombardment', kind: 'special' });
+    }
   }
 }
 

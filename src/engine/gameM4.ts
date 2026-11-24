@@ -1,3 +1,6 @@
+import { applyCharacterAbility, applyDrawEvent, characterAbilityProblems, drawEventProblems, onActivationEnd, onActivationStart, recordAction } from './activation';
+import { sectOf } from './rules/special/grants';
+import { hasRule } from './rules/special/rules';
 import {
   applyCharge,
   applyClash,
@@ -127,10 +130,18 @@ export function validateM4(s: GameState, a: Action): Validation {
       if (!s.drawn || s.drawn.card.kind !== 'character' || s.drawn.card.refId !== c.id) return fail("Draw the Character's Command Card first (core p.22).");
       return ok();
     }
-    case 'drawEvent':
-      if (!s.activation) return fail('No Activation in progress.');
-      if (s.activation.actions.length) return fail('Draw Events are resolved before the first Action (core p.23).');
+    case 'drawEvent': {
+      const p = drawEventProblems(s, a.name, { ...(a.option ? { option: a.option } : {}), ...(a.targetId ? { targetId: a.targetId } : {}) });
+      return p.length ? fail(...p) : ok();
+    }
+    case 'lobotomy': {
+      // Lobotomytic Override (The Directorate, from the list's Army Rules).
+      if (!s.drawn || s.drawn.player !== a.player || s.activation) return fail('Use it straight after drawing a Command Card, before Activating.');
+      if (sectOf(s, a.player) !== 'directorate') return fail('Only a Directorate army has Lobotomytic Override.');
+      if (s.players[a.player].lobotomyUsed) return fail('Once per Round.');
+      if (s.players[a.player].stack.length < 1) return fail('It cannot be used with only one Command Card left.');
       return ok();
+    }
     case 'charge':
       if (isMarkerTarget(a.targetId)) return act(s, a.regimentId, 'charge', () => markerChargeProblems(s, s.regiments[a.regimentId]!, markerId(a.targetId)));
       return act(s, a.regimentId, 'charge', () => chargeProblems(s, s.regiments[a.regimentId]!, s.regiments[a.targetId]));
@@ -174,6 +185,7 @@ export function validateM4(s: GameState, a: Action): Validation {
     case 'inspire':
       return act(s, a.regimentId, 'inspire', () => {
         const r = s.regiments[a.regimentId]!;
+        if (hasRule(r.rules, 'Phalanx')) return ['A Phalanx Regiment cannot perform the Inspire Action (core p.100).'];
         if (!isEngaged(s, r)) return ['Inspire is a combat Action (core p.50).'];
         return r.broken ? ['A Broken Regiment cannot benefit from Inspired (core p.60).'] : [];
       });
@@ -213,7 +225,7 @@ export function validateM4(s: GameState, a: Action): Validation {
     case 'characterAbility': {
       const c = s.characters[a.characterId];
       if (!c || s.activation?.characterId !== c.id) return fail('Only the active Character can use its Actions.');
-      const p = canTakeAction(s, s.activation.regimentId, 'ability');
+      const p = [...canTakeAction(s, s.activation.regimentId, 'ability'), ...characterAbilityProblems(s, c, a.name, a.targetId)];
       return p.length ? fail(...p) : ok();
     }
     case 'override.wounds':
@@ -258,6 +270,7 @@ export function endActivation(ctx: Ctx, entourage: boolean): void {
   const a = s.activation!;
   const r = s.regiments[a.regimentId]!;
   const owner = r.owner;
+  onActivationEnd(ctx, a, r);
   if (a.characterId) {
     const c = s.characters[a.characterId]!;
     c.activatedThisRound = true;
@@ -278,8 +291,10 @@ export function endActivation(ctx: Ctx, entourage: boolean): void {
       s.players[owner].stack.shift();
       startActivation(ctx, r, { entourage: true });
       ev(ctx, { type: 'activate', text: `${owner} draws ${top.name}: Entourage Activation of ${r.name} (core p.75).`, player: owner, regimentId: r.id });
-      logManualRules(ctx, r);
-      return;
+      if (onActivationStart(ctx, r, top)) {
+        logManualRules(ctx, r);
+        return;
+      }
     }
     ev(ctx, { type: 'draw', text: `The next card is not ${r.name}; it goes back on top of the Command Stack (core p.75).`, player: owner });
   }
@@ -335,7 +350,11 @@ export function applyM4(ctx: Ctx, a: Action): void {
     case 'useSupremacy': {
       s.players[a.player].supremacyUsed = true;
       const w = Object.values(s.characters).find((c) => c.isWarlord && c.id.startsWith(a.player))!;
-      ev(ctx, { type: 'manual', text: `${a.player} activates the Supremacy Ability of ${w.name} (${w.supremacyAbilities.join(', ')}) until the end of the Round. Its effects are manual.`, player: a.player });
+      if (w.supremacyAbilities.some((x) => x.toLowerCase() === 'remorseless hunter')) {
+        // Remorseless Hunter [Activated]: all friendly Regiments gain Sureshot and Longshot until the end of the Round.
+        for (const r of Object.values(s.regiments).filter((x) => x.owner === a.player)) r.roundRules.push({ name: 'Sureshot', raw: 'Sureshot' }, { name: 'Longshot', raw: 'Longshot' });
+        ev(ctx, { type: 'supremacy', text: `${a.player} activates Remorseless Hunter: every friendly Regiment gains Sureshot and Longshot until the end of the Round.`, player: a.player });
+      } else ev(ctx, { type: 'manual', text: `${a.player} activates the Supremacy Ability of ${w.name} (${w.supremacyAbilities.join(', ')}) until the end of the Round. Its effects are manual.`, player: a.player });
       break;
     }
     case 'drawCard':
@@ -352,12 +371,18 @@ export function applyM4(ctx: Ctx, a: Action): void {
       ev(ctx, { type: 'activate', text: `${r.owner} activates the Character ${c.name}${r.location !== 'table' ? ' (not on the Battlefield yet: no Draw Event, core p.23)' : ''}.`, player: r.owner });
       break;
     }
-    case 'drawEvent': {
-      const act = s.activation!;
-      act.drawEventDone = true;
-      const r = s.regiments[act.regimentId]!;
-      const text = s.players[r.owner].glossary[a.name.replace(/\s*\(.*\)$/, '')];
-      ev(ctx, { type: 'manual', text: `Draw Event: ${a.name} (manual${text ? ' — see its rule text' : ''}). Apply its effect with the manual tools.`, player: r.owner, regimentId: r.id });
+    case 'drawEvent':
+      applyDrawEvent(ctx, a.name, { ...(a.option ? { option: a.option } : {}), ...(a.targetId ? { targetId: a.targetId } : {}) });
+      break;
+    case 'lobotomy': {
+      const first = s.drawn!.card;
+      s.players[a.player].lobotomyUsed = true;
+      s.drawn = null;
+      ev(ctx, { type: 'draw', text: `${a.player} uses Lobotomytic Override: the drawn card is set aside face down and goes to the ${a.place} of the Command Stack; ${a.player} draws again.`, player: a.player });
+      const ok2 = drawCard(ctx, a.player);
+      if (a.place === 'top') s.players[a.player].stack.unshift({ ...first, lobotomy: 'top' });
+      else s.players[a.player].stack.push({ ...first, lobotomy: 'bottom' });
+      if (!ok2) passTurn(s, a.player);
       break;
     }
     case 'charge':
@@ -381,7 +406,7 @@ export function applyM4(ctx: Ctx, a: Action): void {
       break;
     }
     case 'volley': {
-      s.activation!.actions.push('volley');
+      recordAction(s.activation!, 'volley');
       const r = s.regiments[a.regimentId]!;
       if (isMarkerTarget(a.targetId)) {
         const id = markerId(a.targetId);
@@ -390,26 +415,26 @@ export function applyM4(ctx: Ctx, a: Action): void {
       break;
     }
     case 'clash': {
-      s.activation!.actions.push('clash');
+      recordAction(s.activation!, 'clash');
       const r = s.regiments[a.regimentId]!;
       if (isMarkerTarget(a.targetId)) applyMarkerClash(ctx, r, markerId(a.targetId));
       else applyClash(ctx, r, s.regiments[a.targetId]!);
       break;
     }
     case 'takeAim':
-      s.activation!.actions.push('takeAim');
+      recordAction(s.activation!, 'takeAim');
       s.activation!.aimed = true;
       ev(ctx, { type: 'action', text: `${s.regiments[a.regimentId]!.name} Takes Aim: Aimed Shot until the end of its Activation (core p.36).` });
       break;
     case 'inspire':
-      s.activation!.actions.push('inspire');
+      recordAction(s.activation!, 'inspire');
       s.activation!.inspired = true;
       ev(ctx, { type: 'action', text: `${s.regiments[a.regimentId]!.name} is Inspired until the end of its Activation (core p.50).` });
       break;
     case 'rally':
     case 'combatRally': {
       const r = s.regiments[a.regimentId]!;
-      s.activation!.actions.push(a.type);
+      recordAction(s.activation!, a.type);
       if (a.type === 'combatRally' && !fearsomeCheck(ctx, r, 'Combat Rally')) break;
       r.broken = false;
       r.standsWhenBroken = null;
@@ -417,24 +442,25 @@ export function applyM4(ctx: Ctx, a: Action): void {
       ev(ctx, { type: 'action', text: `${r.name} Rallies and is no longer Broken (core p.36, p.47).`, player: r.owner, regimentId: r.id });
       break;
     }
-    case 'combatReform':
-      s.activation!.actions.push('combatReform');
+    case 'combatReform': {
+      const fd = s.activation!.extra?.find((e) => !e.used && e.reason === 'Flawless Drill');
+      if (fd) s.regiments[a.regimentId]!.flags.flawlessDrillUsed = true;
+      recordAction(s.activation!, 'combatReform');
       applyCombatReform(ctx, s.regiments[a.regimentId]!, a.files);
       break;
+    }
     case 'withdraw':
-      s.activation!.actions.push('withdraw');
+      recordAction(s.activation!, 'withdraw');
       applyWithdraw(ctx, s.regiments[a.regimentId]!, a.moves);
       break;
     case 'duel': {
-      s.activation!.actions.push('duel');
+      recordAction(s.activation!, 'duel');
       applyDuel(ctx, s.characters[a.characterId]!, s.characters[a.targetCharacterId]!, a.accept);
       break;
     }
     case 'characterAbility': {
-      s.activation!.actions.push('ability');
-      const c = s.characters[a.characterId]!;
-      const owner = s.regiments[s.activation!.regimentId]!.owner;
-      ev(ctx, { type: 'manual', text: `${c.name} uses ${a.name} (manual: apply its effect with the manual tools).`, player: owner });
+      recordAction(s.activation!, 'ability');
+      applyCharacterAbility(ctx, s.characters[a.characterId]!, a.name, a.targetId);
       break;
     }
     case 'override.wounds': {

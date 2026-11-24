@@ -1,3 +1,4 @@
+import { recordAction } from './activation';
 import { arcsOf } from './geometry/arcs';
 import { mmToInches, OBJECTIVE_MARKER_BASE_MM } from './geometry/bases';
 import { polyDistance, rectPoly, type Poly } from './geometry/polygon';
@@ -66,7 +67,10 @@ export function virtualMarker(s: GameState, id: string, attacker: RegimentState)
     cls: 'Medium',
     profile: { M: 0, V: 0, C: 0, A: 0, W: 3, R: 0, D: 3, E: 0 },
     rules: [],
+    baseRules: [],
+    roundRules: [],
     drawEvents: [],
+    baseDrawEvents: [],
     commandModels: [],
     roles: [],
     warband: -1,
@@ -168,7 +172,7 @@ export function applyMarkerCharge(ctx: Ctx, r: RegimentState, id: string): void 
   const success = die + M >= d - TOL;
   ev(ctx, { type: 'dice', text: `${r.name} charges Objective Marker ${id}: ${die} + ${M} = ${die + M}″ against ${d.toFixed(2)}″ — ${success ? 'success' : 'failed'}.`, dice: { purpose: `${r.name}: Charge Roll`, seed: ctx.rng.seed, index: idx, values: [die], notes }, player: r.owner });
   const act = s.activation!;
-  act.actions.push('charge');
+  recordAction(act, 'charge');
   if (!success) {
     const move = failedChargeDistance(s, r, die);
     if (move > 0) r.pose = applyPath(r.pose, [{ kind: 'forward', d: move }], footprintOf(s, r).halfWidth * 2);

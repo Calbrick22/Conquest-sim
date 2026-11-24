@@ -191,3 +191,38 @@ export function centroid(p: Poly): Vec {
   }
   return { x: x / p.length, y: y / p.length };
 }
+
+function projectOnSegment(p: Vec, a: Vec, b: Vec): Vec {
+  const ab = sub(b, a);
+  const l2 = dot(ab, ab);
+  const t = l2 ? Math.max(0, Math.min(1, dot(sub(p, a), ab) / l2)) : 0;
+  return add(a, scale(ab, t));
+}
+
+/** The closest pair of points between two sets of convex polygons (exact, edge to edge). */
+export function closestPair(as: readonly Poly[], bs: readonly Poly[]): [Vec, Vec] {
+  let best: [Vec, Vec] = [as[0]![0]!, bs[0]![0]!];
+  let bd = Infinity;
+  const consider = (p: Vec, q: Vec) => {
+    const d = dist(p, q);
+    if (d < bd) {
+      bd = d;
+      best = [p, q];
+    }
+  };
+  for (const A of as)
+    for (const B of bs)
+      for (let i = 0; i < A.length; i++) {
+        const a0 = A[i]!;
+        const a1 = A[(i + 1) % A.length]!;
+        for (let j = 0; j < B.length; j++) {
+          const b0 = B[j]!;
+          const b1 = B[(j + 1) % B.length]!;
+          consider(a0, projectOnSegment(a0, b0, b1));
+          consider(a1, projectOnSegment(a1, b0, b1));
+          consider(projectOnSegment(b0, a0, a1), b0);
+          consider(projectOnSegment(b1, a0, a1), b1);
+        }
+      }
+  return best;
+}

@@ -212,9 +212,12 @@ export function canTakeAction(s: GameState, regimentId: string, kind: ActionKind
     return [];
   }
   if (kind === 'duel' || kind === 'ability') return ["Characters use their own Actions when their own Command Card is drawn (core p.74)."];
-  if (a.actions.length >= 2) return ['The Regiment has used both of its Actions (core p.23).'];
+  const extraUsed = a.extra?.filter((e) => e.used).length ?? 0;
+  if (a.actions.length + extraUsed >= 3) return ['A Regiment never performs more than 3 Actions in an Activation (core p.25).'];
+  const extra = a.extra?.find((e) => !e.used && e.kind === kind);
+  if (a.actions.length >= 2 && !extra) return ['The Regiment has used both of its Actions (core p.23).'];
   // Only March (and Reform, core p.37) may be repeated in one Activation (core p.23).
-  if (kind !== 'march' && kind !== 'reform' && kind !== 'pass' && a.actions.includes(kind)) return [`A Regiment cannot repeat ${kind} in one Activation (core p.23).`];
+  if (!extra && kind !== 'march' && kind !== 'reform' && kind !== 'pass' && a.actions.includes(kind)) return [`A Regiment cannot repeat ${kind} in one Activation (core p.23).`];
   if (a.entering && a.actions.length === 0 && kind !== 'march') return ['A Regiment arriving from Reinforcements must March first (core p.23).'];
   return [];
 }

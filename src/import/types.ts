@@ -81,4 +81,6 @@ export interface ArmyList {
   glossary: Record<string, string>;
   armyRules: string;
   warnings: string[];
+  /** Strain abilities entered by the owner on the review screen, by Regiment name (AMB-18). */
+  strains?: Record<string, { stats: Record<string, number>; rules: string[]; text: string }>;
 }

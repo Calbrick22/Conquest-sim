@@ -1,16 +1,19 @@
+import { grantExtras, onActivationStart, recordAction } from './activation';
 import type { ArmyList, ListEntry } from '../import/types';
 import type { Edge, ScenarioDef } from '../scenarios/types';
 import type { StandType } from './geometry/bases';
 import { rotateAbout, sub, TOL } from './geometry/vec';
 import { clampFiles, footprint, layout } from './formation';
 import { applyPath, marchShapeProblems, samplePath, type MoveSeg } from './movement';
-import type { CharacterState, GameState, PlayerId, Pose, Profile, RegimentState, UnitClass } from './model/types';
+import type { CharacterState, GameState, PlayerId, Pose, Profile, RegimentState, StrainDef, UnitClass } from './model/types';
 import { createRng, rollD6, type RngState } from './rng';
 import type { Ctx } from './dice';
 import { applyM4, endActivation, logManualRules, validateM4 } from './gameM4';
 import { beginRound, cardTargets, type ReinforcementChoice } from './round';
 import { victoryPhase } from './scoring/victory';
 import './rules/special/rules';
+import { applyCharacterOptions, refreshRules, sectOf } from './rules/special/grants';
+import { parseRuleRef } from '../import/ruleTokens';
 import {
   canTakeAction,
   entryPose,
@@ -55,7 +58,8 @@ export type ActionBody =
   | { type: 'pickZone'; player: PlayerId; zoneId: string }
   | { type: 'drawCard'; player: PlayerId }
   | { type: 'activateCharacter'; characterId: string }
-  | { type: 'drawEvent'; name: string }
+  | { type: 'drawEvent'; name: string; option?: 'C' | 'A'; targetId?: string }
+  | { type: 'lobotomy'; player: PlayerId; place: 'top' | 'bottom' }
   // Combat and other Actions (core p.31–51, p.74–76)
   | { type: 'charge'; regimentId: string; targetId: string }
   | { type: 'placeCharge'; pose: Pose }
@@ -69,7 +73,7 @@ export type ActionBody =
   | { type: 'combatReform'; regimentId: string; files: number }
   | { type: 'withdraw'; regimentId: string; moves: MoveSeg[] }
   | { type: 'duel'; characterId: string; targetCharacterId: string; accept: boolean }
-  | { type: 'characterAbility'; characterId: string; name: string }
+  | { type: 'characterAbility'; characterId: string; name: string; targetId?: string }
   // Manual tools (always logged as overrides)
   | { type: 'override.move'; regimentId: string; pose: Pose; files?: number; reason?: string }
   | { type: 'override.wounds'; regimentId?: string; characterId?: string; delta: number }
@@ -87,6 +91,15 @@ export interface ApplyResult {
 }
 
 // ---------------------------------------------------------------- setup
+
+/** Strain abilities the owner entered on the review screen (AMB-18). */
+export function toStrains(list: ArmyList): Record<string, StrainDef> {
+  const out: Record<string, StrainDef> = {};
+  for (const [name, d] of Object.entries(list.strains ?? {})) {
+    out[name] = { stats: d.stats as StrainDef['stats'], rules: d.rules.map((r) => parseRuleRef(r)), text: d.text };
+  }
+  return out;
+}
 
 const STAND_TYPES: StandType[] = ['Infantry', 'Cavalry', 'Brute', 'Chariot', 'Monster'];
 
@@ -155,7 +168,10 @@ export function createGame(input: SetupInput): SetupResult {
           cls: cls ?? 'Medium',
           profile: toProfile(e),
           rules: e.specialRules,
+          baseRules: e.specialRules,
+          roundRules: [],
           drawEvents: e.drawEvents,
+          baseDrawEvents: e.drawEvents,
           commandModels: e.commandModels,
           roles: e.battlefieldRoles,
           warband: wi,
@@ -185,6 +201,7 @@ export function createGame(input: SetupInput): SetupResult {
           type,
           profile: toProfile(c),
           rules: c.specialRules,
+          baseRules: [...c.specialRules],
           actions: c.actions,
           drawEvents: c.drawEvents,
           supremacyAbilities: c.supremacyAbilities,
@@ -199,6 +216,16 @@ export function createGame(input: SetupInput): SetupResult {
       }
     });
   }
+  // List-building options that change a Character (e.g. Avatar Projection makes it a Brute).
+  for (const c of Object.values(characters)) {
+    const before = c.type;
+    applyCharacterOptions(c);
+    if (c.type !== before) {
+      const wb = Object.values(regiments).filter((r) => r.owner === c.id.slice(0, 2) && r.warband === c.warband);
+      c.attachedTo = wb.find((r) => r.type === c.type)?.id ?? null;
+      if (!c.attachedTo) warnings.push(`${c.name}: no ${c.type} Regiment in its Warband to join (core p.72)`);
+    }
+  }
   // Re-default files to include attached Characters.
   for (const r of Object.values(regiments)) r.files = defaultFiles(regimentStandCount({ regiments, characters } as GameState, r));
 
@@ -208,8 +235,8 @@ export function createGame(input: SetupInput): SetupResult {
     round: 1,
     phase: 'setup',
     players: {
-      P1: { id: 'P1', listName: input.lists.P1.title, faction: input.lists.P1.faction, points: input.lists.P1.pointsLimit ?? input.lists.P1.points, glossary: input.lists.P1.glossary, vp: 0, stack: [], stackSet: false, reinforcementDone: false, supremacyUsed: false },
-      P2: { id: 'P2', listName: input.lists.P2.title, faction: input.lists.P2.faction, points: input.lists.P2.pointsLimit ?? input.lists.P2.points, glossary: input.lists.P2.glossary, vp: 0, stack: [], stackSet: false, reinforcementDone: false, supremacyUsed: false },
+      P1: { id: 'P1', listName: input.lists.P1.title, faction: input.lists.P1.faction, points: input.lists.P1.pointsLimit ?? input.lists.P1.points, glossary: input.lists.P1.glossary, vp: 0, stack: [], stackSet: false, reinforcementDone: false, supremacyUsed: false, sect: input.lists.P1.sect, strains: toStrains(input.lists.P1), lobotomyUsed: false },
+      P2: { id: 'P2', listName: input.lists.P2.title, faction: input.lists.P2.faction, points: input.lists.P2.pointsLimit ?? input.lists.P2.points, glossary: input.lists.P2.glossary, vp: 0, stack: [], stackSet: false, reinforcementDone: false, supremacyUsed: false, sect: input.lists.P2.sect, strains: toStrains(input.lists.P2), lobotomyUsed: false },
     },
     regiments,
     characters,
@@ -228,6 +255,10 @@ export function createGame(input: SetupInput): SetupResult {
     scoreHistory: [],
     warlordScored: { P1: false, P2: false },
   };
+  // Just Desserts, The Directorate: +2 March (a permanent bonus from the army's Sect).
+  for (const r of Object.values(regiments))
+    if (r.baseRules.some((x) => x.name === 'Just Desserts') && sectOf(state, r.owner) === 'directorate' && r.profile.M !== null) r.profile.M += 2;
+  refreshRules(state);
   const events: GameEvent[] = [{ type: 'setup', text: `Game created on ${input.scenario.name} (seed ${input.seed}).`, round: 1 }];
   for (const w of warnings) events.push({ type: 'warning', text: w, round: 1 });
   return { state, events, rng: createRng(input.seed), warnings };
@@ -306,6 +337,9 @@ export function validate(s: GameState, a: Action): Validation {
       const shape = marchShapeProblems(a.moves, marchAllowance(s, r), width);
       if (shape.length) return fail(...shape);
       const act = s.activation!;
+      // Fire and Advance: the free March cannot move sideways or backward (core p.94).
+      const fwdOnly = act.actions.length >= 2 && act.extra?.find((e) => !e.used && e.kind === 'march')?.forwardOnly;
+      if (fwdOnly && a.moves.some((m) => m.kind === 'sideways' || m.kind === 'backward')) return fail('This free March cannot move sideways or backward (Fire and Advance, core p.94).');
       const offTableOk = act.entering;
       const pp = pathProblems(s, r, samplePath(r.pose, a.moves, width), offTableOk);
       if (pp.length) return fail(...pp);
@@ -466,10 +500,11 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
     }
     case 'activate': {
       const r = s.regiments[a.regimentId]!;
+      const card = s.drawn?.card ?? null;
       s.drawn = null;
       s.activation = { regimentId: r.id, actions: [], entering: r.location === 'arriving', startPose: r.pose, drawEventDone: false, aimed: false, inspired: false, ended: false };
       ev({ type: 'activate', text: `${r.owner} activates ${r.name}.`, player: r.owner, regimentId: r.id });
-      logManualRules(ctx, r);
+      if (onActivationStart(ctx, r, card)) logManualRules(ctx, r);
       break;
     }
     case 'enter': {
@@ -480,7 +515,7 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
       r.pose = applyPath(start, a.moves, width);
       r.location = 'table';
       r.arrivedRound = s.round;
-      s.activation!.actions.push('march');
+      recordAction(s.activation!, 'march');
       ev({ type: 'march', text: `${r.name} marches on from the ${a.edge} edge at ${f2(a.along)}: ${describeMoves(a.moves) || 'onto the edge'}.`, player: r.owner, regimentId: r.id });
       break;
     }
@@ -488,7 +523,7 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
       const r = s.regiments[a.regimentId]!;
       const width = footprint(formationInput(s, r)).halfWidth * 2;
       r.pose = applyPath(r.pose, a.moves, width);
-      s.activation!.actions.push('march');
+      recordAction(s.activation!, 'march');
       ev({ type: 'march', text: `${r.name} marches: ${describeMoves(a.moves)}.`, player: r.owner, regimentId: r.id });
       break;
     }
@@ -497,12 +532,12 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
       const res = reformResult(state, state.regiments[a.regimentId]!, a.files, a.rotation);
       r.files = a.files;
       r.pose = res.pose;
-      s.activation!.actions.push('reform');
+      recordAction(s.activation!, 'reform');
       ev({ type: 'reform', text: `${r.name} reforms to ${a.files} files${a.rotation ? `, turning ${Math.round((a.rotation * 180) / Math.PI)}°` : ''}.`, player: r.owner, regimentId: r.id });
       break;
     }
     case 'pass':
-      s.activation!.actions.push('pass');
+      recordAction(s.activation!, 'pass');
       ev({ type: 'pass', text: `${s.regiments[s.activation!.regimentId]!.name} passes an Action.` });
       break;
     case 'endActivation': {
@@ -537,6 +572,8 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
       applyM4(ctx, a);
 
   }
+  if (ctx.s.activation) grantExtras(ctx, ctx.s.activation);
+  refreshRules(ctx.s);
   if (a.why) ctx.events.push({ type: 'ai', round: state.round, text: `AI: ${a.why}` });
   return { state: ctx.s, events: ctx.events, rng: ctx.rng };
 }

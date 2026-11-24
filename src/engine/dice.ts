@@ -7,6 +7,8 @@ export interface Ctx {
   s: GameState;
   rng: RngState;
   events: GameEvent[];
+  /** Hits triggered during an attack and resolved after it (Lethal Demise, Counter-Attack). */
+  pending?: { kind: 'Lethal Demise' | 'Counter-Attack'; fromId: string; toId: string; hits: number }[];
 }
 
 export function ev(ctx: Ctx, e: Omit<GameEvent, 'round'>): void {

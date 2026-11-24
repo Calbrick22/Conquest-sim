@@ -46,7 +46,10 @@ export interface CharacterState {
   name: string;
   type: StandType;
   profile: Profile;
+  /** Effective special rules (recomputed after every Action from baseRules and grants). */
   rules: RuleRef[];
+  /** The Character's own rules from the list (plus options bought at list building). */
+  baseRules: RuleRef[];
   actions: RuleRef[];
   drawEvents: string[];
   supremacyAbilities: string[];
@@ -69,8 +72,18 @@ export interface RegimentState {
   type: StandType;
   cls: UnitClass;
   profile: Profile;
+  /**
+   * Effective special rules: baseRules plus rules granted by the attached Character, the army
+   * (Sect, Warlord) and until-end-of-Round effects. Recomputed after every Action (grants.ts).
+   */
   rules: RuleRef[];
+  /** The Regiment's own rules from the list. */
+  baseRules: RuleRef[];
+  /** Rules gained until the end of the Round (Draw Events, Strains, Supremacy…). */
+  roundRules: RuleRef[];
+  /** Effective Draw Events (own plus granted). */
   drawEvents: string[];
+  baseDrawEvents: string[];
   commandModels: string[];
   /** Battlefield Roles, e.g. [Drone], [Husk] (Spires; used by some rules). */
   roles: string[];
@@ -103,6 +116,18 @@ export interface StatMod {
 }
 
 export interface RegimentFlags {
+  /** Marked by Designate Target until the end of the Round (Spires rule text). */
+  marked?: boolean;
+  /** Blessed used this Round (core p.97). */
+  blessedUsed?: boolean;
+  /** Flawless Drill used (once per game, core p.98). */
+  flawlessDrillUsed?: boolean;
+  /** Strain Expression active this Round: Decay at the end of each Activation unless excused. */
+  decay?: boolean;
+  /** Lobotomytic Override (top): Strain Expression without Decay this Activation. */
+  noDecay?: boolean;
+  /** Reprocessing Agents already applied this Round (max −1 Defense). */
+  reprocessed?: boolean;
   /** Its Character declined a Duel this Round (core p.76). */
   declinedDuel?: boolean;
   /** Failed to enter from Reinforcements: arrives automatically next Round (core p.31). */
@@ -140,6 +165,10 @@ export interface ActivationState {
   inspired: boolean;
   /** A failed Charge ends the Activation (core p.36). */
   ended: boolean;
+  /** Free or additional Actions earned this Activation (Double Time, Fire and Advance, Fluid Formation…). */
+  extra?: { kind: ActionKind; reason: string; forwardOnly?: boolean; free?: boolean; used?: boolean }[];
+  /** Draw Events resolved this Activation. */
+  drawEvents?: string[];
   /** Actions taken so far this Activation (core p.23: two Actions, only March may repeat). */
   actions: ActionKind[];
   /** True while the Regiment is entering from Reinforcements this Activation (core p.31). */
@@ -153,6 +182,8 @@ export interface CommandCard {
   id: string;
   kind: 'regiment' | 'character';
   name: string;
+  /** Put back by Lobotomytic Override (Directorate): top or bottom of the stack. */
+  lobotomy?: 'top' | 'bottom';
   /** The Regiment or Character the card was built for. */
   refId: string;
 }
@@ -165,6 +196,12 @@ export interface PlayerState {
   faction: string;
   /** Army points (the list's limit, else its total). */
   points: number | null;
+  /** Sect / sub-faction line from the list (e.g. "The Directorate"). */
+  sect: string | null;
+  /** Strain abilities entered by the owner, by Regiment name (not in the export, AMB-18). */
+  strains: Record<string, StrainDef>;
+  /** Lobotomytic Override used this Round. */
+  lobotomyUsed: boolean;
   /** Glossary from the imported list: rule name → text. */
   glossary: Record<string, string>;
   vp: number;
@@ -238,3 +275,11 @@ export interface RoundScore {
 }
 
 export type { Edge };
+
+/** A Strain ability as entered by the owner: characteristic changes and gained rules. */
+export interface StrainDef {
+  stats: Partial<Record<keyof Profile, number>>;
+  rules: RuleRef[];
+  /** The owner's own description. */
+  text: string;
+}

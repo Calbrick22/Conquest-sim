@@ -212,6 +212,12 @@ export function beginRound(s: GameState): void {
   for (const r of Object.values(s.regiments)) {
     r.activatedThisRound = false;
     r.roundMods = [];
+    r.roundRules = [];
+    r.flags.marked = false;
+    r.flags.blessedUsed = false;
+    r.flags.decay = false;
+    r.flags.noDecay = false;
+    r.flags.reprocessed = false;
     r.flags.declinedDuel = false;
     r.standsAtRoundStart = r.stands.length;
     // RULE-AMBIGUITY: AMB-33 — a Regiment still Broken counts Shattering from the start of each new Round.
@@ -222,6 +228,7 @@ export function beginRound(s: GameState): void {
     s.players[p].stack = [];
     s.players[p].stackSet = false;
     s.players[p].reinforcementDone = false;
+    s.players[p].lobotomyUsed = false;
   }
   s.step = 'reinforcement';
   s.firstPlayer = null;
