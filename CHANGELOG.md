@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.4.0] - 2026-11-24 (M4: Round loop and combat)
+
+### Added
+- The full Round sequence:
+  - **Reinforcement Phase:** an automatic arrival or stay-back choice, then rolls by Class and Round (core p.21). Regiments that failed to enter arrive automatically next Round.
+  - **Command Phase:** an editable Command Stack, with Characters placed just above their Regiment by default.
+  - **Supremacy Phase:** the roll-off, with −1 for the player with fewer cards. The winner chooses the First Player. [Activated] Supremacy Abilities can be declared (their effects are manual).
+  - **Action Phase:** alternating card draws. Cards that cannot Activate anything are discarded. A card activates any same-named Regiment. Character Activations with Entourage are supported.
+  - **Victory Phase:** this is where the next Round starts. Scoring comes in M5.
+- Actions:
+  - **Charge:** roll plus March, Unstoppable and Standard Bearer re-rolls, the facing chosen by the front-rank majority, automatic placement in contact (AMB-11), a failed Charge moves the die roll forward and ends the Activation, Inspired, and Impact Attacks.
+  - **Volley:** per-Stand range, 1 mm Line of Sight and obstruction by Size, +1 at Effective Range, Leader +1, shots against the arc each Stand is in, and no Morale.
+  - **Clash:** Engaged Stands attack with A (Leader +1), others give Support (lost when engaged in the flank or rear). Inspired applies, Relentless Blows at C 6+, and the Character fights alongside.
+  - **Also:** Take Aim (Aimed Shot), Inspire, Rally, Combat Rally, Combat Reform (clean or fighting) and Withdraw (clean or fighting, then turn and March).
+  - **Duels:** both sides attack, with Shield, Cleave and Flurry. Declining applies its penalties.
+- Combat pipeline:
+  - hit rolls (6 always misses, 1 always hits);
+  - Defense against the better of D or E (1 is not automatic) and Deadly 6s;
+  - wound allocation in rulebook order, with the Command Stand last;
+  - Morale (Resolve with the size bonus, flank re-rolls, rear auto-fail, Terrifying and Fearless);
+  - Broken, Shattered, and losing the Command Stand.
+- Special rules automated:
+  - the 14 MVP rules: Impact, Barrage, Armor Piercing, Deadly Shot, Cleave, Flurry, Shield, Leader, Standard Bearer, Unstoppable, Fearless, Fearsome, Terrifying, Fly;
+  - plus Brutal Impact, Linebreaker, Support, Aimed Shot, Inspired, Deadly Blades, Relentless Blows and Rapid Volley.
+
+  Every other rule is listed as "manual" in the log when its Regiment activates.
+- Dice tray: every roll with its seed, draw index, values, re-rolls and target numbers.
+- Manual tools, all logged as overrides:
+  - add or heal Wounds;
+  - change a characteristic until the end of the Round;
+  - mark Broken or not;
+  - set the next dice, which, with Undo, gives a re-roll;
+  - move or turn by hand;
+  - send a Regiment to or from Reinforcements;
+  - place a Charge by hand.
+
+### Decided
+- AMB-30 to AMB-33. AMB-11 was refined.
+
+### Manual for now
+- All other faction special rules, Draw Events and Strain Expression.
+- Supremacy effects and Character abilities (Snapshot, Mighty Swing, Practitioner).
+- Die Fighting!, Press the Attack, splitting a Clash between several enemies, and the 1″ push when Charging.
+
 ## [0.3.0] - 2026-11-24 (M3: table and movement)
 
 ### Added

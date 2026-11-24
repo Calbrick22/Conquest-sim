@@ -212,6 +212,7 @@ export function TableView(props: Props) {
             return (
               <text key={`l${r.id}`} x={c.x / n} y={fy(c.y / n)} className="rlabel" pointerEvents="none">
                 {r.name}
+                {r.broken ? ' (Broken)' : ''}
               </text>
             );
           })}

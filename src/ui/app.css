@@ -117,3 +117,14 @@ input.grow { flex: 1; font: inherit; padding: 8px; min-height: 40px; border: 1px
   .table-wrap { position: sticky; top: 0; z-index: 3; }
   .map.game { max-height: 42vh; }
 }
+.card.info { border-color: var(--accent); }
+.phase-panel h3 { margin-top: 0; }
+.phase-row { padding: 6px 0; }
+.stack-editor ol { padding-left: 22px; }
+.stack-editor li { padding: 2px 0; }
+.small-dice .die { width: 28px; height: 28px; font-size: 0.95rem; }
+.die.one { border-color: #15803d; color: #15803d; }
+.die.six { border-color: #b91c1c; color: #b91c1c; }
+.dice-row { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.manual-tools { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.manual-tools select, .phase-panel select { font: inherit; padding: 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }

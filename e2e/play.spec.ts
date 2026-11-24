@@ -1,36 +1,39 @@
 import { expect, test } from '@playwright/test';
 
-test('set up a demo game, march a Regiment on, move it, and end the Round', async ({ page }) => {
+test('a full Round: reinforcements, stacks, supremacy, draw, march on, end round', async ({ page }) => {
   await page.goto('/#play');
   await page.getByTestId('roll-sides').click();
-  await expect(page.getByTestId('rolloff-result')).toBeVisible();
   await page.getByTestId('choose-p1').click();
   await page.getByTestId('start-battle').click();
 
-  await page.getByTestId('arrive-P1-w0-r0').check();
-  await page.getByRole('button', { name: 'P1 Glass Pikes' }).click();
-  await page.getByTestId('activate').click();
-  await page.getByTestId('march-on').click();
-  await page.getByTestId('move-text').fill('forward 4');
-  await page.getByRole('button', { name: 'Set' }).click();
-  await page.getByTestId('commit-move').click();
-  await expect(page.getByTestId('regiment-P1-w0-r0')).toBeVisible();
+  // Reinforcement Phase: each side picks its Light Copper Slingers to arrive automatically.
+  for (const p of ['P1', 'P2']) {
+    await page.getByTestId(`reinforce-choice-${p}`).selectOption({ label: 'Copper Slingers (Light) arrives' });
+    await page.getByTestId(`reinforce-${p}`).click();
+  }
+  await page.getByTestId('stack-P1').click();
+  await page.getByTestId('stack-P2').click();
+  await page.getByTestId('supremacy-roll').click();
+  await page.getByTestId('first-P1').click();
 
-  // Over-long move is refused with a page reference.
-  await page.getByTestId('march').click();
-  await page.getByTestId('move-text').fill('forward 9');
-  await page.getByRole('button', { name: 'Set' }).click();
-  await expect(page.getByText(/exceeds March .* \(core p\.28\)/)).toBeVisible();
-  await expect(page.getByTestId('commit-move')).toBeDisabled();
-  await page.getByTestId('move-text').fill('forward 2');
-  await page.getByRole('button', { name: 'Set' }).click();
-  await page.getByTestId('commit-move').click();
-
-  await page.getByTestId('end-activation').click();
+  // Alternate draws until the Round is over; anything arriving marches on 3″ from its own edge.
+  for (let i = 0; i < 20; i++) {
+    if (await page.getByTestId('end-round').isVisible()) break;
+    await page.getByTestId('draw-card').click();
+    await page.getByTestId('activate-drawn').first().click();
+    if (await page.getByTestId('march-on').isVisible()) {
+      await page.getByTestId('march-on').click();
+      await page.getByTestId('move-text').fill('forward 3');
+      await page.getByRole('button', { name: 'Set' }).click();
+      await page.getByTestId('commit-move').click();
+    }
+    await page.getByTestId('end-activation').click();
+  }
+  await expect(page.getByTestId('log')).toContainText('marches on');
   await page.getByTestId('end-round').click();
-  await expect(page.getByTestId('log')).toContainText('Round 2 begins.');
+  await expect(page.getByTestId('log')).toContainText('Round 2 begins');
 
   // Undo goes back a step.
   await page.getByTestId('undo').click();
-  await expect(page.getByTestId('log')).not.toContainText('Round 2 begins.');
+  await expect(page.getByTestId('log')).not.toContainText('Round 2 begins');
 });

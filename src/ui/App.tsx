@@ -16,7 +16,7 @@ const MILESTONES: { id: string; label: string; done: boolean }[] = [
   { id: 'M1', label: 'Skeleton, PWA, CI and deploy', done: true },
   { id: 'M2', label: 'Army list import and scenarios', done: true },
   { id: 'M3', label: 'Table and movement', done: true },
-  { id: 'M4', label: 'Round loop and combat', done: false },
+  { id: 'M4', label: 'Round loop and combat', done: true },
   { id: 'M5', label: 'Scoring, save and log', done: false },
   { id: 'M6', label: 'Computer opponent', done: false },
 ];

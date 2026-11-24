@@ -18,10 +18,17 @@ import { clampFiles, footprint, legalFiles } from '../../engine/formation';
 import { dist, dot, type Vec } from '../../engine/geometry/vec';
 import { applyPath, parseMoveText, pathCost, type MoveSeg } from '../../engine/movement';
 import type { Edge, Pose, RegimentState } from '../../engine/model/types';
+import { duelTargets, enemiesInContact, withdrawPose } from '../../engine/actions';
+import { isEngaged } from '../../engine/queries';
+import { barrageOf } from '../../engine/rules/special/rules';
+import { DiceTray } from './DiceTray';
+import { ManualTools } from './ManualTools';
+import { PhasePanel } from './PhasePanel';
 import { TableView, type Ghost, type Ruler } from './TableView';
 import { useGame, type GameSession } from './useGame';
 
-type Mode = 'select' | 'march' | 'enter' | 'reform' | 'ruler' | 'override';
+type Mode = 'select' | 'march' | 'enter' | 'reform' | 'ruler' | 'override' | 'withdraw' | 'target' | 'placeCharge';
+type TargetKind = 'charge' | 'volley' | 'clash';
 
 const deg = (d: number) => (d * Math.PI) / 180;
 const fmt = (n: number) => `${(Math.round(n * 100) / 100).toFixed(2)}″`;
@@ -38,6 +45,8 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
   const [overridePose, setOverridePose] = useState<Pose | null>(null);
   const [ruler, setRuler] = useState<{ a?: Vec; aReg?: string; result?: Ruler } | null>(null);
   const [drag, setDrag] = useState<{ start: Vec; base: MoveSeg[] | Pose } | null>(null);
+  const [targetKind, setTargetKind] = useState<TargetKind>('charge');
+  const [crFiles, setCrFiles] = useState(2);
 
   const sel: RegimentState | null = selectedId ? (s.regiments[selectedId] ?? null) : null;
   const active = s.activation ? s.regiments[s.activation.regimentId]! : null;
@@ -82,14 +91,24 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
       const res = reformResult(s, sel, files, deg(reform.rot));
       return { action, ghost: { polys: regimentPolys(s, sel, { pose: res.pose, files }), valid: validate(s, action).ok } };
     }
+    if (mode === 'withdraw') {
+      const width = footprint(formationInput(s, sel)).halfWidth * 2;
+      const pose = withdrawPose(s, sel, moves);
+      const action: Action = { type: 'withdraw', regimentId: sel.id, moves };
+      return { action, ghost: { polys: regimentPolys(s, sel, { pose }), valid: validate(s, action).ok }, cost: pathCost(moves, width), allowance: marchValue(s, sel) };
+    }
     if (mode === 'override' && overridePose) {
       const action: Action = { type: 'override.move', regimentId: sel.id, pose: overridePose, reason: 'moved by hand' };
       return { action, ghost: { polys: regimentPolys(s, sel, { pose: overridePose }), valid: true } };
     }
+    if (mode === 'placeCharge' && overridePose) {
+      const action: Action = { type: 'placeCharge', pose: overridePose };
+      return { action, ghost: { polys: regimentPolys(s, sel, { pose: overridePose }), valid: validate(s, action).ok } };
+    }
     return null;
   }, [s, sel, mode, moves, entry, reform, overridePose]);
 
-  const draftProblems = draft && mode !== 'override' ? validate(s, draft.action) : null;
+  const draftProblems = draft && mode !== 'override' && mode !== 'withdraw' ? validate(s, draft.action) : null;
 
   // ------------------------------------------------ table interaction
   const onRegimentDown = (id: string, p: Vec) => {
@@ -97,12 +116,16 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
       rulerTap(p, id);
       return;
     }
-    if ((mode === 'march' || mode === 'enter') && id === selectedId) {
+    if (mode === 'target' && sel) {
+      if (run({ type: targetKind, regimentId: sel.id, targetId: id })) setMode('select');
+      return;
+    }
+    if ((mode === 'march' || mode === 'enter' || mode === 'withdraw') && id === selectedId) {
       const base = moves.length && moves[moves.length - 1]!.kind === 'forward' ? moves.slice(0, -1) : moves;
       setDrag({ start: p, base });
       return;
     }
-    if (mode === 'override' && id === selectedId) {
+    if ((mode === 'override' || mode === 'placeCharge') && id === selectedId) {
       setDrag({ start: p, base: overridePose ?? sel!.pose });
       return;
     }
@@ -111,14 +134,14 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
 
   const onDrag = (p: Vec) => {
     if (!drag || !sel) return;
-    if (mode === 'override') {
+    if (mode === 'override' || mode === 'placeCharge') {
       const b = drag.base as Pose;
       setOverridePose({ ...b, x: b.x + p.x - drag.start.x, y: b.y + p.y - drag.start.y });
       return;
     }
     const base = drag.base as MoveSeg[];
     const width = footprint(formationInput(s, sel, mode === 'enter' ? { files: entry.files } : {})).halfWidth * 2;
-    const from = mode === 'enter' ? entryPose(s, entry.edge, entry.along) : sel.pose;
+    const from = mode === 'enter' ? entryPose(s, entry.edge, entry.along) : mode === 'withdraw' ? withdrawPose(s, sel, []) : sel.pose;
     const pose = applyPath(from, base, width);
     const fwd = { x: Math.cos(pose.angle), y: Math.sin(pose.angle) };
     const d = Math.max(0, dot({ x: p.x - drag.start.x, y: p.y - drag.start.y }, fwd));
@@ -196,6 +219,96 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
     return out;
   }, [mode, sel, s]);
 
+  // ------------------------------------------------ activation actions
+  const renderActivationButtons = () => {
+    const act = s.activation!;
+    const r = s.regiments[act.regimentId]!;
+    const used = act.actions.length;
+    const status = [act.inspired ? 'Inspired' : '', act.aimed ? 'Aimed Shot' : '', r.broken ? 'Broken' : '', act.ended ? 'Activation over' : ''].filter(Boolean).join(' · ');
+    const drawEventButtons = (names: string[]) =>
+      used === 0 && !act.drawEventDone && names.length > 0 && s.regiments[act.regimentId]!.location === 'table' ? (
+        <div className="actions wrap">
+          <span className="meta">Draw Event (manual):</span>
+          {names.map((n) => (
+            <button key={n} type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n })}>{n}</button>
+          ))}
+        </div>
+      ) : null;
+    const tail = (
+      <>
+        <button type="button" className="secondary" onClick={() => run({ type: 'pass' })}>Pass</button>
+        <button type="button" className="secondary" onClick={() => run({ type: 'endActivation' })} data-testid="end-activation">End activation</button>
+      </>
+    );
+    if (act.characterId) {
+      const c = s.characters[act.characterId]!;
+      const targets = duelTargets(s, c);
+      return (
+        <div>
+          <p><strong>{c.name}</strong> is active: one Character Action (core p.74). {status}</p>
+          {drawEventButtons(c.drawEvents)}
+          <div className="actions wrap">
+            {used === 0 && targets.map((t) => (
+              <span key={t.id} className="actions">
+                <button type="button" onClick={() => run({ type: 'duel', characterId: c.id, targetCharacterId: t.id, accept: true })}>Duel {t.name}: accepted</button>
+                <button type="button" className="secondary" onClick={() => run({ type: 'duel', characterId: c.id, targetCharacterId: t.id, accept: false })}>…declined</button>
+              </span>
+            ))}
+            {used === 0 && c.actions.map((x) => (
+              <button key={x.raw} type="button" className="secondary" onClick={() => run({ type: 'characterAbility', characterId: c.id, name: x.raw })}>{x.raw} (manual)</button>
+            ))}
+            {tail}
+            <button type="button" className="secondary" onClick={() => run({ type: 'endActivation', entourage: true })} data-testid="end-entourage">End, then Entourage</button>
+          </div>
+        </div>
+      );
+    }
+    const engaged = r.location === 'table' && isEngaged(s, r);
+    const contacts = engaged ? enemiesInContact(s, r) : [];
+    const c = attachedCharacter(s, r.id);
+    const shoots = !!barrageOf(r.rules) || (!!c && !!barrageOf(c.rules));
+    const target = (k: TargetKind) => {
+      if (k === 'clash' && contacts.length === 1) return run({ type: 'clash', regimentId: r.id, targetId: contacts[0]!.id });
+      setTargetKind(k);
+      setMode('target');
+      return true;
+    };
+    return (
+      <div>
+        <p className="meta">Actions used {used}/2{status ? ` · ${status}` : ''}{act.entourage ? ' · Entourage Activation' : ''}</p>
+        {drawEventButtons(r.drawEvents)}
+        <div className="actions wrap">
+          {!act.ended && r.location === 'arriving' && <button type="button" onClick={() => beginEnter(r)} data-testid="march-on">March on</button>}
+          {!act.ended && r.location === 'table' && !engaged && (
+            <>
+              <button type="button" onClick={() => setMode('march')} data-testid="march">March</button>
+              <button type="button" onClick={() => { setReform({ files: r.files, rot: 0 }); setMode('reform'); }} data-testid="reform">Reform</button>
+              <button type="button" onClick={() => target('charge')} data-testid="charge">Charge</button>
+              {shoots && <button type="button" onClick={() => target('volley')} data-testid="volley">Volley</button>}
+              {shoots && <button type="button" className="secondary" onClick={() => run({ type: 'takeAim', regimentId: r.id })}>Take Aim</button>}
+              {r.broken && <button type="button" onClick={() => run({ type: 'rally', regimentId: r.id })}>Rally</button>}
+            </>
+          )}
+          {!act.ended && engaged && (
+            <>
+              <button type="button" onClick={() => target('clash')} data-testid="clash">Clash</button>
+              <button type="button" className="secondary" onClick={() => run({ type: 'inspire', regimentId: r.id })}>Inspire</button>
+              {r.broken && <button type="button" onClick={() => run({ type: 'combatRally', regimentId: r.id })}>Combat Rally</button>}
+              {r.cls !== 'Heavy' && <button type="button" className="secondary" onClick={() => { setMoves([]); setMode('withdraw'); }}>Withdraw</button>}
+              <span className="actions">
+                <select value={crFiles} onChange={(e) => setCrFiles(Number(e.target.value))} aria-label="Combat Reform files">
+                  {legalFiles(regimentStandCount(s, r)).map((f) => <option key={f} value={f}>{f} files</option>)}
+                </select>
+                <button type="button" className="secondary" onClick={() => run({ type: 'combatReform', regimentId: r.id, files: crFiles })}>Combat Reform</button>
+              </span>
+            </>
+          )}
+          {tail}
+        </div>
+      </div>
+    );
+  };
+
   // ------------------------------------------------ render
   const reserves = Object.values(s.regiments).filter((r) => r.location === 'reserve' || r.location === 'arriving');
   const characters = Object.values(s.characters);
@@ -216,11 +329,6 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
           <button type="button" className="secondary small" onClick={() => { resetModes(); undo(); }} disabled={session.actions.length === 0} data-testid="undo">
             Undo
           </button>
-          {s.phase === 'play' && (
-            <button type="button" className="small" onClick={() => run({ type: 'endRound' })} disabled={!!s.activation} data-testid="end-round">
-              End Round
-            </button>
-          )}
           <button type="button" className="secondary small" onClick={() => confirm('Leave this game? It is not saved yet (saving arrives in M5).') && onQuit()}>
             Quit
           </button>
@@ -248,6 +356,22 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
       )}
 
       {mode === 'ruler' && <p className="meta">Ruler: tap two points, or tap two Regiments for the edge-to-edge distance.</p>}
+      {mode === 'target' && (
+        <div className="card info">
+          Tap the enemy Regiment to {targetKind}.{' '}
+          <button type="button" className="secondary small" onClick={resetModes}>Cancel</button>
+        </div>
+      )}
+      {s.pendingCharge && mode !== 'placeCharge' && (
+        <div className="card warn" data-testid="pending-charge">
+          The Charge succeeded, but the engine could not place {s.regiments[s.pendingCharge.regimentId]!.name} in contact (AMB-11).
+          <div className="actions">
+            <button type="button" onClick={() => { setSelectedId(s.pendingCharge!.regimentId); setOverridePose(s.regiments[s.pendingCharge!.regimentId]!.pose); setMode('placeCharge'); }}>Place by hand</button>
+            <button type="button" className="secondary" onClick={() => run({ type: 'failCharge' })}>Path blocked: Charge fails</button>
+          </div>
+        </div>
+      )}
+      <PhasePanel s={s} dispatch={dispatch} onSelect={setSelectedId} />
 
       {s.phase === 'setup' && (
         <div className="card">
@@ -277,36 +401,16 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
           </h3>
           <p className="meta">
             {sel.type} · {sel.cls} · {sel.stands.length}/{sel.startingStands} Stands{attachedCharacter(s, sel.id) ? ` + ${attachedCharacter(s, sel.id)!.name}` : ''} · M {marchValue(s, sel)} · {sel.files} files ·{' '}
-            {sel.location}{sel.activatedThisRound ? ' · activated' : ''}
+            {sel.location}{sel.activatedThisRound ? ' · activated' : ''}{sel.broken ? ' · BROKEN' : ''}
+            {sel.stands.some((x) => x.wounds > 0) ? ` · wounds on a Stand: ${sel.stands.filter((x) => x.wounds > 0).map((x) => x.wounds).join(', ')}` : ''}
           </p>
 
-          {mode === 'select' && s.phase === 'play' && (
-            <div className="actions wrap">
-              {!s.activation && !sel.activatedThisRound && (sel.location === 'table' || sel.location === 'arriving') && (
-                <button type="button" onClick={() => run({ type: 'activate', regimentId: sel.id })} data-testid="activate">Activate</button>
-              )}
-              {s.activation?.regimentId === sel.id && (
-                <>
-                  {sel.location === 'arriving' ? (
-                    <button type="button" onClick={() => beginEnter(sel)} data-testid="march-on">March on</button>
-                  ) : (
-                    <>
-                      <button type="button" onClick={() => setMode('march')} data-testid="march">March</button>
-                      <button type="button" onClick={() => { setReform({ files: sel.files, rot: 0 }); setMode('reform'); }} data-testid="reform">Reform</button>
-                    </>
-                  )}
-                  <button type="button" className="secondary" onClick={() => run({ type: 'pass' })}>Pass</button>
-                  <button type="button" className="secondary" onClick={() => run({ type: 'endActivation' })} data-testid="end-activation">End activation</button>
-                  <span className="meta">Actions used: {s.activation.actions.length}/2</span>
-                </>
-              )}
-              {sel.location === 'table' && (
-                <button type="button" className="secondary" onClick={() => { setOverridePose(sel.pose); setMode('override'); }}>Move by hand</button>
-              )}
-            </div>
+          {mode === 'select' && s.phase === 'play' && s.activation?.regimentId === sel.id && (
+            renderActivationButtons()
           )}
+          {s.phase === 'play' && <ManualTools s={s} r={sel} dispatch={dispatch} onMoveByHand={() => { setOverridePose(sel.pose); setMode('override'); }} />}
 
-          {(mode === 'march' || mode === 'enter') && draft && (
+          {(mode === 'march' || mode === 'enter' || mode === 'withdraw') && draft && (
             <div className="move-panel">
               {mode === 'enter' && (
                 <>
@@ -361,8 +465,8 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
               </form>
               <Problems v={draftProblems} />
               <div className="actions">
-                <button type="button" disabled={!draft.ghost.valid} onClick={() => run(draft.action)} data-testid="commit-move">
-                  {mode === 'enter' ? 'March on' : 'March'}
+                <button type="button" disabled={mode !== 'withdraw' && !draft.ghost.valid} onClick={() => run(draft.action)} data-testid="commit-move">
+                  {mode === 'enter' ? 'March on' : mode === 'withdraw' ? 'Roll and Withdraw' : 'March'}
                 </button>
                 <button type="button" className="secondary" onClick={resetModes}>Cancel</button>
               </div>
@@ -392,14 +496,15 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
             </div>
           )}
 
-          {mode === 'override' && overridePose && (
+          {mode === 'withdraw' && <p className="meta">Withdraw (core p.50–51): the Regiment turns to face away, then Marches. The ghost shows the March after turning; the roll and Wounds come first.</p>}
+          {(mode === 'override' || mode === 'placeCharge') && overridePose && (
             <div className="move-panel">
-              <p className="warn">Manual override: drag the Regiment anywhere and turn it. This is logged as an override.</p>
+              <p className="warn">{mode === 'placeCharge' ? 'Drag the Regiment into contact with its Charge target and turn it flush; Impact Attacks follow.' : 'Manual override: drag the Regiment anywhere and turn it.'} This is logged as an override.</p>
               <label className="field">Facing {Math.round((overridePose.angle * 180) / Math.PI)}°
                 <input type="range" min={-180} max={180} step={1} value={Math.round((overridePose.angle * 180) / Math.PI)} onChange={(e) => setOverridePose({ ...overridePose, angle: deg(Number(e.target.value)) })} />
               </label>
               <div className="actions">
-                <button type="button" onClick={() => run(draft!.action)}>Place here</button>
+                <button type="button" disabled={!draft?.ghost.valid} onClick={() => run(draft!.action)}>{mode === 'placeCharge' ? 'Confirm contact' : 'Place here'}</button>
                 <button type="button" className="secondary" onClick={resetModes}>Cancel</button>
               </div>
             </div>
@@ -410,27 +515,19 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
       {s.phase === 'play' && reserves.length > 0 && (
         <div className="card">
           <h3>Reinforcements</h3>
-          <p className="meta">Reinforcement rolls arrive in M4; for now choose who arrives. Reinforcement Line: P1 {fmt(reinforcementLineNow(s, 'P1'))}, P2 {fmt(reinforcementLineNow(s, 'P2'))} from their edges.</p>
+          <p className="meta">Reinforcement Line: P1 {fmt(reinforcementLineNow(s, 'P1'))}, P2 {fmt(reinforcementLineNow(s, 'P2'))} from their edges.</p>
           <ul className="plain">
             {reserves.map((r) => (
               <li key={r.id} className="reserve-row">
                 <button type="button" className="link" onClick={() => setSelectedId(r.id)}>{r.owner} {r.name}</button>{' '}
-                <span className="meta">{r.cls}{r.activatedThisRound ? ' · activated' : ''}</span>{' '}
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={r.location === 'arriving'}
-                    disabled={r.activatedThisRound}
-                    onChange={(e) => dispatch({ type: 'setArriving', regimentId: r.id, arriving: e.target.checked })}
-                    data-testid={`arrive-${r.id}`}
-                  />{' '}
-                  arriving
-                </label>
+                <span className="meta">{r.cls} · {r.location === 'arriving' ? 'arriving this Round' : 'in Reinforcements'}{r.flags.autoArrive ? ' · arrives automatically next Round' : ''}</span>
               </li>
             ))}
           </ul>
         </div>
       )}
+
+      <DiceTray events={session.events} />
 
       <details className="card log" open>
         <summary>Log ({session.events.length})</summary>
