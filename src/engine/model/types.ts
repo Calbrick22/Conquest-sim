@@ -178,6 +178,12 @@ export interface RegimentFlags {
   undyingDevotion?: boolean;
   /** Strategos benefit: roll 2D6 and keep the highest for Charge Distance. */
   charge2d6?: boolean;
+  /** Pheromantic Compulsion: counts as 0 Stands for Seizing or Contesting (sp p.15). */
+  compelled?: boolean;
+  /** Siphon Strength: cannot be Inspired or Aimed (sp p.15). */
+  siphoned?: boolean;
+  /** Epigenetic Trigger: its Command Stand +2 Attacks (sp p.9). */
+  epigenetic?: boolean;
   /** Spells already cast on this Regiment this Round (core p.80: once per spell, except Hits). */
   spellsOn?: string[];
 }

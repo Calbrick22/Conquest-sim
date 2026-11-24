@@ -8,6 +8,7 @@ import { attachedCharacter, formationInput, onTableRegiments, regimentPolys, reg
 import { hasRole, sectOf } from './rules/special/grants';
 import { hasRule, ruleX } from './rules/special/rules';
 import { autoPassesResolve, onRegimentDestroyed, onStandLost, rerollsMoraleSuccesses } from './factions/oldDominion';
+import { pheromanticDrive } from './factions/spires';
 
 /** A characteristic including Round modifiers (manual tool, Draw Events), never below 0 (core p.15). */
 export function stat(r: RegimentState, k: keyof Profile): number {
@@ -80,6 +81,8 @@ export interface AttackPool {
   convertFails?: number;
   /** Defense Rolls use this value instead of Defense (Insanity, od p.23). */
   defenseOverride?: number;
+  /** The target cannot use its Evasion (Hypercatalytic Discharge, sp p.33). */
+  noEvasion?: boolean;
 }
 
 export interface AttackSpec {
@@ -168,7 +171,7 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
     const d = stat(target, 'D') - (pool.ignoreShield ? bastion : 0) + frontBonus;
     const dEff = pool.smite ? 0 : Math.max(0, d - reduce);
     const E = stat(target, 'E');
-    const save = pool.defenseOverride !== undefined ? pool.defenseOverride : Math.max(dEff, E);
+    const save = pool.defenseOverride !== undefined ? pool.defenseOverride : pool.noEvasion ? dEff : Math.max(dEff, E);
     let w = 0;
     let saved = 0;
     const rollDef = (n: number, t: number, label: string) => {
@@ -293,7 +296,8 @@ export function moraleTest(ctx: Ctx, r: RegimentState, wounds: number, spec: Pic
     ctx,
     wounds,
     // Dark Power Tier IV and similar effects (od p.7): re-roll successful Morale Tests.
-    { target: R, rerollSuccesses: (!iron && (spec.arc === 'left' || spec.arc === 'right')) || rerollsMoraleSuccesses(ctx.s, r), autoFail: !iron && spec.arc === 'rear' },
+    // Pheromantic Drive (sp p.15): friendly [Drone]/[Clone] within 12″ re-roll failed Resolve rolls of 6.
+    { target: R, rerollSuccesses: (!iron && (spec.arc === 'left' || spec.arc === 'right')) || rerollsMoraleSuccesses(ctx.s, r), autoFail: !iron && spec.arc === 'rear', rerollSixes: pheromanticDrive(ctx.s, r) },
     `${r.name}: Morale`,
   );
   let failed = wounds - t.passes;

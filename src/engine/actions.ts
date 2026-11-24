@@ -324,10 +324,22 @@ export function takeBlessed(r: RegimentState): boolean {
  * (core p.99). Phalanx: always March + 3″ (core p.100). Designate Target: +2″ against a Marked
  * enemy (Spires rule text).
  */
+/** Endocrine Overstimulation (sp p.17): friendly Regiments within 8″ of that Character roll 2D6 for Charge Distance, keeping the highest. */
+function endocrine(s: GameState, r: RegimentState): boolean {
+  return Object.values(s.characters).some((c) => {
+    if (c.destroyed || !c.attachedTo || !c.options.some((o) => o.toLowerCase() === 'endocrine overstimulation')) return false;
+    const host = s.regiments[c.attachedTo];
+    return !!host && host.owner === r.owner && host.location === 'table' && distancePolys(regimentPolys(s, host), regimentPolys(s, r)) <= 8 + TOL;
+  });
+}
+
 export function chargeDistanceRule(s: GameState, r: RegimentState, t: RegimentState | null): { fixed: number | null; bonus: number } {
   const M = marchValue(s, r);
-  if (hasRule(r.rules, 'Juggernaut')) return { fixed: M + 5, bonus: 0 };
-  const bonus = (t?.flags.marked ? 2 : 0) + xhiliarchChargeBonus(s, r);
+  // Induce Lethargy (sp p.16): no Unstoppable or Juggernaut when Charging that Character's Regiment.
+  const lethargy = !!t && !!attachedCharacter(s, t.id)?.options.some((o) => o.toLowerCase() === 'induce lethargy');
+  if (hasRule(r.rules, 'Juggernaut') && !lethargy) return { fixed: M + 5, bonus: 0 };
+  // Adrenal Hysteria (Onslaught Drones Strain, sp p.26): +2″ Charge Distance.
+  const bonus = (t?.flags.marked ? 2 : 0) + xhiliarchChargeBonus(s, r) + (hasRule(r.rules, 'Adrenal Hysteria') ? 2 : 0);
   if (hasRule(r.rules, 'Phalanx')) return { fixed: M + 3 + bonus, bonus };
   return { fixed: null, bonus };
 }
@@ -362,18 +374,19 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
     total = rule.fixed;
     notes.push(hasRule(r.rules, 'Juggernaut') ? 'Juggernaut: March + 5″ (core p.99)' : 'Phalanx: March + 3″ (core p.100)');
   } else {
-    if (r.flags.charge2d6) {
+    if (r.flags.charge2d6 || endocrine(s, r)) {
       // Master of the Legions (Strategos, od p.9): 2D6, keep the highest.
       const [a, b] = rollN(ctx, 2) as [number, number];
       die = Math.max(a, b);
-      notes.push(`2D6 keep highest: ${a}, ${b} (Master of the Legions)`);
+      notes.push(`2D6 keep highest: ${a}, ${b} (${r.flags.charge2d6 ? 'Master of the Legions' : 'Endocrine Overstimulation'})`);
     } else [die] = rollN(ctx, 1) as [number];
     const xb = xhiliarchChargeBonus(s, r);
     if (xb) markOnce(s, r.owner, 'obdurate');
     notes.push(`Charge Distance = die + March ${M}${rule.bonus ? ` + ${rule.bonus} (${[t.flags.marked ? 'Marked' : '', xb ? 'Obdurate Bone and Stone' : ''].filter(Boolean).join(', ')})` : ''}; need ${d.toFixed(2)}″`);
     total = die + M + rule.bonus;
     const unstoppable = hasRule(r.rules, 'Unstoppable') || (r.commandModels.includes('Standard Bearer') && r.stands.some((x) => x.isCommand));
-    if (total < d - TOL && unstoppable) {
+    const lethargy = !!attachedCharacter(s, t.id)?.options.some((o) => o.toLowerCase() === 'induce lethargy');
+    if (total < d - TOL && unstoppable && !lethargy) {
       const first = die;
       [die] = rollN(ctx, 1) as [number];
       total = die + M + rule.bonus;
@@ -458,7 +471,8 @@ export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
   // Inspired is not available to Broken Regiments, to a Regiment whose Character declined a Duel,
   // or against Dread (core p.60, p.76, p.97). Dauntless always counts as Inspired (core p.97).
   const dread = enemies.some((e) => hasRule(e.rules, 'Dread'));
-  const inspiredAllowed = !r.broken && !r.flags.declinedDuel && !dread;
+  // Siphon Strength (sp p.15): never Inspired.
+  const inspiredAllowed = !r.broken && !r.flags.declinedDuel && !dread && !r.flags.siphoned;
   const support = engagedFlankOrRear(s, r) && !hasRule(r.rules, 'Iron Discipline') ? 1 : ruleX(r.rules, 'Support') || 1;
   const leader = r.commandModels.includes('Leader');
   const c = attachedCharacter(s, r.id);
@@ -472,14 +486,15 @@ export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
     if (sl.isCharacter) {
       b.charAttacks += touching.length && c ? charStat(c, 'A') : 1;
       b.charEngaged = touching.length > 0;
-    } else if (touching.length) b.engaged += stat(r, 'A') + (sl.isCommand && leader ? 1 : 0);
+    } else if (touching.length) b.engaged += stat(r, 'A') + (sl.isCommand && leader ? 1 : 0) + (sl.isCommand && r.flags.epigenetic ? 2 : 0); // Epigenetic Trigger (sp p.9)
     else b.support += support;
   }
   for (const [tid, b] of perTarget) {
     const target = s.regiments[tid]!;
     if (target.location !== 'table') continue;
     const arc = arcOfAttack(s, r, target);
-    const inspired = ((!!s.activation?.inspired || hasRule(r.rules, 'Dauntless') || magnanimity(s, r, target)) && inspiredAllowed) || (hasRule(r.rules, 'Dauntless') && !dread);
+    // The Inspired Special Rule (core p.99) counts too, e.g. from Dark Power Tier III or a banner.
+    const inspired = ((!!s.activation?.inspired || hasRule(r.rules, 'Inspired') || hasRule(r.rules, 'Dauntless') || magnanimity(s, r, target)) && inspiredAllowed) || (hasRule(r.rules, 'Dauntless') && !dread);
     const C = stat(r, 'C');
     const ins = inspiredSkill(C, inspired);
     const blessed = takeBlessed(r);
@@ -558,6 +573,7 @@ export function shootingArcs(r: RegimentState): Arc[] {
  */
 export function volleyAimed(s: GameState, r: RegimentState, opts: { current?: boolean } = {}): boolean {
   const act = s.activation?.regimentId === r.id ? s.activation : null;
+  if (r.flags.siphoned) return false; // Siphon Strength (sp p.15)
   if (act?.aimed || hasRule(r.rules, 'Deadshots')) return true;
   // `current`: the Volley being resolved has already been recorded as an Action.
   const earlier = (act?.actions.filter((k) => k === 'volley').length ?? 0) - (opts.current ? 1 : 0);
@@ -581,7 +597,8 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
   // Longshot: Effective Range equals the full Barrage range (core p.99).
   const longshot = hasRule(r.rules, 'Longshot');
   // Loose Formation (target): each Stand's Barrage X is halved, rounding up (core p.99).
-  const loose = hasRule(t.rules, 'Loose Formation');
+  // Hypersynaptic Bonding (Vanguard Clone Infiltrators Strain, sp p.28): the target loses Loose Formation.
+  const loose = hasRule(t.rules, 'Loose Formation') && !hasRule(r.rules, 'Hypersynaptic Bonding');
   for (const sl of front) {
     const rules = sl.isCharacter && c ? c.rules : r.rules;
     const b = barrageOf(rules);
@@ -651,7 +668,7 @@ export function applyVolley(ctx: Ctx, r: RegimentState, t: RegimentState): void 
         same.dice += p.shots;
         same.label += ` + ${p.shots}`;
       } else
-        pools.push({ label: `${r.name} Volley → ${arc} (${p.shots}`, dice: p.shots, skill: p.skill, rerollSixes: aimed && p.skill >= 5, ...mods, reduceD: p.ap, deadly6: p.deadly });
+        pools.push({ label: `${r.name} Volley → ${arc} (${p.shots}`, dice: p.shots, skill: p.skill, rerollSixes: aimed && p.skill >= 5, ...mods, reduceD: p.ap, deadly6: p.deadly, ...(hasRule(r.rules, 'Hypercatalytic Discharge') ? { noEvasion: true } : {}) });
     }
     for (const q of pools) q.label += ' shots)';
     const res = resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: t.id, arc, pools, morale: murderous, terrifying: 0, what: `${r.name} Volley`, kind: 'volley' });

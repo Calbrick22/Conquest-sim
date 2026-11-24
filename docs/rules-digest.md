@@ -513,3 +513,40 @@ It affects Animate Vessel Regiments only, not the Fallen Divinity.
   - Unholy Mastery, Schemophore, Devoted to Hazlia, Viaticum.
 - **Manual:** Cuirass of Hazlia's Shadow, Hierotekton, Anastegma, Soul Reaper, Implacable, What We Did in Life, Eleutherea's Duel rules, Sanctified Labaron (list building only), and Trial of Will.
 
+## 23. Spires (Spires army list, 2026 post-Adepticon update; cited as sp p.N)
+
+Mechanics are in `src/engine/factions/spires.ts`.
+
+### Strains (sp p.5, entries p.21–33)
+
+- **Built in:** every Regiment's Strain is built in, so nothing needs typing. A Strain typed on the list review screen replaces the built-in one.
+- **Strain Expression:** the Strain lasts until the end of the Round, together with Decay (1 Wound per Stand, or 3 for a Monster, at the end of the Activation, with no Morale).
+- **Disruptive** (Stryx): enemies in contact with its front arc get −1 Clash, to a maximum of −1.
+- **Hypersynaptic Bonding** (Vanguard Clone Infiltrators): its Volley ignores the target's Loose Formation. Cover is not modelled.
+- **Microbial Shroud** (Pteraphon Surveyor): enemies within 8″ cannot Heal, Rally or Combat Rally.
+- **Hypercatalytic Discharge** (Desolation Beast): no Evasion against its Volleys (AMB-56).
+- **Adrenal Hysteria** (Onslaught Drones): +2″ Charge Distance, and Linebreaker.
+- **Optimized Fodder** (Force Grown Drones): Decay is at most 8; with 6 or more Stands, Lethal Demise (2).
+- **Induced Aggression** (Pheromancer Warlord): [Drone], [Clone] and [Monstrosity] Regiments may take +1 Clash (to 4) and +1 March instead of their Strain. Its own Regiment suffers no Decay (AMB-57).
+
+### Practitioner Actions (sp p.15)
+
+- **Biomancies:**
+  - Essence Transfer: 2D6, the lower in Wounds to one friendly Regiment, then Heal 4 on another;
+  - Unstable Enhancement: D6 for +1 March, Clash or Volley (to 4);
+  - Catalytic Rupture: the highest of 2D6 in Hits with AP (1) to enemies in contact;
+  - Grant Virulence: D6 Hits with AP (6 − roll).
+- **Pheromancies:**
+  - Induce Vigor: Untouchable;
+  - Pheromantic Drive: Tenacious (1), and re-roll failed Resolve rolls of 6 within 12″;
+  - Pheromantic Compulsion: an enemy Monster counts 0 for zones;
+  - Siphon Strength: no Inspired or Aimed.
+- A friendly Regiment can be the target of one Practitioner Action per Round. A Pheromancer or Biomancer Warlord gets a free extra one each Activation (AMB-58).
+
+### Other
+
+- **Epigenetic Trigger** (Biomancer): a Command Stand gets +2 Attacks.
+- **Upgrades:** Hyperadrenal Stimulation, Linked Neuroreceptors, Degenerative Aura, Induce Lethargy, Endocrine Overstimulation and Grafted are automated.
+- **Consumption Beast:** starts with 8 Wounds.
+- **Still manual:** Field Studies, Tricks of the Trade, Master Manipulator, Ruthless Competence, Catabolic Nodes, Spined Descent, Indiscriminate Omnivore, Gorged, Endless Hunger, and the remaining upgrades.
+

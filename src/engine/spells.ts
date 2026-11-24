@@ -56,7 +56,10 @@ export interface Caster {
 
 const highestTier = (s: GameState, p: PlayerId) => Math.max(poolTier(s, p, 'dark'), pantheonTier(s, p));
 
-function spellHits(ctx: Ctx, caster: Caster, target: RegimentState, hits: number, what: string, pool: { reduceD?: number; defenseOverride?: number } = {}, morale = true): void {
+function spellHits(ctx: Ctx, caster: Caster, target: RegimentState, hitsIn: number, what: string, pool: { reduceD?: number; defenseOverride?: number } = {}, morale = true): void {
+  // Loose Formation (core p.99): Hits from Spells are halved, rounding up.
+  const hits = hasRule(target.rules, 'Loose Formation') ? Math.ceil(hitsIn / 2) : hitsIn;
+  if (hits !== hitsIn) ev(ctx, { type: 'note', text: `${target.name} has Loose Formation: ${hitsIn} Hits become ${hits} (core p.99).`, regimentId: target.id });
   resolveAttack(ctx, {
     attackerOwner: caster.owner,
     attackerId: caster.regiment.id,

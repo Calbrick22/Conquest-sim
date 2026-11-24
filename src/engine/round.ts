@@ -231,6 +231,9 @@ export function beginRound(s: GameState): void {
     r.flags.noDecay = false;
     r.flags.reprocessed = false;
     r.flags.declinedDuel = false;
+    r.flags.compelled = false;
+    r.flags.siphoned = false;
+    r.flags.epigenetic = false;
     r.standsAtRoundStart = r.stands.length;
     // RULE-AMBIGUITY: AMB-33 — a Regiment still Broken counts Shattering from the start of each new Round.
     if (r.broken) r.standsWhenBroken = r.stands.length;

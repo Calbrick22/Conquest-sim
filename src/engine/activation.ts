@@ -10,6 +10,7 @@ import { attachedCharacter, distancePolys, formationInput, isEngaged, regimentPo
 import { hasRole, sectOf } from './rules/special/grants';
 import { barrageOf, hasRule, ruleX } from './rules/special/rules';
 import { OD_DRAW_EVENTS, applyOdDrawEvent, isOdDrawEvent, odDrawEventProblems } from './factions/oldDominionActions';
+import { applyPractitioner, canInduceAggression, decayWounds, degenerativeAura, isPractitioner, practitionerProblems, shrouded, strainFor } from './factions/spires';
 
 // ---------------------------------------------------------------- Action bookkeeping
 
@@ -21,7 +22,7 @@ import { OD_DRAW_EVENTS, applyOdDrawEvent, isOdDrawEvent, odDrawEventProblems } 
 export function recordAction(act: ActivationState, kind: ActionKind): void {
   const extra = act.extra?.find((e) => !e.used && e.kind === kind);
   // A free Spellcasting Action (od p.9, p.16, p.23) never uses up a normal Action.
-  if (extra && kind === 'spell' && extra.free) {
+  if (extra && (kind === 'spell' || kind === 'ability') && extra.free) {
     extra.used = true;
     return;
   }
@@ -119,11 +120,11 @@ export function onActivationEnd(ctx: Ctx, act: ActivationState, r: RegimentState
     }
   }
   if (hasRule(r.rules, 'Decay') && !r.flags.noDecay && !isDestroyed(r)) {
-    let w = r.type === 'Monster' ? 3 : r.stands.length;
-    if (hasRule(r.rules, 'Superior Creations')) w -= 1;
+    const { wounds: w, why } = decayWounds(s, r);
+    ev(ctx, { type: 'note', text: `Decay: ${r.name} suffers ${w} Wound${w === 1 ? '' : 's'}, no Morale (core p.97${why.length ? `; ${why.join('; ')}` : ''}).`, regimentId: r.id });
     if (w > 0) {
-      ev(ctx, { type: 'note', text: `Decay: ${r.name} suffers ${w} Wound${w === 1 ? '' : 's'} (core p.97${hasRule(r.rules, 'Superior Creations') ? '; Superior Creations −1' : ''}).`, regimentId: r.id });
       allocateWounds(ctx, r, w, r.owner === 'P1' ? 'P2' : 'P1');
+      if (!isDestroyed(r)) degenerativeAura(ctx, r);
     }
   }
   r.flags.noDecay = false;
@@ -134,6 +135,8 @@ export function onActivationEnd(ctx: Ctx, act: ActivationState, r: RegimentState
 export function canHeal(s: GameState, r: RegimentState): boolean {
   // Unhallowed Ground (od p.15, p.30): cannot be Healed.
   if (hasRule(r.rules, 'Unhallowed Ground')) return false;
+  // Microbial Shroud (sp p.32): enemies within 8″ cannot Heal.
+  if (shrouded(s, r)) return false;
   // Broken Regiments cannot be Healed (core p.60), except [Drone] Regiments with Violent Delirium (Underspires).
   return !r.broken || (sectOf(s, r.owner) === 'underspires' && hasRole(r, 'Drone'));
 }
@@ -146,7 +149,8 @@ export function canHeal(s: GameState, r: RegimentState): boolean {
 export function heal(ctx: Ctx, r: RegimentState, points: number, why: string): void {
   const s = ctx.s;
   if (!canHeal(s, r)) {
-    ev(ctx, { type: 'note', text: hasRule(r.rules, 'Unhallowed Ground') ? `${r.name} has Unhallowed Ground and cannot be Healed (od p.15).` : `${r.name} is Broken and cannot be Healed (core p.60).`, regimentId: r.id });
+    const sh = shrouded(s, r);
+    ev(ctx, { type: 'note', text: hasRule(r.rules, 'Unhallowed Ground') ? `${r.name} has Unhallowed Ground and cannot be Healed (od p.15).` : sh ? `${r.name} is within 8″ of ${sh}'s Microbial Shroud and cannot be Healed (sp p.32).` : `${r.name} is Broken and cannot be Healed (core p.60).`, regimentId: r.id });
     return;
   }
   let left = points;
@@ -187,6 +191,7 @@ export const DRAW_EVENTS_AUTOMATED = [
   'Strain Expression',
   'Ferro-Ossified Carapace',
   'Suppress Higher Functions',
+  'Epigenetic Trigger',
 ];
 
 export function baseName(n: string): string {
@@ -231,7 +236,7 @@ export function drawEventProblems(s: GameState, name: string, choice: DrawEventC
   if (!isExtra && done.some((d) => !additional(d))) return ['Only one Draw Event per Activation (core p.23).'];
   if (r.location !== 'table') return ['Draw Events are not resolved while arriving from Reinforcements (core p.23).'];
   if (isOdDrawEvent(baseName(name))) return odDrawEventProblems(s, r, baseName(name), choice);
-  if (baseName(name) === 'Suppress Higher Functions') {
+  if (baseName(name) === 'Suppress Higher Functions' || baseName(name) === 'Epigenetic Trigger') {
     const t = choice.targetId ? s.regiments[choice.targetId] : r;
     if (!t || t.owner !== r.owner || t.location !== 'table') return ['Choose a friendly Regiment on the Battlefield.'];
     if (distancePolys(regimentPolys(s, r), regimentPolys(s, t)) > 12 + TOL) return [`${t.name} is more than 12″ away.`];
@@ -288,7 +293,14 @@ export function applyDrawEvent(ctx: Ctx, name: string, choice: DrawEventChoice):
       return;
     }
     case 'Strain Expression': {
-      const def = s.players[r.owner].strains[r.name];
+      // Induced Aggression (Pheromancer Warlord, sp p.6): instead of the Strain, +1 Clash (max 4) and +1 March.
+      const aggression = choice.option === 'aggression' && canInduceAggression(s, r);
+      const def = aggression ? undefined : strainFor(s, r);
+      if (aggression) {
+        const dc = Math.max(0, Math.min(1, 4 - stat(r, 'C')));
+        if (dc) r.roundMods.push({ stat: 'C', delta: dc, source: 'Induced Aggression' });
+        r.roundMods.push({ stat: 'M', delta: 1, source: 'Induced Aggression' });
+      }
       if (def) {
         for (const [k, d] of Object.entries(def.stats)) if (d) r.roundMods.push({ stat: k as keyof typeof def.stats, delta: d, source: 'Strain' });
         r.roundRules.push(...def.rules);
@@ -297,7 +309,7 @@ export function applyDrawEvent(ctx: Ctx, name: string, choice: DrawEventChoice):
       r.flags.decay = true;
       ev(ctx, {
         type: 'draw-event',
-        text: `Strain Expression: ${r.name} ${def ? `gains its Strain (${def.text || 'as entered'})` : 'has no Strain entered on the list review screen (no benefit applied)'}${r.flags.noDecay ? ', without Decay (Lobotomytic Override)' : ' and suffers Decay until the end of the Round'}.`,
+        text: `Strain Expression: ${r.name} ${aggression ? 'uses Induced Aggression: +1 Clash (max 4) and +1 March' : def ? `gains its Strain: ${def.text || 'as entered'}${def.rules.length ? ` (${def.rules.map((x) => x.raw).join(', ')})` : ''}${Object.keys(def.stats).length ? ` ${Object.entries(def.stats).map(([k, v]) => `${k}${(v ?? 0) > 0 ? '+' : ''}${v}`).join(' ')}` : ''}` : 'has no Strain (none typed, none built in): no benefit applied'}${r.flags.noDecay ? ', without Decay (Lobotomytic Override)' : ' and suffers Decay until the end of the Round'}.`,
         regimentId: r.id,
       });
       return;
@@ -306,6 +318,13 @@ export function applyDrawEvent(ctx: Ctx, name: string, choice: DrawEventChoice):
       r.roundRules.push({ name: 'Hardened', x: 1, raw: 'Hardened (1)' });
       ev(ctx, { type: 'draw-event', text: `Ferro-Ossified Carapace: ${r.name} gains Hardened (1) until the end of the Round.`, regimentId: r.id });
       return;
+    case 'Epigenetic Trigger': {
+      // Biomancer (sp p.9): a friendly Regiment within 12″; its Command Stand +2 Attacks until the end of the Round.
+      const t = choice.targetId ? s.regiments[choice.targetId]! : r;
+      t.flags.epigenetic = true;
+      ev(ctx, { type: 'draw-event', text: `Epigenetic Trigger: ${t.name}'s Command Stand adds +2 Attacks until the end of the Round (sp p.9).`, regimentId: t.id });
+      return;
+    }
     case 'Suppress Higher Functions': {
       const t = choice.targetId ? s.regiments[choice.targetId]! : r;
       t.roundRules.push({ name: 'Fearless', raw: 'Fearless' });
@@ -325,7 +344,8 @@ export function applyDrawEvent(ctx: Ctx, name: string, choice: DrawEventChoice):
 
 export const CHARACTER_ABILITIES_AUTOMATED = ['Snapshot', 'Mighty Swing'];
 
-export function characterAbilityProblems(s: GameState, c: CharacterState, name: string, targetId?: string): string[] {
+export function characterAbilityProblems(s: GameState, c: CharacterState, name: string, targetId?: string, target2Id?: string): string[] {
+  if (isPractitioner(name)) return practitionerProblems(s, c, name, { ...(targetId ? { targetId } : {}), ...(target2Id ? { target2Id } : {}) });
   const r = c.attachedTo ? s.regiments[c.attachedTo] : undefined;
   if (!r || r.location !== 'table') return ['The Character must be on the Battlefield.'];
   const bn = baseName(name);
@@ -350,7 +370,11 @@ export function characterAbilityProblems(s: GameState, c: CharacterState, name: 
   return [];
 }
 
-export function applyCharacterAbility(ctx: Ctx, c: CharacterState, name: string, targetId?: string): void {
+export function applyCharacterAbility(ctx: Ctx, c: CharacterState, name: string, targetId?: string, target2Id?: string): void {
+  if (isPractitioner(name)) {
+    applyPractitioner(ctx, c, name, { ...(targetId ? { targetId } : {}), ...(target2Id ? { target2Id } : {}) }, heal);
+    return;
+  }
   const s = ctx.s;
   const bn = baseName(name);
   if ((bn === 'Snapshot' || bn === 'Mighty Swing') && targetId) {

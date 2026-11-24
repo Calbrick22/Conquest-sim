@@ -23,6 +23,7 @@ This is a personal tabletop simulator for Conquest TLAoK (2026 rules, post-Adept
 - Never paste rule text into source, docs or test fixtures. Implement mechanics in code, describe them in your own words, and cite pages (`core p.N`, `pack p.N`; the PDF page index equals the printed page).
 - Unit stats and special-rule text reach the app only when the user uploads a list at runtime.
 - CI fixtures are **synthetic**: invented names, stats and text, in the export layout.
+- Owner's note (2026-11-24): Para Bellum's rules are public, so faction **mechanics as data** (unit names, built-in Strain effects, values) may live in the code, e.g. `src/engine/factions/spires.ts`. Keep the PDFs themselves and verbatim rule text out of the repo.
 
 ## Never make up rules
 

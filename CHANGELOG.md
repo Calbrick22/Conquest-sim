@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.5.0] - 2026-11-24 (Spires faction rules)
+
+### Added
+- **Every Spires Strain is built in** (from the Spires faction document). Strain Expression works with nothing typed, for example Centaur Avatara gain Shock and Stryx gain Disruptive. A typed Strain still replaces it.
+- **Strain-related rules:**
+  - Disruptive (−1 Clash to enemies at its front);
+  - Hypersynaptic Bonding;
+  - Microbial Shroud (no Heal or Rally within 8″);
+  - Hypercatalytic Discharge (no Evasion);
+  - Adrenal Hysteria (+2″ Charge);
+  - Optimized Fodder;
+  - Induced Aggression (swap the Strain for +1 Clash and +1 March; no Decay for the Pheromancer Warlord's Regiment).
+- **Practitioner Actions:** all four Biomancies and all four Pheromancies, with target choices on the table, the one-per-Round limit, the Warlord's free extra Action, and computer-opponent use.
+- **Epigenetic Trigger**, character upgrades (Hyperadrenal Stimulation, Linked Neuroreceptors, Degenerative Aura, Induce Lethargy, Endocrine Overstimulation, Grafted), and starting Wounds for entries that say so (Consumption Beast).
+- Spells halve their Hits against Loose Formation (core p.99).
+
+### Fixed
+- **The Inspired Special Rule was never applied in a Clash** (only the Inspire Action was). This affected Old Dominion Tier III, the Caelestine Banner, Kentarch and similar.
+
 ## [1.4.0] - 2026-11-24 (rule details and quality of life)
 
 ### Fixed

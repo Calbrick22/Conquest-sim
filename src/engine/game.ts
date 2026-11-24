@@ -15,6 +15,7 @@ import './rules/special/rules';
 import { applyCharacterOptions, refreshRules } from './rules/special/grants';
 import { flushPower, initOldDominion } from './factions/oldDominion';
 import { odActivationStartSpells } from './factions/oldDominionActions';
+import { strainFor } from './factions/spires';
 import { parseRuleRef } from '../import/ruleTokens';
 import {
   canTakeAction,
@@ -75,7 +76,7 @@ export type ActionBody =
   | { type: 'combatReform'; regimentId: string; files: number }
   | { type: 'withdraw'; regimentId: string; moves: MoveSeg[]; turn?: boolean }
   | { type: 'duel'; characterId: string; targetCharacterId: string; accept: boolean }
-  | { type: 'characterAbility'; characterId: string; name: string; targetId?: string }
+  | { type: 'characterAbility'; characterId: string; name: string; targetId?: string; target2Id?: string }
   // Spellcasting (core p.80–81) and Old Dominion faction Actions (od p.5–8)
   | { type: 'spell'; casterId: string; spell: string; targetId: string; attunement?: number; pool?: PowerPool }
   | { type: 'memories'; regimentId: string }
@@ -326,8 +327,13 @@ export function createGame(input: SetupInput): SetupResult {
   }
   // Strain Expression without an entered Strain gives only Decay (AMB-18): say so up front.
   for (const r of Object.values(regiments))
-    if (r.baseDrawEvents.some((d) => d.startsWith('Strain Expression')) && !state.players[r.owner].strains[r.name])
+    if (r.baseDrawEvents.some((d) => d.startsWith('Strain Expression')) && !strainFor(state, r))
       warnings.push(`${r.owner} ${r.name}: no Strain entered on the list review screen, so Strain Expression gives only Decay`);
+  // Entries that start the battle with Wound Markers (e.g. Consumption Beast, sp p.33).
+  for (const r of Object.values(regiments)) {
+    const m = (r.notes ?? []).join(' ').match(/starts the Battle with (\d+) Wound Markers/i);
+    if (m && r.stands[0]) r.stands[0].wounds = Math.min(Number(m[1]), Math.max(0, (r.profile.W ?? 1) - 1));
+  }
   initOldDominion(state);
   refreshRules(state);
   const events: GameEvent[] = [{ type: 'setup', text: `Game created on ${input.scenario.name} (seed ${input.seed}).`, round: 1 }];

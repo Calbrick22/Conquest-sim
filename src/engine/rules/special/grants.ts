@@ -2,6 +2,7 @@ import type { RuleRef } from '../../../import/types';
 import { parseRuleRef } from '../../../import/ruleTokens';
 import type { CharacterState, GameState, PlayerId, RegimentState, StatMod } from '../../model/types';
 import { odCharacterGrants, odRegimentGrants } from '../../factions/oldDominion';
+import { spiresCharacterMods, spiresGrants, strainFor } from '../../factions/spires';
 import { distancePolys, regimentPolys } from '../../queries';
 import { TOL } from '../../geometry/vec';
 
@@ -95,7 +96,7 @@ export function refreshRules(s: GameState): void {
   }
   // Strains that change enemies in contact (e.g. "enemy -1 Clash"), while the Strain is active.
   for (const src of Object.values(s.regiments)) {
-    const def = src.flags.decay && src.location === 'table' ? s.players[src.owner].strains[src.name] : undefined;
+    const def = src.flags.decay && src.location === 'table' ? strainFor(s, src) : undefined;
     if (!def?.enemyStats) continue;
     const polys = regimentPolys(s, src);
     for (const e of Object.values(s.regiments)) {
@@ -107,8 +108,9 @@ export function refreshRules(s: GameState): void {
     const og = odCharacterGrants(s, c);
     c.rules = dedupe([...c.baseRules, ...(charRuleAdds.get(c.id) ?? []), ...og.rules]);
     c.drawEvents = [...new Set([...(c.baseDrawEvents ?? c.drawEvents), ...og.drawEvents])];
-    c.grantMods = og.mods as StatMod[];
+    c.grantMods = [...(og.mods as StatMod[]), ...spiresCharacterMods(c)];
   }
+  spiresGrants(s);
 }
 
 /**

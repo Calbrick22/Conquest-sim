@@ -16,8 +16,9 @@ import { markerAttackProblems, markerInContact } from '../engine/markers';
 import { baseName, CHARACTER_ABILITIES_AUTOMATED, characterAbilityProblems, drawEventProblems } from '../engine/activation';
 import { castableSpells, casterOf, scalingExtra, spellDef } from '../engine/spells';
 import { fallenDivinity, hasMemories, pantheonTier } from '../engine/factions/oldDominion';
+import { practitionerAbilities, strainFor } from '../engine/factions/spires';
 import { isOdDrawEvent, odSpendProblems, tokensAvailable } from '../engine/factions/oldDominionActions';
-import type { CommandCard, GameState, PlayerId, RegimentState } from '../engine/model/types';
+import type { CharacterState, CommandCard, GameState, PlayerId, RegimentState } from '../engine/model/types';
 import {
   attachedCharacter,
   entryPose,
@@ -412,6 +413,39 @@ function bestSpell(s: GameState, casterId: string): Scored | null {
   return best;
 }
 
+/**
+ * Practitioner Actions (sp p.15): damage first (Grant Virulence on the nearest enemy, Catalytic
+ * Rupture where friends are engaged), else Induce Vigor on an engaged friend.
+ */
+function bestPractitioner(s: GameState, c: CharacterState): Scored | null {
+  const abilities = practitionerAbilities(c);
+  if (!abilities.length) return null;
+  const regs = onTableRegiments(s);
+  const owner = c.id.slice(0, 2) as PlayerId;
+  const ok = (name: string, targetId?: string) => {
+    const a: Action = { type: 'characterAbility', characterId: c.id, name, ...(targetId ? { targetId } : {}) };
+    return validate(s, a).ok ? a : null;
+  };
+  const tries: [string, RegimentState[], string][] = [
+    ['Catalytic Rupture', regs.filter((r) => r.owner === owner && enemiesInContact(s, r).length > 0), 'bursts enemies engaged with'],
+    ['Grant Virulence', regs.filter((r) => r.owner !== owner).sort((a, b) => b.stands.length - a.stands.length), 'infects'],
+    ['Induce Vigor', regs.filter((r) => r.owner === owner && isEngaged(s, r)), 'hardens'],
+    ['Siphon Strength', regs.filter((r) => r.owner !== owner && isEngaged(s, r)), 'weakens'],
+  ];
+  for (const [name, targets, verb] of tries) {
+    if (!abilities.includes(name)) continue;
+    for (const t of targets) {
+      const a = ok(name, t.id);
+      if (a) return { action: a, score: 2, reason: `uses ${name}: ${verb} ${t.name}` };
+    }
+  }
+  if (abilities.includes('Pheromantic Drive')) {
+    const a = ok('Pheromantic Drive');
+    if (a) return { action: a, score: 1, reason: 'uses Pheromantic Drive' };
+  }
+  return null;
+}
+
 function enemiesNear(s: GameState, r: RegimentState, d: number): boolean {
   return onTableRegiments(s).some((e) => e.owner !== r.owner && regimentDistance(s, r, e) <= d);
 }
@@ -434,6 +468,8 @@ function decideActivation(s: GameState): AiDecision {
     if (ode) return ode;
     const sp = bestSpell(s, c.id);
     if (sp && validate(s, sp.action as Action).ok) return { action: { ...sp.action, why: `${c.name} ${sp.reason}` }, reason: sp.reason };
+    const pr = bestPractitioner(s, c);
+    if (pr) return { action: { ...pr.action, why: `${c.name} ${pr.reason}` }, reason: pr.reason };
     if (act.actions.length === 0) {
       // Automated Character abilities (Snapshot, Mighty Swing) on the weakest target they can reach.
       for (const ab of c.actions.filter((x) => CHARACTER_ABILITIES_AUTOMATED.includes(x.name))) {
@@ -490,7 +526,7 @@ function chooseDrawEvent(s: GameState, r: RegimentState): AiDecision | null {
   for (const n of r.drawEvents) {
     const bn = baseName(n);
     if (done.includes(bn)) continue;
-    if (bn === 'Strain Expression' && s.players[r.owner].strains[r.name] && (engaged || nearEnemy) && r.stands.length >= 2) {
+    if (bn === 'Strain Expression' && strainFor(s, r) && (engaged || nearEnemy) && (r.stands.length >= 2 || r.type === 'Monster')) {
       const d = pick(n, {}, 'its Strain for the coming fight');
       if (d) return d;
     }

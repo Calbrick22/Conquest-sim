@@ -3,6 +3,7 @@ import { sectOf } from './rules/special/grants';
 import { activateMemories, blasphemousSoma, warlordHas } from './factions/oldDominion';
 import { applyOdSpend, applyOdSupremacy, isOdSupremacy, memoriesProblems, odActivationStartSpells, odSpendProblems, odSupremacyProblems } from './factions/oldDominionActions';
 import { castSpell, casterOf, spellProblems } from './spells';
+import { shrouded, spiresActivationStart } from './factions/spires';
 import { hasRule } from './rules/special/rules';
 import {
   applyCharge,
@@ -220,12 +221,14 @@ export function validateM4(s: GameState, a: Action): Validation {
       return act(s, a.regimentId, 'rally', () => {
         const r = s.regiments[a.regimentId]!;
         if (isEngaged(s, r)) return ['In contact with an enemy, use Combat Rally (core p.47).'];
+        if (shrouded(s, r)) return [`Within 8″ of ${shrouded(s, r)}'s Microbial Shroud: no Rally (sp p.32).`];
         return r.broken ? [] : ['Only a Broken Regiment can Rally (core p.36).'];
       });
     case 'combatRally':
       return act(s, a.regimentId, 'combatRally', () => {
         const r = s.regiments[a.regimentId]!;
         if (!isEngaged(s, r)) return ['Combat Rally needs an enemy in contact (core p.47).'];
+        if (shrouded(s, r)) return [`Within 8″ of ${shrouded(s, r)}'s Microbial Shroud: no Combat Rally (sp p.32).`];
         return r.broken ? [] : ['Only a Broken Regiment can Combat Rally (core p.47).'];
       });
     case 'combatReform':
@@ -252,7 +255,7 @@ export function validateM4(s: GameState, a: Action): Validation {
     case 'characterAbility': {
       const c = s.characters[a.characterId];
       if (!c || s.activation?.characterId !== c.id) return fail('Only the active Character can use its Actions.');
-      const p = [...canTakeAction(s, s.activation.regimentId, 'ability'), ...characterAbilityProblems(s, c, a.name, a.targetId)];
+      const p = [...canTakeAction(s, s.activation.regimentId, 'ability'), ...characterAbilityProblems(s, c, a.name, a.targetId, a.target2Id)];
       return p.length ? fail(...p) : ok();
     }
     case 'override.wounds':
@@ -400,6 +403,7 @@ export function applyM4(ctx: Ctx, a: Action): void {
       startActivation(ctx, r, { characterId: c.id });
       ev(ctx, { type: 'activate', text: `${r.owner} activates the Character ${c.name}${r.location !== 'table' ? ' (not on the Battlefield yet: no Draw Event, core p.23)' : ''}.`, player: r.owner });
       odActivationStartSpells(ctx);
+      spiresActivationStart(ctx);
       break;
     }
     case 'drawEvent':
@@ -511,7 +515,7 @@ export function applyM4(ctx: Ctx, a: Action): void {
     }
     case 'characterAbility': {
       recordAction(s.activation!, 'ability');
-      applyCharacterAbility(ctx, s.characters[a.characterId]!, a.name, a.targetId);
+      applyCharacterAbility(ctx, s.characters[a.characterId]!, a.name, a.targetId, a.target2Id);
       break;
     }
     case 'override.wounds': {

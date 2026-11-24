@@ -34,6 +34,8 @@ import { ActionCallout, UnitCallout } from './Callouts';
 import { DrawDeck, StackBuilder } from './CommandDeck';
 import { OdActivation, PowerBar } from './OldDominionPanel';
 import { isOdDrawEvent } from '../../engine/factions/oldDominionActions';
+import { canInduceAggression, strainFor } from '../../engine/factions/spires';
+import { PractitionerButtons } from './SpiresPanel';
 import { volleyAimed, volleyLines } from '../../engine/actions';
 import { decisionMaker } from '../../ai/ai';
 
@@ -370,6 +372,25 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
                   <button type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n, option: 'A' })}>+2 Attacks</button>
                 </span>
               );
+            if (baseName(n) === 'Strain Expression' && canInduceAggression(s, r))
+              return (
+                <span key={n} className="actions">
+                  <button type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n })} data-testid="draw-event-Strain Expression">
+                    Strain Expression{strainFor(s, r) ? ` (${strainFor(s, r)!.text})` : ''}
+                  </button>
+                  <button type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n, option: 'aggression' })}>
+                    …Induced Aggression instead (+1 C, +1 M)
+                  </button>
+                </span>
+              );
+            if (baseName(n) === 'Epigenetic Trigger')
+              return (
+                <span key={n} className="actions">
+                  {friendsNear.map((f) => (
+                    <button key={f.id} type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n, targetId: f.id })}>Epigenetic Trigger: {f.name}</button>
+                  ))}
+                </span>
+              );
             if (baseName(n) === 'Suppress Higher Functions')
               return (
                 <span key={n} className="actions">
@@ -381,6 +402,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
             return (
               <button key={n} type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n })} data-testid={`draw-event-${baseName(n)}`}>
                 {n}
+                {baseName(n) === 'Strain Expression' && strainFor(s, r) ? ` (${strainFor(s, r)!.text})` : ''}
                 {auto ? '' : ' (manual)'}
               </button>
             );
@@ -402,6 +424,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
           <p><strong>{c.name}</strong> is active: one Character Action (core p.74). {status}</p>
           {drawEventButtons(c.drawEvents)}
           <OdActivation key={`od-${c.id}`} s={s} run={run} />
+          <PractitionerButtons key={`pr-${c.id}`} s={s} c={c} run={run} />
           <div className="actions wrap">
             {used === 0 && targets.map((t) => (
               <span key={t.id} className="actions">
@@ -410,7 +433,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
               </span>
             ))}
             {used === 0 &&
-              c.actions.map((x) =>
+              c.actions.filter((x) => x.name !== 'Practitioner').map((x) =>
                 x.name === 'Snapshot' || x.name === 'Mighty Swing' ? (
                   <button key={x.raw} type="button" className="secondary" onClick={() => { setTargetKind(x.name as TargetKind); setMode('target'); }}>
                     {x.raw}

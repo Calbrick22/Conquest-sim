@@ -29,6 +29,8 @@ export function zoneResults(s: GameState): ZoneResults {
     const centre = { x: z.x, y: z.y };
     const stands: StandInRange[] = [];
     for (const { r, slots, polys } of slotsByReg) {
+      // Pheromantic Compulsion (sp p.15): counts as 0 Stands for Seizing or Contesting.
+      if (r.flags.compelled) continue;
       let regBonus = r.flags.seizeBonus ?? 0; // Exhortation of Eternal Faith (od p.30): once per Regiment
       polys.forEach((p, i) => {
         if (!standOverlapsZone(p, centre, z.diameter)) return;

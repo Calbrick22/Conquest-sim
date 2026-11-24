@@ -75,6 +75,16 @@ const IMPLEMENTED: [string, string][] = [
   ['Unyielding', 'core p.101'],
   ['Weapon Platform', 'core p.101'],
   ['Murderous Volley', 'core p.95'],
+  // Spires faction document (sp = Spires army list, 2026 post-Adepticon)
+  ['Disruptive', 'sp p.27'],
+  ['Hypersynaptic Bonding', 'sp p.28 (Cover is not modelled)'],
+  ['Microbial Shroud', 'sp p.32'],
+  ['Hypercatalytic Discharge', 'sp p.33'],
+  ['Adrenal Hysteria', 'sp p.26'],
+  ['Practitioner', 'sp p.5, p.15'],
+  ['Epigenetic Trigger', 'sp p.9'],
+  ['Pheromantic Drive', 'sp p.15'],
+  ['Optimized Fodder', 'sp p.24'],
   // Spellcasting (core p.80–81, p.97)
   ['Priest', 'core p.80, p.100'],
   ['Wizard', 'core p.80, p.101'],

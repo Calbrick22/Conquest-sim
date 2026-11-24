@@ -213,7 +213,8 @@ export function canTakeAction(s: GameState, regimentId: string, kind: ActionKind
   if (!a || a.regimentId !== regimentId) return ['That Regiment is not active.'];
   if (s.pendingCharge) return ['Finish placing the Charge first.'];
   if (a.ended) return ['The Activation has ended (core p.36).'];
-  const freeSpell = kind === 'spell' && a.extra?.some((e) => !e.used && e.kind === 'spell');
+  // Free Spellcasting or Character abilities (Theokrator, Divinity Grace, Practitioner Warlord…).
+  const freeSpell = (kind === 'spell' || kind === 'ability') && a.extra?.some((e) => !e.used && e.kind === kind && e.free);
   if (a.characterId) {
     if (kind !== 'duel' && kind !== 'ability' && kind !== 'pass' && kind !== 'spell') return ["During a Character's own Activation it can only use its own Actions (core p.74)."];
     if (a.actions.length >= 1 && !freeSpell) return ['A Character performs a single Action each Round (core p.74).'];
@@ -268,4 +269,11 @@ export function hasFlank(s: GameState, r: RegimentState): boolean {
   if (names.includes('forward force') && r.type !== 'Monster') return true;
   if (names.includes('forlorn drive') && r.roles.some((x) => /^(drone|clone)$/i.test(x))) return true;
   return false;
+}
+
+/** Enemy Regiments in base contact with this one (no dependency on actions.ts). */
+export function enemiesTouching(s: GameState, r: RegimentState): RegimentState[] {
+  if (r.location !== 'table') return [];
+  const mine = regimentPolys(s, r);
+  return onTableRegiments(s).filter((e) => e.owner !== r.owner && distancePolys(mine, regimentPolys(s, e)) <= TOL);
 }

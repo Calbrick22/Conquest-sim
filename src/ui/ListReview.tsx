@@ -4,6 +4,7 @@ import { allEntries } from '../import/parseList';
 import { CHARACTERISTIC_KEYS, type ArmyList, type ListEntry, type RuleRef } from '../import/types';
 import { parseStrainText } from '../import/strains';
 import { parseRuleList } from '../import/ruleTokens';
+import { SPIRES_STRAINS } from '../engine/factions/spires';
 
 /** Review and correct a parsed list before saving or playing with it. */
 export function ListReview({ list, onChange }: { list: ArmyList; onChange: (l: ArmyList) => void }) {
@@ -225,7 +226,12 @@ function EntryEditor({
           <label className="field" data-testid={`strain-${entry.name}`}>
             Strain ability{' '}
             <span className="meta">(not in the export: type it from your faction book, e.g. “+1 Clash, Flurry” or “enemy -1 Clash”)</span>
-            {!strain && <span className="badge manual">not entered: Strain Expression gives only Decay</span>}
+            {!strain && SPIRES_STRAINS[entry.name] && (
+              <span className="badge auto">
+                built in: {SPIRES_STRAINS[entry.name]!.name} ({[...SPIRES_STRAINS[entry.name]!.rules, ...Object.entries(SPIRES_STRAINS[entry.name]!.stats ?? {}).map(([k, v]) => `${k}+${v}`)].join(', ')}); type here only to change it
+              </span>
+            )}
+            {!strain && !SPIRES_STRAINS[entry.name] && <span className="badge manual">not entered: Strain Expression gives only Decay</span>}
             <input className="grow" value={strain} onChange={(e) => onStrain(e.target.value)} placeholder="+1 Clash, Flurry, enemy -1 Clash" />
             {strain && (
               <span className="meta">
