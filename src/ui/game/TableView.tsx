@@ -38,7 +38,7 @@ interface Props {
   onDragEnd?: () => void;
   dragging: boolean;
   /** HTML callouts anchored at table coordinates (null = top of the table). */
-  overlays?: { id: string; at: Vec | null; node: ReactNode; className?: string }[];
+  overlays?: { id: string; at: Vec | null; node: ReactNode; className?: string; clear?: number }[];
   /** Shaded areas drawn under the Regiments (e.g. Charge reach, enemy threat ranges). */
   areas?: { points: Vec[]; cls: string; label?: string; labelAt?: Vec }[];
   /** Extra measurement lines (e.g. Volley ranges). */
@@ -343,12 +343,15 @@ export function TableView(props: Props) {
         const pos = o.at ? toPx(o.at) : null;
         // Below the anchor when it is in the top half of the table, above it otherwise.
         const below = !pos || pos.y < size.h / 2;
-        const room = pos ? (below ? size.h - pos.y - 20 : pos.y - 20) : size.h - 16;
+        // Keep clear of the anchored Regiment (`clear` inches from its centre).
+        const k = Math.min(size.w / view.w, size.h / view.h) || 0;
+        const gap = Math.max(14, (o.clear ?? 0) * k + 6);
+        const room = pos ? (below ? size.h - pos.y - gap - 6 : pos.y - gap - 6) : size.h - 16;
         const left = pos ? Math.max(4, Math.min(size.w - Math.min(260, size.w - 8) - 4, pos.x - 130)) : 8;
         const style = pos
           ? below
-            ? { left, top: pos.y + 14, maxHeight: Math.max(110, room) }
-            : { left, bottom: size.h - pos.y + 14, maxHeight: Math.max(110, room) }
+            ? { left, top: pos.y + gap, maxHeight: Math.max(110, room) }
+            : { left, bottom: size.h - pos.y + gap, maxHeight: Math.max(110, room) }
           : { left: 8, top: 8, maxHeight: size.h - 16 };
         return (
           <div key={o.id} className={o.className ?? 'callout'} style={o.className ? { left: pos ? pos.x : 8, top: pos ? pos.y : 8 } : style} onPointerDown={(e) => e.stopPropagation()}>

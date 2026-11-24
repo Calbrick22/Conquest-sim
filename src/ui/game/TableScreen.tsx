@@ -547,7 +547,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
     const r = id ? s.regiments[id] : undefined;
     return r && r.location === 'table' ? footprint(formationInput(s, r)).c : null;
   };
-  const overlays: { id: string; at: Vec | null; node: React.ReactNode; className?: string }[] = [];
+  const overlays: { id: string; at: Vec | null; node: React.ReactNode; className?: string; clear?: number }[] = [];
   const last = session.last;
   const showAction = !!last && showsCallout(last.action.type, last.events) && (needsAck || closedCallout !== session.actions.length);
   if (showAction && last) {
@@ -572,7 +572,8 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
       overlays.push({ id: `pv-${p.targetId}`, at: footprint(formationInput(s, t)).c, className: 'preview-badge', node: <PreviewBadge p={p} /> });
     }
   } else if (sel && showUnit && mode === 'select' && sel.location === 'table') {
-    overlays.push({ id: 'unit', at: footprint(formationInput(s, sel)).c, node: <UnitCallout s={s} r={sel} onClose={() => setShowUnit(false)} /> });
+    const fpSel = footprint(formationInput(s, sel));
+    overlays.push({ id: 'unit', at: fpSel.c, clear: Math.hypot(fpSel.halfWidth, fpSel.halfDepth), node: <UnitCallout s={s} r={sel} onClose={() => setShowUnit(false)} /> });
   }
   const stackPlayer = (['P1', 'P2'] as const).find((p) => !s.players[p].stackSet && p !== (paused ? null : aiPlayer) && decisionMaker(s) === p);
 

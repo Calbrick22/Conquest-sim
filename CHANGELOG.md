@@ -13,6 +13,10 @@
 - **Charge reach** (2.2): the Reach button (also on automatically while choosing a Charge target) shades the selected Regiment's front arc out to the distance it always reaches, the furthest it reaches at least half the time, and its maximum, each labelled with its chance (core p.13–14, p.31).
 - **Threats** shades how far each enemy Regiment could Charge; those that have already Activated are drawn faintly.
 
+### Changed
+- The table's buttons (panels, icons, turn, zoom) now sit in a strip below the table instead of over its bottom corner, so they never cover a Regiment.
+- A unit's info card keeps clear of the whole unit, not just its centre.
+
 ## [1.6.0] - 2026-11-24 (Stand icons)
 
 ### Added

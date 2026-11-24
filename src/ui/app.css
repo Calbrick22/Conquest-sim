@@ -215,3 +215,5 @@ select, input, textarea { max-width: 100%; }
 .map .area.reach text { font-size: 0.9px; font-weight: 700; fill: #14532d; paint-order: stroke; stroke: #fff; stroke-width: 0.2px; }
 .map .area.threat polygon { fill: #b91c1c; fill-opacity: 0.1; stroke: #b91c1c; stroke-opacity: 0.6; stroke-dasharray: 0.5 0.3; }
 .map .area.threat.spent polygon { fill-opacity: 0.03; stroke-opacity: 0.25; }
+/* Table buttons sit in a strip below the table, so they never cover a Regiment. */
+.table-wrap .zoom { position: static; justify-content: flex-end; flex-wrap: wrap; padding: 4px 6px; border-top: 1px solid var(--line); }

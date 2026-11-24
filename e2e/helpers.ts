@@ -29,8 +29,10 @@ export async function playActions(page: Page, special?: (name: string) => Promis
 }
 
 
-/** Closes a finished on-table action callout, if one is showing. */
+/** Closes a finished on-table action callout and any unit card, if showing. */
 export async function closeCallout(page: Page) {
-  const c = page.getByTestId('action-callout').getByRole('button', { name: 'Close' });
-  if (await c.isVisible().catch(() => false)) await c.click();
+  for (const id of ['action-callout', 'unit-callout']) {
+    const c = page.getByTestId(id).getByRole('button', { name: 'Close' });
+    if (await c.isVisible().catch(() => false)) await c.click();
+  }
 }
