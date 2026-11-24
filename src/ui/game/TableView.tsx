@@ -38,7 +38,9 @@ interface Props {
   onDragEnd?: () => void;
   dragging: boolean;
   /** HTML callouts anchored at table coordinates (null = top of the table). */
-  overlays?: { id: string; at: Vec | null; node: ReactNode }[];
+  overlays?: { id: string; at: Vec | null; node: ReactNode; className?: string }[];
+  /** Shaded areas drawn under the Regiments (e.g. Charge reach, enemy threat ranges). */
+  areas?: { points: Vec[]; cls: string; label?: string; labelAt?: Vec }[];
   /** Extra measurement lines (e.g. Volley ranges). */
   lines?: { a: Vec; b: Vec; cls: string; label?: string }[];
   /** Fixed HTML (e.g. the Command deck) drawn over the bottom of the table. */
@@ -238,6 +240,16 @@ export function TableView(props: Props) {
             <line key={i} y1={seg.edge === 'bottom' ? H : 0} y2={seg.edge === 'bottom' ? H : 0} x1={seg.from} x2={seg.to} className="noreinf" />
           );
         })}
+        {props.areas?.map((a, i) => (
+          <g key={`ar${i}`} className={`area ${a.cls}`} pointerEvents="none">
+            <polygon points={a.points.map((q) => `${q.x},${fy(q.y)}`).join(' ')} />
+            {a.label && a.labelAt && (
+              <text x={a.labelAt.x} y={fy(a.labelAt.y)} {...upright(a.labelAt.x, fy(a.labelAt.y))}>
+                {a.label}
+              </text>
+            )}
+          </g>
+        ))}
         {props.highlightEdges?.map((h, i) => (
           <line key={`he${i}`} x1={h.a.x} y1={fy(h.a.y)} x2={h.b.x} y2={fy(h.b.y)} className={h.ok ? 'entry-ok' : 'entry-bad'} />
         ))}
@@ -339,7 +351,7 @@ export function TableView(props: Props) {
             : { left, bottom: size.h - pos.y + 14, maxHeight: Math.max(110, room) }
           : { left: 8, top: 8, maxHeight: size.h - 16 };
         return (
-          <div key={o.id} className="callout" style={style} onPointerDown={(e) => e.stopPropagation()}>
+          <div key={o.id} className={o.className ?? 'callout'} style={o.className ? { left: pos ? pos.x : 8, top: pos ? pos.y : 8 } : style} onPointerDown={(e) => e.stopPropagation()}>
             {o.node}
           </div>
         );

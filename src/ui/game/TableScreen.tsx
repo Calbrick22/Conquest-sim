@@ -36,6 +36,9 @@ import { OdActivation, PowerBar } from './OldDominionPanel';
 import { isOdDrawEvent } from '../../engine/factions/oldDominionActions';
 import { canInduceAggression, strainFor } from '../../engine/factions/spires';
 import { PractitionerButtons } from './SpiresPanel';
+import { usePreviews } from './usePreviews';
+import { chargeBands, frontReachPolygon, maxReach } from '../../engine/reach';
+import type { OutcomePreview } from '../../engine/preview';
 import { volleyAimed, volleyLines } from '../../engine/actions';
 import { decisionMaker } from '../../ai/ai';
 
@@ -85,6 +88,9 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
   const [targetKind, setTargetKind] = useState<TargetKind>('charge');
   const [crFiles, setCrFiles] = useState(2);
   const [withdrawTurn, setWithdrawTurn] = useState(true);
+  // Roadmap 2.2: the selected Regiment's Charge reach, and enemy threat ranges.
+  const [showReach, setShowReach] = useState(false);
+  const [showThreats, setShowThreats] = useState(false);
 
   // With nothing selected, the active Regiment is shown (e.g. after an Entourage Activation).
   const sel: RegimentState | null = selectedId ? (s.regiments[selectedId] ?? null) : s.activation ? (s.regiments[s.activation.regimentId] ?? null) : null;
@@ -188,6 +194,39 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
     }
     return null;
   }, [s, sel, mode, moves, entry, reform, overridePose, withdrawTurn]);
+
+  // Outcome previews for each legal target while choosing a Charge, Volley or Clash (roadmap 2.1).
+  const previewKind = mode === 'target' && sel && s.activation?.regimentId === sel.id && (targetKind === 'charge' || targetKind === 'volley' || targetKind === 'clash') ? targetKind : null;
+  const { previews, busy: previewBusy } = usePreviews(s, previewKind, previewKind ? sel!.id : null);
+
+  const areas = useMemo(() => {
+    const out: { points: Vec[]; cls: string; label?: string; labelAt?: Vec }[] = [];
+    const reachOf = sel && sel.location === 'table' && (showReach || (mode === 'target' && targetKind === 'charge')) ? sel : null;
+    if (showThreats) {
+      // "Enemy" is seen from the side that is acting (or selected); against the computer, always yours.
+      const human = aiPlayer ? (aiPlayer === 'P1' ? 'P2' : 'P1') : null;
+      const me = human ?? (s.activation ? s.regiments[s.activation.regimentId]?.owner : undefined) ?? sel?.owner ?? 'P1';
+      for (const e of Object.values(s.regiments)) {
+        if (e.location !== 'table' || e.owner === me) continue;
+        const d = maxReach(s, e);
+        out.push({ points: frontReachPolygon(s, e, d), cls: `threat ${e.activatedThisRound ? 'spent' : ''}` });
+      }
+    }
+    if (reachOf) {
+      const bands = chargeBands(s, reachOf);
+      const fp = footprint(formationInput(s, reachOf));
+      const fwd = { x: Math.cos(reachOf.pose.angle), y: Math.sin(reachOf.pose.angle) };
+      const right = { x: Math.sin(reachOf.pose.angle), y: -Math.cos(reachOf.pose.angle) };
+      [...bands].reverse().forEach((b, i) => {
+        // Labels sit just inside each band's outer edge, spread sideways so close bands stay readable.
+        const k = bands.length - 1 - i;
+        const side = (k - (bands.length - 1) / 2) * Math.min(fp.halfWidth, 2.5);
+        const at = { x: fp.c.x + fwd.x * (fp.halfDepth + b.d - 0.6) + right.x * side, y: fp.c.y + fwd.y * (fp.halfDepth + b.d - 0.6) + right.y * side };
+        out.push({ points: frontReachPolygon(s, reachOf, b.d), cls: `reach band${bands.length - 1 - i}`, label: `${Math.round(b.d * 10) / 10}″ ${Math.round(b.p * 100)}%`, labelAt: at });
+      });
+    }
+    return out;
+  }, [s, sel, showReach, showThreats, mode, targetKind, aiPlayer]);
 
   const draftProblems = draft && mode !== 'override' && mode !== 'withdraw' ? validate(s, draft.action) : null;
 
@@ -508,7 +547,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
     const r = id ? s.regiments[id] : undefined;
     return r && r.location === 'table' ? footprint(formationInput(s, r)).c : null;
   };
-  const overlays: { id: string; at: Vec | null; node: React.ReactNode }[] = [];
+  const overlays: { id: string; at: Vec | null; node: React.ReactNode; className?: string }[] = [];
   const last = session.last;
   const showAction = !!last && showsCallout(last.action.type, last.events) && (needsAck || closedCallout !== session.actions.length);
   if (showAction && last) {
@@ -526,6 +565,12 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
         />
       ),
     });
+  } else if (previewKind) {
+    for (const p of previews) {
+      const t = s.regiments[p.targetId];
+      if (t?.location !== 'table') continue;
+      overlays.push({ id: `pv-${p.targetId}`, at: footprint(formationInput(s, t)).c, className: 'preview-badge', node: <PreviewBadge p={p} /> });
+    }
   } else if (sel && showUnit && mode === 'select' && sel.location === 'table') {
     overlays.push({ id: 'unit', at: footprint(formationInput(s, sel)).c, node: <UnitCallout s={s} r={sel} onClose={() => setShowUnit(false)} /> });
   }
@@ -550,6 +595,12 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
         <div className="actions">
           <button type="button" className={`secondary small ${mode === 'ruler' ? 'on' : ''}`} onClick={() => { resetModes(); setRuler(null); setMode(mode === 'ruler' ? 'select' : 'ruler'); }} data-testid="ruler">
             Ruler
+          </button>
+          <button type="button" className={`secondary small ${showReach ? 'on' : ''}`} onClick={() => setShowReach(!showReach)} title="Charge reach of the selected Regiment, with the chance of each distance" data-testid="reach">
+            Reach
+          </button>
+          <button type="button" className={`secondary small ${showThreats ? 'on' : ''}`} onClick={() => setShowThreats(!showThreats)} title="How far each enemy Regiment could Charge" data-testid="threats">
+            Threats
           </button>
           {aiPlayer && (
             <button type="button" className={`secondary small ${paused ? 'on' : ''}`} onClick={() => setPaused(!paused)} data-testid="pause-ai">
@@ -578,6 +629,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
         onDrag={onDrag}
         onDragEnd={() => setDrag(null)}
         dragging={!!drag}
+        areas={areas}
         lines={mode === 'target' && targetKind === 'volley' && sel ? volleyLines(s, sel).map((l) => ({ a: l.a, b: l.b, cls: l.kind, ...(l.label ? { label: l.label } : {}) })) : undefined}
         overlays={overlays}
       >
@@ -604,9 +656,23 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
         </div>
       )}
       {mode === 'target' && (
-        <div className="card info">
-          Tap the enemy Regiment{s.round >= s.scenario.objectivesFromRound && s.scenario.markers.length ? ' or enemy Objective Marker' : ''} to {targetKind}.{' '}
+        <div className="card info" data-testid="target-card">
+          Tap the enemy Regiment{s.round >= s.scenario.objectivesFromRound && s.scenario.markers.length ? ' or enemy Objective Marker' : ''} to {targetKind}, or pick it below.{' '}
           <button type="button" className="secondary small" onClick={resetModes}>Cancel</button>
+          {previewKind && (
+            <div className="preview-list" data-testid="previews">
+              {previewBusy && <p className="meta">Working out the odds…</p>}
+              {!previewBusy && previews.length === 0 && <p className="meta">No legal target.</p>}
+              {[...previews]
+                .sort((a, b) => b.pSuccess * b.wounds - a.pSuccess * a.wounds)
+                .map((p) => (
+                  <button key={p.targetId} type="button" className="secondary preview-row" onClick={() => { if (run({ type: previewKind, regimentId: sel!.id, targetId: p.targetId })) setMode('select'); }}>
+                    <strong>{s.regiments[p.targetId]!.name}</strong> <PreviewText p={p} />
+                  </button>
+                ))}
+              <p className="meta">Averages of {previews[0]?.samples ?? 200} simulated rolls with every rule applied; Wounds include Morale. Nothing is rolled until you choose.</p>
+            </div>
+          )}
         </div>
       )}
       {s.pendingCharge && mode !== 'placeCharge' && (
@@ -874,4 +940,29 @@ function closestPoints(a: readonly (readonly Vec[])[], b: readonly (readonly Vec
     }
   }
   return best;
+}
+
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+
+/** One line of odds for a target (roadmap 2.1). */
+function PreviewText({ p }: { p: OutcomePreview }) {
+  return (
+    <span className="meta">
+      {p.kind === 'charge' && <>Charge {pct(p.pSuccess)} · </>}
+      {p.unplaceable ? 'cannot be placed automatically' : <>~{p.wounds.toFixed(1)} Wounds ({p.stands.toFixed(1)} Stands)</>}
+      {p.pBreak > 0.005 && <> · Break {pct(p.pBreak)}</>}
+      {p.pDestroy > 0.005 && <> · destroy {pct(p.pDestroy)}</>}
+      {p.woundsBack > 0.05 && <> · back ~{p.woundsBack.toFixed(1)}</>}
+    </span>
+  );
+}
+
+/** Small odds badge drawn on a target while choosing it. */
+function PreviewBadge({ p }: { p: OutcomePreview }) {
+  return (
+    <div data-testid={`preview-${p.targetId}`}>
+      {p.kind === 'charge' && <div><strong>{pct(p.pSuccess)}</strong> charge</div>}
+      <div>~{p.wounds.toFixed(1)} W{p.pBreak > 0.005 ? ` · ${pct(p.pBreak)} Break` : ''}</div>
+    </div>
+  );
 }

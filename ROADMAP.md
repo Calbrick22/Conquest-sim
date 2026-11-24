@@ -19,8 +19,8 @@ This roadmap follows the MVP. It is ranked by **value to a player who uses the a
 
 | # | Item | Why it matters | Size |
 |---|---|---|---|
-| 2.1 | **Probability previews:** before rolling, show the expected Hits, Wounds and Morale outcome, and the chance to Break the target. | Shows whether a Charge or Volley is worth it. | S |
-| 2.2 | **Charge reach overlay:** the March + 2 to 12 reach as coloured bands from the front arc, with the chance for each band, and the enemy's threat ranges. | Positioning is where games are won. | S–M |
+| 2.1 | ✅ *(v1.7.0)* **Probability previews:** before rolling, show the expected Hits, Wounds and Morale outcome, and the chance to Break the target. | Shows whether a Charge or Volley is worth it. | S |
+| 2.2 | ✅ *(v1.7.0)* **Charge reach overlay:** the March + 2 to 12 reach as coloured bands from the front arc, with the chance for each band, and the enemy's threat ranges. | Positioning is where games are won. | S–M |
 | 2.3 | **Replay viewer:** step through a saved game action by action, branch from any point ("what if I had charged instead"), and compare scores. | Reviewing your real games is a stated goal. | M |
 | 2.4 | **Import a real game:** enter a game you played (positions per Round, or a typed log) and replay it on the table. | Turns the app into a review notebook for tournament games. | M |
 | 2.5 | **Core rulebook scenarios** (Head to Head, Breakthrough, Maelstrom, Pincer Attack) and Secondary Objectives. | More variety for casual practice. | S–M |

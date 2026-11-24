@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.0] - 2026-11-24 (roadmap 2.1 and 2.2: odds and reach)
+
+### Added
+- **Odds before you roll** (2.1): choosing a Charge, Volley or Clash target shows, for every legal target, a badge on the table and a list. The list shows:
+  - the Charge success chance;
+  - the expected Wounds and Stands (Morale included);
+  - the chance to Break or destroy the target;
+  - the Wounds you would take back.
+
+  The odds come from replaying the Action a few hundred times through the real engine, so every special rule counts. It runs in a background worker, and nothing is rolled until you choose. The Charge chance is worked out exactly (die or best of 2D6, Unstoppable or Standard Bearer re-roll, Marked, Juggernaut, Phalanx). Tap a row to make the Action.
+- **Charge reach** (2.2): the Reach button (also on automatically while choosing a Charge target) shades the selected Regiment's front arc out to the distance it always reaches, the furthest it reaches at least half the time, and its maximum, each labelled with its chance (core p.13–14, p.31).
+- **Threats** shades how far each enemy Regiment could Charge; those that have already Activated are drawn faintly.
+
 ## [1.6.0] - 2026-11-24 (Stand icons)
 
 ### Added

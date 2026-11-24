@@ -324,6 +324,17 @@ export function takeBlessed(r: RegimentState): boolean {
  * (core p.99). Phalanx: always March + 3″ (core p.100). Designate Target: +2″ against a Marked
  * enemy (Spires rule text).
  */
+/**
+ * How the Charge die is rolled: 2D6 keeping the highest (Master of the Legions, Endocrine
+ * Overstimulation), and whether a failed Charge may be re-rolled (Unstoppable or a Standard Bearer,
+ * core p.69, p.101; not against Induce Lethargy, sp p.16).
+ */
+export function chargeDice(s: GameState, r: RegimentState, t: RegimentState): { twoDice: boolean; reroll: boolean } {
+  const unstoppable = hasRule(r.rules, 'Unstoppable') || (r.commandModels.includes('Standard Bearer') && r.stands.some((x) => x.isCommand));
+  const lethargy = !!attachedCharacter(s, t.id)?.options.some((o) => o.toLowerCase() === 'induce lethargy');
+  return { twoDice: !!r.flags.charge2d6 || endocrine(s, r), reroll: unstoppable && !lethargy };
+}
+
 /** Endocrine Overstimulation (sp p.17): friendly Regiments within 8″ of that Character roll 2D6 for Charge Distance, keeping the highest. */
 function endocrine(s: GameState, r: RegimentState): boolean {
   return Object.values(s.characters).some((c) => {
@@ -374,7 +385,8 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
     total = rule.fixed;
     notes.push(hasRule(r.rules, 'Juggernaut') ? 'Juggernaut: March + 5″ (core p.99)' : 'Phalanx: March + 3″ (core p.100)');
   } else {
-    if (r.flags.charge2d6 || endocrine(s, r)) {
+    const dice = chargeDice(s, r, t);
+    if (dice.twoDice) {
       // Master of the Legions (Strategos, od p.9): 2D6, keep the highest.
       const [a, b] = rollN(ctx, 2) as [number, number];
       die = Math.max(a, b);
@@ -384,9 +396,7 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
     if (xb) markOnce(s, r.owner, 'obdurate');
     notes.push(`Charge Distance = die + March ${M}${rule.bonus ? ` + ${rule.bonus} (${[t.flags.marked ? 'Marked' : '', xb ? 'Obdurate Bone and Stone' : ''].filter(Boolean).join(', ')})` : ''}; need ${d.toFixed(2)}″`);
     total = die + M + rule.bonus;
-    const unstoppable = hasRule(r.rules, 'Unstoppable') || (r.commandModels.includes('Standard Bearer') && r.stands.some((x) => x.isCommand));
-    const lethargy = !!attachedCharacter(s, t.id)?.options.some((o) => o.toLowerCase() === 'induce lethargy');
-    if (total < d - TOL && unstoppable && !lethargy) {
+    if (total < d - TOL && dice.reroll) {
       const first = die;
       [die] = rollN(ctx, 1) as [number];
       total = die + M + rule.bonus;
