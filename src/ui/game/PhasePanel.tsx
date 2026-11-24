@@ -1,23 +1,23 @@
 import { useState } from 'react';
 import type { Action } from '../../engine/game';
-import type { CommandCard, GameState, PlayerId } from '../../engine/model/types';
-import { cardTargets, defaultStackOrder, reinforcementChoices, reinforcementNeed, reserveRegiments } from '../../engine/round';
+import type { GameState, PlayerId } from '../../engine/model/types';
+import { flankChoices, reinforcementChoices, reinforcementNeed, reserveRegiments } from '../../engine/round';
 import { zoneResults } from '../../engine/scoring/victory';
 import { decisionMaker } from '../../ai/ai';
 
 const PLAYERS: PlayerId[] = ['P1', 'P2'];
 
 /** Round sequence controls: Reinforcements, Command Stacks, Supremacy, card draws, Victory Phase. */
-export function PhasePanel({ s, dispatch, onSelect, aiPlayer }: { s: GameState; dispatch: (a: Action) => boolean; onSelect: (id: string) => void; aiPlayer?: PlayerId | null }) {
+export function PhasePanel({ s, dispatch, aiPlayer }: { s: GameState; dispatch: (a: Action) => boolean; aiPlayer?: PlayerId | null }) {
   if (s.phase !== 'play') return null;
   const who = decisionMaker(s);
   if (aiPlayer && who === aiPlayer) return <div className="card phase-panel meta" data-testid="phase-panel">Waiting for the computer ({aiPlayer})…</div>;
   return (
     <div className="card phase-panel" data-testid="phase-panel">
       {s.step === 'reinforcement' && <Reinforcements s={s} dispatch={dispatch} ai={aiPlayer ?? null} />}
-      {s.step === 'command' && <Stacks s={s} dispatch={dispatch} ai={aiPlayer ?? null} />}
+      {s.step === 'command' && <Stacks s={s} ai={aiPlayer ?? null} />}
       {s.step === 'supremacy' && <Supremacy s={s} dispatch={dispatch} />}
-      {s.step === 'action' && <Draw s={s} dispatch={dispatch} onSelect={onSelect} />}
+      {s.step === 'action' && <Draw s={s} />}
       {s.step === 'victory' && (
         <>
           <h3>Victory Phase</h3>
@@ -33,51 +33,80 @@ export function PhasePanel({ s, dispatch, onSelect, aiPlayer }: { s: GameState; 
 }
 
 function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Action) => boolean; ai: PlayerId | null }) {
-  const [choice, setChoice] = useState<Record<PlayerId, string>>({ P1: '', P2: '' });
+  const [auto, setAuto] = useState<Record<PlayerId, string | null>>({ P1: null, P2: null });
+  const [flankStay, setFlankStay] = useState<Record<string, boolean>>({});
+  const needText = (cls: 'Light' | 'Medium' | 'Heavy') => {
+    const n = reinforcementNeed(s.round, cls);
+    return n === null ? 'not yet' : n === 'auto' ? 'arrives' : `rolls ${n} or less`;
+  };
   return (
     <>
-      <h3>Round {s.round}: Reinforcement Phase</h3>
-      <p className="meta">Pick up to one Regiment to arrive automatically, or to stay back, then roll for the rest (core p.21).</p>
+      <h3>Round {s.round}: Reinforcements</h3>
+      <p className="meta">
+        Light {needText('Light')} · Medium {needText('Medium')} · Heavy {needText('Heavy')} (core p.21). Tap one Regiment to bring it on automatically; the rest roll.
+      </p>
       {PLAYERS.map((p) => {
-        const done = s.players[p].reinforcementDone;
-        const choices = reinforcementChoices(s, p);
+        if (s.players[p].reinforcementDone) return <p key={p}><strong>{p}</strong> <span className="meta">done</span></p>;
+        if (p === ai) return <p key={p}><strong>{p}</strong> <span className="meta">the computer will choose</span></p>;
         const reserve = reserveRegiments(s, p);
+        const eligible = new Set(reinforcementChoices(s, p).map((r) => r.id));
+        const flank = new Set(flankChoices(s, p).map((r) => r.id));
         return (
-          <div key={p} className="phase-row">
-            <strong>{p}</strong>{' '}
-            {done ? (
-              <span className="meta">done</span>
-            ) : p === ai ? (
-              <span className="meta">the computer will choose</span>
-            ) : reserve.length === 0 ? (
-              <button type="button" className="small" onClick={() => dispatch({ type: 'reinforcements', player: p, choice: null })} data-testid={`reinforce-${p}`}>
-                Nothing in Reinforcements: continue
-              </button>
-            ) : (
-              <>
-                <select value={choice[p]} onChange={(e) => setChoice({ ...choice, [p]: e.target.value })} data-testid={`reinforce-choice-${p}`}>
-                  <option value="">No choice: roll for all</option>
-                  {choices.map((r) => {
-                    const need = reinforcementNeed(s.round, r.cls);
-                    return [
-                      <option key={`${r.id}:a`} value={`${r.id}:arrive`}>{r.name} ({r.cls}) arrives</option>,
-                      need !== 'auto' ? <option key={`${r.id}:s`} value={`${r.id}:stay`}>{r.name} ({r.cls}) stays</option> : null,
-                    ];
-                  })}
-                </select>{' '}
-                <button
-                  type="button"
-                  className="small"
-                  onClick={() => {
-                    const [id, what] = choice[p].split(':');
-                    dispatch({ type: 'reinforcements', player: p, choice: id ? { regimentId: id, arrive: what === 'arrive' } : null });
-                  }}
-                  data-testid={`reinforce-${p}`}
-                >
-                  Roll Reinforcements
-                </button>
-              </>
-            )}
+          <div key={p} className="reinf">
+            <strong>{p}</strong>
+            <ul className="plain">
+              {reserve.map((r) => {
+                const need = reinforcementNeed(s.round, r.cls);
+                const isAuto = auto[p] === r.id;
+                const isFlank = flank.has(r.id);
+                const canPick = eligible.has(r.id) && need !== 'auto' && !r.flags.autoArrive && !isFlank;
+                const status = r.flags.autoArrive
+                  ? 'arrives (failed to enter last Round)'
+                  : isFlank
+                    ? need === 'auto' ? 'Flank: arrives' : flankStay[r.id] ? 'Flank: stays back' : 'Flank: arrives (no roll)'
+                    : need === null
+                      ? 'not this Round'
+                      : need === 'auto'
+                        ? 'arrives automatically'
+                        : isAuto
+                          ? 'brought on automatically ★'
+                          : `rolls ${need} or less`;
+                return (
+                  <li key={r.id} className={`reinf-row ${isAuto ? 'chosen' : ''}`}>
+                    <span>
+                      {r.name} <span className="meta">{r.cls}</span>
+                    </span>
+                    <span className="meta">{status}</span>
+                    {canPick && (
+                      <button type="button" className={`small ${isAuto ? '' : 'secondary'}`} onClick={() => setAuto({ ...auto, [p]: isAuto ? null : r.id })} data-testid={`auto-${r.id}`}>
+                        {isAuto ? '★ Auto' : 'Bring on'}
+                      </button>
+                    )}
+                    {isFlank && need !== 'auto' && (
+                      <button type="button" className="secondary small" onClick={() => setFlankStay({ ...flankStay, [r.id]: !flankStay[r.id] })} data-testid={`flank-${r.id}`}>
+                        {flankStay[r.id] ? 'Arrive' : 'Stay back'}
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+              {reserve.length === 0 && <li className="meta">Nothing in Reinforcements.</li>}
+            </ul>
+            <button
+              type="button"
+              className="small"
+              onClick={() =>
+                dispatch({
+                  type: 'reinforcements',
+                  player: p,
+                  choice: auto[p] ? { regimentId: auto[p]!, arrive: true } : null,
+                  flank: Object.fromEntries([...flank].map((id) => [id, !flankStay[id]])),
+                })
+              }
+              data-testid={`reinforce-${p}`}
+            >
+              {reserve.length ? 'Roll Reinforcements' : 'Continue'}
+            </button>
           </div>
         );
       })}
@@ -85,51 +114,18 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
   );
 }
 
-function Stacks({ s, dispatch, ai }: { s: GameState; dispatch: (a: Action) => boolean; ai: PlayerId | null }) {
+function Stacks({ s, ai }: { s: GameState; ai: PlayerId | null }) {
   return (
     <>
       <h3>Command Phase</h3>
-      <p className="meta">Order each Command Stack, top card first (core p.21). Characters sit just above their Regiment by default, so an Entourage Activation is possible.</p>
-      {PLAYERS.map((p) =>
-        s.players[p].stackSet || p === ai ? (
-          <p key={p}>
-            <strong>{p}</strong> <span className="meta">{s.players[p].stackSet ? `stack set (${s.players[p].stack.length} cards, hidden)` : 'the computer is ordering its stack'}</span>
-          </p>
-        ) : (
-          <StackEditor key={p} s={s} p={p} dispatch={dispatch} />
-        ),
-      )}
+      <p className="meta">Arrange your Command Cards on the table (top card first), then press Ready (core p.21).</p>
+      {PLAYERS.map((p) => (
+        <p key={p}>
+          <strong>{p}</strong>{' '}
+          <span className="meta">{s.players[p].stackSet ? `ready (${s.players[p].stack.length} cards, hidden)` : p === ai ? 'the computer is ordering its stack' : 'arranging…'}</span>
+        </p>
+      ))}
     </>
-  );
-}
-
-function StackEditor({ s, p, dispatch }: { s: GameState; p: PlayerId; dispatch: (a: Action) => boolean }) {
-  const [order, setOrder] = useState<CommandCard[]>(() => defaultStackOrder(s, p));
-  const move = (i: number, d: number) => {
-    const j = i + d;
-    if (j < 0 || j >= order.length) return;
-    const o = [...order];
-    [o[i], o[j]] = [o[j]!, o[i]!];
-    setOrder(o);
-  };
-  return (
-    <div className="stack-editor">
-      <strong>{p}</strong>
-      <ol>
-        {order.map((c, i) => (
-          <li key={c.id}>
-            {c.name}
-            {c.kind === 'character' ? ' (Character)' : ''}{' '}
-            <button type="button" className="secondary small" onClick={() => move(i, -1)} aria-label="Up">↑</button>
-            <button type="button" className="secondary small" onClick={() => move(i, 1)} aria-label="Down">↓</button>
-          </li>
-        ))}
-      </ol>
-      {order.length === 0 && <p className="meta">No cards this Round.</p>}
-      <button type="button" className="small" onClick={() => dispatch({ type: 'setStack', player: p, order: order.map((c) => c.id) })} data-testid={`stack-${p}`}>
-        Confirm {p} stack
-      </button>
-    </div>
   );
 }
 
@@ -172,62 +168,14 @@ function Supremacy({ s, dispatch }: { s: GameState; dispatch: (a: Action) => boo
   );
 }
 
-function Draw({ s, dispatch, onSelect }: { s: GameState; dispatch: (a: Action) => boolean; onSelect: (id: string) => void }) {
+function Draw({ s }: { s: GameState }) {
   if (s.activation) return <p className="meta">Activation in progress. Cards left: P1 {s.players.P1.stack.length}, P2 {s.players.P2.stack.length}.</p>;
-  if (s.drawn) {
-    const { player, card } = s.drawn;
-    const targets = cardTargets(s, player, card);
-    return (
-      <>
-        <h3>
-          {player} drew {card.name}
-          {card.kind === 'character' ? ' (Character)' : ''}
-        </h3>
-        <div className="actions wrap">
-          {targets.map((id) =>
-            card.kind === 'character' ? (
-              <button
-                key={id}
-                type="button"
-                onClick={() => {
-                  const reg = s.characters[id]!.attachedTo;
-                  if (reg) onSelect(reg);
-                  dispatch({ type: 'activateCharacter', characterId: id });
-                }}
-                data-testid="activate-drawn"
-              >
-                Activate {s.characters[id]!.name}
-              </button>
-            ) : (
-              <button
-                key={id}
-                type="button"
-                onClick={() => {
-                  onSelect(id);
-                  dispatch({ type: 'activate', regimentId: id });
-                }}
-                data-testid="activate-drawn"
-              >
-                Activate {s.regiments[id]!.name}
-                {targets.length > 1 ? ` (${s.regiments[id]!.location})` : ''}
-              </button>
-            ),
-          )}
-        </div>
-      </>
-    );
-  }
   return (
     <>
       <h3>Action Phase</h3>
       <p className="meta">
-        First Player {s.firstPlayer}. Cards left: P1 {s.players.P1.stack.length}, P2 {s.players.P2.stack.length}.
+        First Player {s.firstPlayer}. {s.drawn ? `${s.drawn.player} drew ${s.drawn.card.name}.` : s.turn ? `${s.turn} draws next: tap the deck on the table.` : ''} Cards left: P1 {s.players.P1.stack.length}, P2 {s.players.P2.stack.length}.
       </p>
-      {s.turn && (
-        <button type="button" onClick={() => dispatch({ type: 'drawCard', player: s.turn! })} data-testid="draw-card">
-          {s.turn}: draw a Command Card
-        </button>
-      )}
     </>
   );
 }

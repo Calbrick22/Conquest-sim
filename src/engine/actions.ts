@@ -627,3 +627,49 @@ export function applyDuel(ctx: Ctx, c: CharacterState, target: CharacterState, a
     }
   }
 }
+
+export interface VolleyLine {
+  a: Vec;
+  b: Vec;
+  kind: 'range' | 'halfrange' | 'clear' | 'long' | 'blocked';
+  label?: string;
+}
+
+/**
+ * Lines for previewing a Volley (core p.38–39): from the centre of each front-rank Stand's front
+ * edge, its Barrage range straight ahead (with Effective Range marked), and a line to the closest
+ * point of each enemy in range: clear within Effective Range, clear beyond it, or Obstructed.
+ */
+export function volleyLines(s: GameState, r: RegimentState): VolleyLine[] {
+  const out: VolleyLine[] = [];
+  const c = attachedCharacter(s, r.id);
+  const fp = footprintOf(s, r);
+  const enemies = onTableRegiments(s).filter((e) => e.owner !== r.owner);
+  const obs = obstacles(s, [r.id]);
+  for (const sl of layout(formationInput(s, r)).filter((x) => x.rank === 0)) {
+    const b = barrageOf(sl.isCharacter && c ? c.rules : r.rules);
+    if (!b) continue;
+    const from = frontCentre(sl.rect);
+    const { forward } = poseFrame({ x: 0, y: 0, angle: r.pose.angle });
+    out.push({ a: from, b: add(from, scale(forward, b.range)), kind: 'range', label: `${b.range}″` });
+    out.push({ a: add(from, scale(forward, b.range / 2 - 0.15)), b: add(from, scale(forward, b.range / 2 + 0.15)), kind: 'halfrange' });
+    for (const e of enemies) {
+      const polys = regimentPolys(s, e);
+      if (!polys.some((p) => arcsOf(fp, p).includes('front'))) continue;
+      let best: Vec | null = null;
+      let bd = Infinity;
+      for (const p of polys) {
+        const q = closestPointOnPoly(from, p);
+        const d = dist(from, q);
+        if (d < bd) {
+          bd = d;
+          best = q;
+        }
+      }
+      if (!best || bd > b.range + TOL) continue;
+      const blocked = volleyLineObstructed(from, best, sizeOf(r), sizeOf(e), obs.filter((o) => !polys.includes(o.poly)));
+      out.push({ a: from, b: best, kind: blocked ? 'blocked' : bd < b.range / 2 ? 'clear' : 'long', label: `${bd.toFixed(1)}″` });
+    }
+  }
+  return out;
+}

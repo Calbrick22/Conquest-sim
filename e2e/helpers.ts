@@ -6,6 +6,7 @@ let entries = 0;
 export async function playActions(page: Page, special?: (name: string) => Promise<boolean>) {
   for (let i = 0; i < 30; i++) {
     if (await page.getByTestId('end-round').isVisible()) return;
+    await closeCallout(page);
     await page.getByTestId('draw-card').click();
     const btn = page.getByTestId('activate-drawn').first();
     const name = (await btn.innerText()).replace(/^Activate /, '');
@@ -27,3 +28,9 @@ export async function playActions(page: Page, special?: (name: string) => Promis
   }
 }
 
+
+/** Closes a finished on-table action callout, if one is showing. */
+export async function closeCallout(page: Page) {
+  const c = page.getByTestId('action-callout').getByRole('button', { name: 'Close' });
+  if (await c.isVisible().catch(() => false)) await c.click();
+}

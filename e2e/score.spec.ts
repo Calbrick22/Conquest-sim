@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { playActions } from './helpers';
+import { closeCallout, playActions } from './helpers';
 
 const fx = (n: string) => path.join(import.meta.dirname, '../src/import/__fixtures__', n);
 
@@ -37,7 +37,7 @@ test('import two lists, play Forlorn Hope, move a Regiment onto a zone, end the 
   await expect(page.getByTestId('score')).toHaveText('P1 0 – 0 P2');
 
   // Round 2: the Medium Glass Pikes arrive automatically and march on.
-  await page.getByTestId('reinforce-choice-P1').selectOption({ label: 'Glass Pikes (Medium) arrives' });
+  await page.getByTestId('auto-P1-w0-r0').click();
   await page.getByTestId('reinforce-P1').click();
   await page.getByTestId('reinforce-P2').click();
   await page.getByTestId('stack-P1').click();
@@ -47,6 +47,7 @@ test('import two lists, play Forlorn Hope, move a Regiment onto a zone, end the 
   await playActions(page);
 
   // Move the Pikes by hand into the 9″ zone at (24, 18) (logged as an override).
+  await closeCallout(page);
   await page.getByTestId('regiment-P1-w0-r0').click();
   await page.getByTestId('manual-tools').locator('summary').click();
   await page.getByRole('button', { name: 'Move by hand' }).click();

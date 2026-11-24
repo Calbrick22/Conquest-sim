@@ -11,7 +11,7 @@ test('a full Round: reinforcements, stacks, supremacy, draw, march on, end round
 
   // Reinforcement Phase: each side picks its Light Copper Slingers to arrive automatically.
   for (const p of ['P1', 'P2']) {
-    await page.getByTestId(`reinforce-choice-${p}`).selectOption({ label: 'Copper Slingers (Light) arrives' });
+    await page.getByTestId(`auto-${p}-w0-r1`).click();
     await page.getByTestId(`reinforce-${p}`).click();
   }
   await page.getByTestId('stack-P1').click();

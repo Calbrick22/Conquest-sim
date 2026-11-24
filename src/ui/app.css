@@ -135,3 +135,46 @@ input.grow { flex: 1; font: inherit; padding: 8px; min-height: 40px; border: 1px
 .card.result { border-color: var(--accent); }
 select, input, textarea { max-width: 100%; }
 .card { overflow-wrap: anywhere; }
+.callout { position: absolute; z-index: 5; width: 260px; max-width: calc(100% - 8px); max-height: 60%; overflow: auto; background: var(--card); color: var(--fg); border: 2px solid var(--accent); border-radius: 10px; padding: 8px 10px; font-size: 0.85rem; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); }
+.callout h4 { margin: 0 0 4px; font-size: 0.95rem; }
+.callout ul { margin: 4px 0; padding-left: 16px; }
+.callout .stats { max-width: none; margin: 4px 0; }
+.callout .stats td, .callout .stats th { text-align: center; padding: 1px 2px; }
+.callout .close { float: right; min-height: 28px; padding: 2px 8px; }
+.callout .dice { margin: 2px 0; gap: 4px; min-height: 0; }
+.callout .rules-line { font-size: 0.8rem; color: var(--muted); }
+.map .mline line { stroke-width: 0.15; }
+.map .mline text { font-size: 1.1px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 0.25px; fill: #111; }
+.map .mline.range line { stroke: #6b21a8; stroke-dasharray: 0.5 0.3; }
+.map .mline.halfrange line { stroke: #6b21a8; stroke-width: 0.3; }
+.map .mline.clear line { stroke: #15803d; }
+.map .mline.long line { stroke: #b45309; }
+.map .mline.blocked line { stroke: #b91c1c; stroke-dasharray: 0.3 0.3; }
+.deck-panel { position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 4; background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; }
+.deck-panel.draw { right: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; max-width: calc(100% - 140px); }
+.deck-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.cards { display: flex; gap: 6px; overflow-x: auto; padding: 6px 2px; }
+.ccard { flex: 0 0 auto; width: 74px; height: 100px; border-radius: 8px; border: 2px solid var(--fg); background: #fbf6ea; color: #2b2118; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 4px; font-size: 0.72rem; text-align: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); }
+.ccard .pos { font-weight: 700; font-size: 0.8rem; }
+.ccard .cname { font-weight: 600; line-height: 1.1; }
+.ccard .ckind { font-size: 0.65rem; color: #6b5d4f; }
+.ccard.character { background: #fff4d6; }
+.ccard.picked { transform: translateY(-6px); border-color: var(--accent); border-width: 3px; }
+.ccard.owner-P1 { border-color: #c0533f; }
+.ccard.owner-P2 { border-color: #3f67b5; }
+.ccard.back { background: repeating-linear-gradient(45deg, #2b2118, #2b2118 6px, #4a3a2a 6px, #4a3a2a 12px); color: #fff; cursor: pointer; }
+.ccard.back .ckind { color: #e9dcc6; }
+.reinf { padding: 4px 0 8px; border-bottom: 1px solid var(--line); }
+.reinf-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+.reinf-row.chosen { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.manual-rule { text-decoration: underline dotted; }
+.callout { max-height: none; }
+.deck-panel.draw { padding: 4px 6px; }
+.deck-panel.draw .ccard { width: 56px; height: 76px; font-size: 0.66rem; }
+@media (max-width: 700px) {
+  .callout { width: 230px; font-size: 0.78rem; padding: 6px 8px; }
+  .map.game { max-height: 55vh; }
+  .deck-panel.draw .meta { display: none; }
+  .ccard { width: 64px; height: 88px; }
+}
+.deck-panel { z-index: 6; }

@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as RPointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react';
 import { regimentPolys } from '../../engine/game';
 import { layout } from '../../engine/formation';
 import { mmToInches, OBJECTIVE_MARKER_BASE_MM } from '../../engine/geometry/bases';
@@ -36,6 +36,12 @@ interface Props {
   onDrag?: (p: Vec) => void;
   onDragEnd?: () => void;
   dragging: boolean;
+  /** HTML callouts anchored at table coordinates (null = top of the table). */
+  overlays?: { id: string; at: Vec | null; node: ReactNode }[];
+  /** Extra measurement lines (e.g. Volley ranges). */
+  lines?: { a: Vec; b: Vec; cls: string; label?: string }[];
+  /** Fixed HTML (e.g. the Command deck) drawn over the bottom of the table. */
+  children?: ReactNode;
 }
 
 const PAD = 4;
@@ -47,6 +53,21 @@ export function TableView(props: Props) {
   const fy = (y: number) => H - y;
   const [view, setView] = useState({ x: -PAD, y: -PAD, w: W + 2 * PAD, h: H + 2 * PAD });
   const svgRef = useRef<SVGSVGElement>(null);
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setSize({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  /** Table inches → pixel offset inside the wrapper (viewBox with xMidYMid meet). */
+  const toPx = (p: Vec) => {
+    const k = Math.min(size.w / view.w, size.h / view.h) || 0;
+    const ox = (size.w - view.w * k) / 2;
+    const oy = (size.h - view.h * k) / 2;
+    return { x: ox + (p.x - view.x) * k, y: oy + (H - p.y - view.y) * k };
+  };
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{ kind: 'pan' | 'pinch' | 'tap'; start: { x: number; y: number }; view: typeof view; dist?: number } | null>(null);
 
@@ -213,6 +234,16 @@ export function TableView(props: Props) {
             {props.ghost.front && <line x1={props.ghost.front[0].x} y1={fy(props.ghost.front[0].y)} x2={props.ghost.front[1].x} y2={fy(props.ghost.front[1].y)} className="front" />}
           </g>
         )}
+        {props.lines?.map((l, i) => (
+          <g key={`ln${i}`} className={`mline ${l.cls}`} pointerEvents="none">
+            <line x1={l.a.x} y1={fy(l.a.y)} x2={l.b.x} y2={fy(l.b.y)} />
+            {l.label && (
+              <text x={(l.a.x + l.b.x) / 2} y={fy((l.a.y + l.b.y) / 2) - 0.4}>
+                {l.label}
+              </text>
+            )}
+          </g>
+        ))}
         {props.ruler && (
           <g className="ruler" pointerEvents="none">
             <line x1={props.ruler.a.x} y1={fy(props.ruler.a.y)} x2={props.ruler.b.x} y2={fy(props.ruler.b.y)} />
@@ -235,6 +266,24 @@ export function TableView(props: Props) {
             );
           })}
       </svg>
+      {props.overlays?.map((o) => {
+        const pos = o.at ? toPx(o.at) : null;
+        // Below the anchor when it is in the top half of the table, above it otherwise.
+        const below = !pos || pos.y < size.h / 2;
+        const room = pos ? (below ? size.h - pos.y - 20 : pos.y - 20) : size.h - 16;
+        const left = pos ? Math.max(4, Math.min(size.w - Math.min(260, size.w - 8) - 4, pos.x - 130)) : 8;
+        const style = pos
+          ? below
+            ? { left, top: pos.y + 14, maxHeight: Math.max(110, room) }
+            : { left, bottom: size.h - pos.y + 14, maxHeight: Math.max(110, room) }
+          : { left: 8, top: 8, maxHeight: size.h - 16 };
+        return (
+          <div key={o.id} className="callout" style={style} onPointerDown={(e) => e.stopPropagation()}>
+            {o.node}
+          </div>
+        );
+      })}
+      {props.children}
       <div className="zoom">
         <button type="button" className="small" onClick={() => zoom(1 / 1.3)} aria-label="Zoom in">＋</button>
         <button type="button" className="small" onClick={() => zoom(1.3)} aria-label="Zoom out">－</button>

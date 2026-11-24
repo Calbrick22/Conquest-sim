@@ -333,3 +333,18 @@ describe('manual tools are logged as overrides', () => {
     void W;
   });
 });
+
+describe('volley range preview (core p.38–39)', () => {
+  it('draws each front stand’s range, effective range and a line to each enemy in range', async () => {
+    const { volleyLines } = await import('./actions');
+    const { s } = duelSetup({ atkRules: ['Barrage (2) [24]'] });
+    const t = structuredClone(s);
+    t.regiments['P1-w0-r0']!.pose = { x: 36, y: 22, angle: Math.PI / 2 }; // 8″ from the target
+    const lines = volleyLines(t, t.regiments['P1-w0-r0']!);
+    expect(lines.filter((l) => l.kind === 'range')).toHaveLength(4);
+    expect(lines.filter((l) => l.kind === 'halfrange')).toHaveLength(4);
+    const toTarget = lines.filter((l) => l.kind === 'clear');
+    expect(toTarget).toHaveLength(4);
+    expect(toTarget[0]!.label).toMatch(/8\.\d″/);
+  });
+});

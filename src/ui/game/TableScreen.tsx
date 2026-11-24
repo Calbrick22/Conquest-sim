@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   attachedCharacter,
   describeMoves,
@@ -29,6 +29,16 @@ import { Scoreboard } from './Scoreboard';
 import type { NewGame } from './SetupScreen';
 import { ManualTools } from './ManualTools';
 import { PhasePanel } from './PhasePanel';
+import { ActionCallout, UnitCallout } from './Callouts';
+import { DrawDeck, StackBuilder } from './CommandDeck';
+import { volleyLines } from '../../engine/actions';
+import { decisionMaker } from '../../ai/ai';
+
+/** Actions that get an on-table callout (and wait for "Next" when the computer took them). */
+const CALLOUT_ACTIONS = new Set([
+  'enter', 'march', 'reform', 'charge', 'volley', 'clash', 'withdraw', 'rally', 'combatRally', 'combatReform', 'takeAim', 'inspire',
+  'placeCharge', 'failCharge', 'duel', 'reinforcements', 'supremacyRollOff', 'chooseFirst', 'pickZone', 'endRound', 'override.move',
+]);
 import { TableView, type Ghost, type Ruler } from './TableView';
 import { useAi } from './useAi';
 import { useGame, type GameSession } from './useGame';
@@ -61,7 +71,14 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
   // With nothing selected, the active Regiment is shown (e.g. after an Entourage Activation).
   const sel: RegimentState | null = selectedId ? (s.regiments[selectedId] ?? null) : s.activation ? (s.regiments[s.activation.regimentId] ?? null) : null;
   const active = s.activation ? s.regiments[s.activation.regimentId]! : null;
-  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused, dispatch, false);
+  // The computer waits for "Next" after each Action that gets a callout.
+  const [ackedAt, setAckedAt] = useState(0);
+  const lastAct = session.last?.action;
+  const needsAck = !!aiPlayer && !!lastAct?.why && CALLOUT_ACTIONS.has(lastAct.type) && ackedAt !== session.actions.length;
+  const [closedCallout, setClosedCallout] = useState(-1);
+  const [showUnit, setShowUnit] = useState(true);
+  const [rulerMode, setRulerMode] = useState<'point' | 'regiment'>('point');
+  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused, dispatch, needsAck);
   const aiActing = !!aiPlayer && (active?.owner === aiPlayer || (s.step === 'action' && !active && (s.drawn?.player ?? s.turn) === aiPlayer));
 
   // Autosave on this device after every action (replayable from seed + actions).
@@ -181,7 +198,11 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
       setDrag({ start: p, base: overridePose ?? sel!.pose });
       return;
     }
-    if (mode === 'select') setSelectedId(id);
+    if (mode === 'select') {
+      setSelectedId(id);
+      setShowUnit(true);
+      if (!needsAck) setClosedCallout(session.actions.length);
+    }
   };
 
   const onDrag = (p: Vec) => {
@@ -200,7 +221,9 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
     setMoves([...base, { kind: 'forward', d: Math.round(d * 10) / 10 }]);
   };
 
-  const rulerTap = (p: Vec, regimentId?: string) => {
+  const rulerTap = (p: Vec, regimentIdIn?: string) => {
+    // Point to point by default; Regiment to Regiment measures closest edges (core p.10).
+    const regimentId = rulerMode === 'regiment' ? regimentIdIn : undefined;
     if (!ruler?.a || ruler.result) {
       setRuler({ a: p, ...(regimentId ? { aReg: regimentId } : {}) });
       return;
@@ -250,7 +273,10 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
 
   const beginEnter = (r: RegimentState) => {
     const own = s.scenario.reinforcementZones[r.owner];
-    setEntry({ edge: own, along: s.scenario.table.width / 2, files: r.files });
+    // Default to the narrowest formation that comes fully on in one March (core p.31).
+    const opts = legalFiles(regimentStandCount(s, r));
+    const fits = opts.filter((f) => footprint(formationInput(s, r, { files: f })).halfDepth * 2 <= marchAllowance(s, r) - 0.2);
+    setEntry({ edge: own, along: s.scenario.table.width / 2, files: fits[0] ?? opts[opts.length - 1] ?? r.files });
     setMoves([{ kind: 'forward', d: Math.min(marchValue(s, r), 3) }]);
     setMode('enter');
   };
@@ -368,6 +394,35 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
     );
   };
 
+  // ------------------------------------------------ callouts and deck
+  const anchorOf = (a: Action | undefined) => {
+    const id = a && 'regimentId' in a && typeof a.regimentId === 'string' ? a.regimentId : s.activation?.regimentId;
+    const r = id ? s.regiments[id] : undefined;
+    return r && r.location === 'table' ? footprint(formationInput(s, r)).c : null;
+  };
+  const overlays: { id: string; at: Vec | null; node: React.ReactNode }[] = [];
+  const last = session.last;
+  const showAction = !!last && CALLOUT_ACTIONS.has(last.action.type) && (needsAck || closedCallout !== session.actions.length);
+  if (showAction && last) {
+    overlays.push({
+      id: 'action',
+      at: anchorOf(last.action),
+      node: (
+        <ActionCallout
+          s={s}
+          action={last.action}
+          events={last.events}
+          byComputer={!!last.action.why && !!aiPlayer}
+          {...(needsAck ? { onNext: () => { setAckedAt(session.actions.length); setClosedCallout(session.actions.length); } } : {})}
+          onClose={() => setClosedCallout(session.actions.length)}
+        />
+      ),
+    });
+  } else if (sel && showUnit && mode === 'select' && sel.location === 'table') {
+    overlays.push({ id: 'unit', at: footprint(formationInput(s, sel)).c, node: <UnitCallout s={s} r={sel} onClose={() => setShowUnit(false)} /> });
+  }
+  const stackPlayer = (['P1', 'P2'] as const).find((p) => !s.players[p].stackSet && p !== (paused ? null : aiPlayer) && decisionMaker(s) === p);
+
   // ------------------------------------------------ render
   const reserves = Object.values(s.regiments).filter((r) => r.location === 'reserve' || r.location === 'arriving');
   const characters = Object.values(s.characters);
@@ -414,7 +469,12 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
         onDrag={onDrag}
         onDragEnd={() => setDrag(null)}
         dragging={!!drag}
-      />
+        lines={mode === 'target' && targetKind === 'volley' && sel ? volleyLines(s, sel).map((l) => ({ a: l.a, b: l.b, cls: l.kind, ...(l.label ? { label: l.label } : {}) })) : undefined}
+        overlays={overlays}
+      >
+        {s.phase === 'play' && s.step === 'command' && stackPlayer && !needsAck && <StackBuilder key={`${s.round}-${stackPlayer}`} s={s} p={stackPlayer} dispatch={dispatch} />}
+        {s.phase === 'play' && !needsAck && <DrawDeck s={s} dispatch={dispatch} onSelect={setSelectedId} aiPlayer={paused ? null : aiPlayer} />}
+      </TableView>
 
       {error && (
         <div className="warn card" role="alert" data-testid="error">
@@ -423,7 +483,13 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
         </div>
       )}
 
-      {mode === 'ruler' && <p className="meta">Ruler: tap two points, or tap two Regiments for the edge-to-edge distance.</p>}
+      {mode === 'ruler' && (
+        <div className="actions wrap meta">
+          Ruler:{' '}
+          <button type="button" className={`small ${rulerMode === 'point' ? '' : 'secondary'}`} onClick={() => { setRulerMode('point'); setRuler(null); }}>Point to point</button>
+          <button type="button" className={`small ${rulerMode === 'regiment' ? '' : 'secondary'}`} onClick={() => { setRulerMode('regiment'); setRuler(null); }}>Regiment to Regiment (closest edges)</button>
+        </div>
+      )}
       {mode === 'target' && (
         <div className="card info">
           Tap the enemy Regiment{s.round >= s.scenario.objectivesFromRound && s.scenario.markers.length ? ' or enemy Objective Marker' : ''} to {targetKind}.{' '}
@@ -445,7 +511,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
           {aiError} <button type="button" className="secondary small" onClick={() => { clearAiError(); setPaused(true); }}>OK</button>
         </div>
       )}
-      <PhasePanel s={s} dispatch={dispatch} onSelect={setSelectedId} aiPlayer={paused ? null : aiPlayer} />
+      <PhasePanel s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
 
       {s.phase === 'setup' && (
         <div className="card">

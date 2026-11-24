@@ -60,7 +60,7 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
     onStart({
       id: newId(),
       createdAt: new Date().toISOString(),
-      session: { initial: g.state, initialRng: g.rng, initialEvents, state: g.state, rng: g.rng, actions: [], events: initialEvents },
+      session: { initial: g.state, initialRng: g.rng, initialEvents, state: g.state, rng: g.rng, actions: [], events: initialEvents, last: null },
       you: youAre,
       mode,
     });

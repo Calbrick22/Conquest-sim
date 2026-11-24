@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { closeCallout } from './helpers';
 
 test('play against the computer: it takes its own decisions and explains them', async ({ page }) => {
   await page.goto('/#play');
@@ -11,6 +12,7 @@ test('play against the computer: it takes its own decisions and explains them', 
   // Our Reinforcements; the computer (P2) does its own.
   await page.getByTestId('reinforce-P1').click();
   await expect(page.getByTestId('log')).toContainText('AI: ', { timeout: 15_000 });
+  await page.getByTestId('ai-next').click();
   await page.getByTestId('stack-P1').click();
   await page.getByTestId('supremacy-roll').click();
   // Whoever won chooses; if it was us, go first.
@@ -18,8 +20,13 @@ test('play against the computer: it takes its own decisions and explains them', 
   if (await first.isVisible().catch(() => false)) await first.click();
 
   // Play our activations (march on 3″, else end) until the Round can be ended; the computer plays its own.
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 60; i++) {
     if (await page.getByTestId('end-round').isVisible()) break;
+    if (await page.getByTestId('ai-next').isVisible().catch(() => false)) {
+      await page.getByTestId('ai-next').click();
+      continue;
+    }
+    await closeCallout(page);
     if (await page.getByTestId('draw-card').isVisible()) {
       await page.getByTestId('draw-card').click();
       await page.getByTestId('activate-drawn').first().click();

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.1.0] - 2026-11-24 (feedback from the first games)
+
+### Added
+- **Vanguard (X)** (core p.101): +X″ on the first March when entering from Reinforcements.
+- **Flank** (core p.98):
+  - A Flank Regiment does not roll for Reinforcements; you declare whether it arrives or stays, within its Class's window.
+  - Flank can come from the Regiment itself, from **Forward Force**, or from the Spires Eccentricity **Forlorn Drive** on a [Drone] or [Clone] Regiment.
+  - Character options and Battlefield Roles are now carried into the game for this.
+- **Unit callout:** tap a Regiment to see a stats card on the table (current values, the Character's profile, rules, Draw Events, status). Manual rules are underlined.
+- **Action callouts on the table:** each Action shows what happened, with the dice (for example "Glass Pikes marches: forward 5″" or a Charge roll with its Impact dice).
+- **Computer turns** appear in a callout and wait for **Next**.
+- **Volley preview:** when choosing a Volley target, each front-rank Stand shows its range line from the centre of its front edge, a mark at Effective Range, and a line to each enemy in range. Lines are green when clear within Effective Range, amber when clear beyond it, and red when Obstructed.
+- **Ruler modes:** point to point (the default), or Regiment to Regiment (closest edges).
+- **Command Stack as cards on the table:** tap a card, then tap where it goes, then press Ready. During the Action Phase you draw from a deck on the table.
+
+### Changed
+- **Reinforcements:** each Regiment shows what it needs this Round. Tap one Regiment to bring it on automatically; the "stays" option is gone. Flank Regiments have an Arrive or Stay back toggle.
+- **Entering the table:** the default formation is the narrowest one that comes fully on in a single March.
+
+### Fixed
+- **The computer left Regiments in Reinforcements.** A two-rank Regiment deeper than its March could never come fully on in one March, so it bounced back every Round. The AI now picks a formation that fits, or enters over two Marches. The AI-vs-AI test now checks that every Regiment reaches the table.
+
 ## [1.0.0] - 2026-11-24 (M6: computer opponent; MVP complete)
 
 ### Added

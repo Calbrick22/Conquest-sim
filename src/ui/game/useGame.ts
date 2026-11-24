@@ -12,19 +12,24 @@ export interface GameSession {
   rng: RngState;
   actions: Action[];
   events: GameEvent[];
+  /** The last Action applied and the events it produced (for the on-table callout). */
+  last: { action: Action; events: GameEvent[]; prev: GameState } | null;
 }
 
 export function replay(initial: GameState, initialRng: RngState, initialEvents: GameEvent[], actions: Action[]): GameSession {
   let state = initial;
   let rng = initialRng;
   const events = [...initialEvents];
+  let last: GameSession['last'] = null;
   for (const a of actions) {
+    const prev = state;
     const r = apply(state, a, rng);
     state = r.state;
     rng = r.rng;
     events.push(...r.events);
+    last = { action: a, events: r.events, prev };
   }
-  return { initial, initialRng, initialEvents, state, rng, actions, events };
+  return { initial, initialRng, initialEvents, state, rng, actions, events, last };
 }
 
 export function useGame(start: GameSession) {
@@ -40,7 +45,7 @@ export function useGame(start: GameSession) {
       return false;
     }
     const r = apply(cur.state, a, cur.rng);
-    const next: GameSession = { ...cur, state: r.state, rng: r.rng, actions: [...cur.actions, a], events: [...cur.events, ...r.events] };
+    const next: GameSession = { ...cur, state: r.state, rng: r.rng, actions: [...cur.actions, a], events: [...cur.events, ...r.events], last: { action: a, events: r.events, prev: cur.state } };
     ref.current = next;
     setSession(next);
     setError(null);
