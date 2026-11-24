@@ -25,7 +25,10 @@ Open questions and the reading I chose are in [`ambiguities.md`](ambiguities.md)
 
 - **Types:** Infantry (4 models per Stand), Cavalry (1), Brute (1), Chariot (1 model on a double-length Stand made of two square Stands back to back), and Monster (1).
 - **Size**, used for Line of Sight: Infantry 1; Brute, Cavalry and Chariot 2; Monster 3 (core p.12). Objective Markers are Size 2 (pack p.8).
-- **The core rules give no base dimensions in mm.** See AMB-02. This blocks exact geometry until it is settled.
+- **Base dimensions** aren't in the core rules. The owner supplied them (AMB-02):
+  - Infantry, Cavalry and Brute: 66×66 mm.
+  - Monster: 110×110 mm.
+  - Chariot: 66×132 mm, derived as two squares back to back.
 - **Regiment:** a rectangular block of Stands, arranged in ranks and files that touch with no gaps and all face the same way.
 - The front rank needs at least 2 Stands, unless the Regiment is a single Stand.
 - All ranks are equal, except possibly the rearmost, which is centred as far as possible.
@@ -366,7 +369,7 @@ Spires use "Practitioner" Actions instead. They are faction-specific and listed 
 
 - **Table:** 72″ × 48″.
 - **Zones:** two 9″ and two 6″.
-- **Markers:** two neutral Objective Markers.
+- **Markers:** two. Each is friendly to the player whose edge it is nearer (owner ruling, AMB-14).
 - **No Reinforcement:** on both side edges, from 12″ to 36″ measured from Player 1's edge.
 - **Victory Points each Round:**
   - 3 for each enemy Marker destroyed that Round;

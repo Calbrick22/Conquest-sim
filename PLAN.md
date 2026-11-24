@@ -1,6 +1,6 @@
 # PLAN: Conquest TLAoK battle simulator (MVP)
 
-The status is **Phase 0 complete, waiting for review**. Mechanics are summarised in [`docs/rules-digest.md`](docs/rules-digest.md), and open questions are in [`docs/ambiguities.md`](docs/ambiguities.md).
+The status is: Phase 0 has been reviewed, and M1 is in progress. Mechanics are summarised in [`docs/rules-digest.md`](docs/rules-digest.md), and open questions are in [`docs/ambiguities.md`](docs/ambiguities.md).
 
 ## 1. What I read
 
@@ -239,18 +239,13 @@ These are estimates of working sessions, with one session being a few hours of f
 - Core-book scenarios
 - Online play
 
-## 9. Questions for you
+## 9. Questions for you (answered 2026-11-24)
 
-1. **Base sizes (blocks M3).** Please confirm the Stand footprints, as width × depth in mm, frontage first:
-   - Infantry
-   - Cavalry
-   - Brute
-   - Monster
-   - Chariot
-   - Character Stands, if they differ from their Type
+1. **Base sizes:**
+   - Infantry, Cavalry and Brute: 66×66 mm.
+   - Monster: 110×110 mm.
+   - Chariot: derived as 66×132 mm.
 
-   I don't want to guess, and neither PDF has them. The Objective Marker uses a Brute or Cavalry base per the pack.
-2. **Branches.** This session can only push to `claude/lucid-mendel-1rwwib`. Your prompt asks for a branch per milestone, merged to `main`, with Pages deploying from `main`. Should I:
-   - (a) work on this branch and open a PR to `main` at the end of each milestone for you to merge from your phone, or
-   - (b) have your permission to merge into and push `main` myself?
-3. **Forlorn Hope Markers (AMB-14).** Is it right that both neutral Markers are fair game for both players, and that whoever destroys one scores 3 VP?
+   See AMB-02 and `src/engine/geometry/bases.ts`.
+2. **Branches:** Claude may merge into `main` and push it itself at the end of each milestone.
+3. **Forlorn Hope Markers:** each Marker is friendly to the nearer player. Players may only attack and score the enemy Marker (AMB-14).
