@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.6.0] - 2026-11-24 (Stand icons)
+
+### Added
+- **Role icons on every Stand:** a bow for ranged (Barrage), crossed swords for melee, and a star for a spellcaster or Practitioner (Wizard, Priest, Practitioner, or known Spells). A Character Stand shows its own role. The ⚔ button by the zoom controls turns them off, and the choice is remembered on the device.
+- Regiment names now sit along the front edge, so the icons stay visible.
+
 ## [1.5.0] - 2026-11-24 (Spires faction rules)
 
 ### Added

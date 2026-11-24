@@ -199,3 +199,6 @@ select, input, textarea { max-width: 100%; }
   .game-table { position: sticky; top: 0; z-index: 3; }
   .game-table .table-wrap { position: static; }
 }
+/* Role icons on Stands: bow = ranged, swords = melee, star = spellcaster / Practitioner. */
+.map .stand-icon path { fill: none; stroke: #fff6d8; stroke-width: 0.9; stroke-linecap: round; stroke-linejoin: round; opacity: 0.9; }
+.map .stand-icon path.fill { fill: #ffe28a; stroke: #3b2a12; stroke-width: 0.5; }

@@ -6,6 +6,7 @@ import type { Poly } from '../../engine/geometry/polygon';
 import type { Vec } from '../../engine/geometry/vec';
 import { formationInput } from '../../engine/game';
 import type { GameState, PlayerId } from '../../engine/model/types';
+import { StandIcon, standRoles } from './StandIcon';
 
 export const OWNER_COLOR: Record<PlayerId, string> = { P1: '#c0533f', P2: '#3f67b5' };
 
@@ -61,6 +62,22 @@ export function TableView(props: Props) {
   });
   // Hide callouts and the deck to see the whole table.
   const [peek, setPeek] = useState(false);
+  // Role icons on Stands (ranged, melee, caster).
+  const [showIcons, setShowIcons] = useState(() => {
+    try {
+      return localStorage.getItem('stand-icons') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const toggleIcons = () => {
+    setShowIcons(!showIcons);
+    try {
+      localStorage.setItem('stand-icons', showIcons ? '0' : '1');
+    } catch {
+      /* per-device convenience only */
+    }
+  };
   const fit = (rot: boolean) => (rot ? { x: -PAD, y: -PAD, w: H + 2 * PAD, h: W + 2 * PAD } : { x: -PAD, y: -PAD, w: W + 2 * PAD, h: H + 2 * PAD });
   const [view, setView] = useState(() => fit(rotated));
   const toggleRotate = () => {
@@ -251,6 +268,15 @@ export function TableView(props: Props) {
                     className={`stand ${sl.isCharacter ? 'character' : ''} ${sl.isCommand ? 'command' : ''}`}
                   />
                 ))}
+                {showIcons &&
+                  slots.map((sl) => {
+                    const ch = sl.isCharacter ? s.characters[sl.id] : undefined;
+                    const roles = ch ? standRoles(ch.rules, ch.actions, ch.spells) : standRoles(r.rules, [], r.spells);
+                    const c = sl.rect.c;
+                    // Towards the back of the Stand, so the Regiment's name stays readable.
+                    const back = { x: c.x - Math.cos(r.pose.angle) * sl.rect.halfDepth * 0.4, y: c.y - Math.sin(r.pose.angle) * sl.rect.halfDepth * 0.4 };
+                    return <StandIcon key={`i${sl.id}`} x={back.x} y={fy(back.y)} size={Math.min(sl.rect.halfWidth, sl.rect.halfDepth) * 0.9} roles={roles} rotate={rotated ? -90 : 0} />;
+                  })}
                 <FrontEdge s={s} id={r.id} fy={fy} />
               </g>
             );
@@ -284,11 +310,14 @@ export function TableView(props: Props) {
         {Object.values(s.regiments)
           .filter((r) => r.location === 'table')
           .map((r) => {
-            const polys = regimentPolys(s, r);
-            const c = polys.flat().reduce((a, p) => ({ x: a.x + p.x, y: a.y + p.y }), { x: 0, y: 0 });
-            const n = polys.flat().length;
+            // The name sits along the front edge, clear of the Stand icons.
+            const front = layout(formationInput(s, r)).filter((sl) => sl.rank === 0);
+            const fc = front.reduce((a, sl) => ({ x: a.x + sl.rect.c.x / front.length, y: a.y + sl.rect.c.y / front.length }), { x: 0, y: 0 });
+            const d = (front[0]?.rect.halfDepth ?? 0) * 0.55;
+            const lx = fc.x + Math.cos(r.pose.angle) * d;
+            const ly = fc.y + Math.sin(r.pose.angle) * d;
             return (
-              <text key={`l${r.id}`} x={c.x / n} y={fy(c.y / n)} className="rlabel" pointerEvents="none" {...upright(c.x / n, fy(c.y / n))}>
+              <text key={`l${r.id}`} x={lx} y={fy(ly)} className="rlabel" dominantBaseline="middle" pointerEvents="none" {...upright(lx, fy(ly))}>
                 {r.name}
                 {r.broken ? ' (Broken)' : ''}
                 {r.flags.marked ? ' ◎Marked' : ''}
@@ -320,6 +349,7 @@ export function TableView(props: Props) {
         <button type="button" className={`small ${peek ? 'on' : ''}`} onClick={() => setPeek(!peek)} aria-label={peek ? 'Show panels' : 'Hide panels to see the table'} title={peek ? 'Show panels' : 'Hide panels to see the table'} data-testid="peek">
           {peek ? '👁 Panels' : '👁'}
         </button>
+        <button type="button" className={`small ${showIcons ? 'on' : ''}`} onClick={toggleIcons} aria-label="Stand icons" title="Stand icons: bow = ranged, swords = melee, star = spellcaster or Practitioner" data-testid="icons">⚔</button>
         <button type="button" className={`small ${rotated ? 'on' : ''}`} onClick={toggleRotate} aria-label="Turn the table" title="Turn the table (portrait)" data-testid="rotate">⟳</button>
         <button type="button" className="small" onClick={() => zoom(1 / 1.3)} aria-label="Zoom in">＋</button>
         <button type="button" className="small" onClick={() => zoom(1.3)} aria-label="Zoom out">－</button>

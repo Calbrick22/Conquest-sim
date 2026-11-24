@@ -10,9 +10,9 @@ This roadmap follows the MVP. It is ranked by **value to a player who uses the a
 | # | Item | Why it matters | Size |
 |---|---|---|---|
 | 1.1 | ✅ *(v1.2.0)* **Spires faction mechanics:** Strain abilities and Strain Expression, the Decay that comes with it, Superior Creations, Lobotomytic Override (The Directorate), Designate Target, Lethal Demise, Oblivious, Acute Senses, Loose Formation, Vanguard, Fly over terrain. | They are on every one of your lists. Strain text is not in the Army Builder export (AMB-18), so this needs a small, owner-maintained data entry screen kept on the device, not in the repo. | L |
-| 1.2 | 🟡 *(v1.2.0: all core rules and Draw Events; v1.3.0: Old Dominion and Spellcasting. Other factions need their PDFs)* **Special-rule coverage driven by the logs:** turn the most frequent "manual" rules into registry modules, faction by faction (Nords, Old Dominion, Hundred Kingdoms, Weaver Courts…). | Each module removes manual work from every game. | M per faction |
+| 1.2 | 🟡 *(v1.2.0: all core rules and Draw Events; v1.3.0: Old Dominion and Spellcasting; v1.5.0: Spires from the faction document. Other factions need their PDFs)* **Special-rule coverage driven by the logs:** turn the most frequent "manual" rules into registry modules, faction by faction (Nords, Old Dominion, Hundred Kingdoms, Weaver Courts…). | Each module removes manual work from every game. | M per faction |
 | 1.3 | ✅ *(v1.2.0; Seek New Escort stays manual, AMB-13)* **Remaining core mechanics:** Die Fighting!, Press the Attack (pushing Stranded Regiments), splitting a Clash between several enemies, the 1″ push and target pivot when Charging, Character Actions (Snapshot and Mighty Swing style), and the "Seek New Escort" Action once its text is known (AMB-13). | They close the gaps where the MVP needs the manual tools. | M |
-| 1.4 | **Supremacy Abilities and Draw Events as modules**, with the [Always Active], [Battlefield] and [Activated] timing. | Warlord choices shape the matchups you rehearse. | M |
+| 1.4 | 🟡 *(Old Dominion and the Spires abilities on your lists are done; Biomancer Field Studies, Merchant Prince and High Clone Executor remain)* **Supremacy Abilities and Draw Events as modules**, with the [Always Active], [Battlefield] and [Activated] timing. | Warlord choices shape the matchups you rehearse. | M |
 | 1.5 | **Terrain:** Zonal (Elevated, Cover, Obstructing, Hindering, Dangerous, Water…) and Garrison (Capacity, Defense, leaving and charging) as table data, with its effect on Line of Sight, Volleys and movement, plus a simple terrain editor and the pack's sample layouts. | Tournament tables always have terrain; without it, ranged matchups are optimistic. | L |
 
 ## Phase 2: better review and "what if" tools
@@ -39,9 +39,9 @@ This roadmap follows the MVP. It is ranked by **value to a player who uses the a
 
 | # | Item | Why it matters | Size |
 |---|---|---|---|
-| 4.1 | **Graphics and art layer:** model art per Stand, faction colours, Wound markers, animated dice. Rendering is already separate from the engine. | Nicer to use, but not needed for rules practice. | M |
+| 4.1 | 🟡 *(v1.6.0: role icons on Stands)* **Graphics and art layer:** model art per Stand, faction colours, Wound markers, animated dice. Rendering is already separate from the engine. | Nicer to use, but not needed for rules practice. | M |
 | 4.2 | **List building:** build and edit lists in the app from data you enter yourself. Faction data cannot be bundled in this public repository. | Convenience; the Army Builder already covers this. | L |
-| 4.3 | **Accessibility and tablet layout:** side-by-side table and panels, keyboard shortcuts, larger touch targets. | Comfort on bigger screens. | S |
+| 4.3 | 🟡 *(v1.4.0: side-by-side table and panels, portrait table, hide-panels toggle)* **Accessibility and tablet layout:** side-by-side table and panels, keyboard shortcuts, larger touch targets. | Comfort on bigger screens. | S |
 | 4.4 | **Text-list import** in whatever format your opponents send, once a sample is available. | Saves asking opponents for PDFs. | S |
 
 ## Phase 5: optional online play
