@@ -1,0 +1,97 @@
+{
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "markers": [],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "source": "ns2026",
+  "id": "cursed-sanctuaries",
+  "name": "Cursed Sanctuaries",
+  "page": 4,
+  "defaultTerrain": "cursed-sanctuaries",
+  "zones": [
+    {
+      "id": "w6",
+      "x": 12,
+      "y": 24,
+      "diameter": 6
+    },
+    {
+      "id": "c6",
+      "x": 36,
+      "y": 24,
+      "diameter": 6
+    },
+    {
+      "id": "e6",
+      "x": 60,
+      "y": 24,
+      "diameter": 6
+    },
+    {
+      "id": "nw9",
+      "x": 24,
+      "y": 36,
+      "diameter": 9
+    },
+    {
+      "id": "se9",
+      "x": 48,
+      "y": 12,
+      "diameter": 9
+    }
+  ],
+  "cursedSanctuaries": {
+    "6": 4,
+    "9": 8
+  },
+  "scoring": [
+    {
+      "kind": "perZoneSeized",
+      "vp": 2,
+      "zoneIds": [
+        "w6",
+        "c6",
+        "e6"
+      ]
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 3,
+      "zoneIds": [
+        "nw9",
+        "se9"
+      ]
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 3,
+      "vp": 2
+    },
+    {
+      "kind": "warlordSlain",
+      "vp": 1,
+      "oncePerGame": true
+    },
+    {
+      "kind": "characterKilled",
+      "vp": 1
+    },
+    {
+      "kind": "regimentDestroyed",
+      "vp": 1
+    }
+  ],
+  "summary": [
+    "2 VP per 6″ and 3 VP per 9″ zone Seized; +2 VP for three or more",
+    "Cursed Sanctuaries: in each Victory Phase every Regiment in a zone suffers 4 Hits (6″) or 8 Hits (9″) against its Resolve (Defense if it has none), front arc, no Morale",
+    "1 VP for the enemy Warlord (once), per enemy Character Stand and per enemy Regiment destroyed"
+  ]
+}

@@ -80,6 +80,8 @@ export type ActionBody =
   // Spellcasting (core p.80–81) and Old Dominion faction Actions (od p.5–8)
   | { type: 'spell'; casterId: string; spell: string; targetId: string; attunement?: number; pool?: PowerPool }
   | { type: 'memories'; regimentId: string }
+  // Flames of Conquest (ns p.5)
+  | { type: 'burnZone'; regimentId: string; zoneId: string }
   | { type: 'powerPref'; player: PlayerId; pool: PowerPool }
   | { type: 'odSpend'; regimentId: string; option: 'aod' | 'noBrittle' | 'terrifying' }
   // Manual tools (always logged as overrides)

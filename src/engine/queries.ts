@@ -3,6 +3,7 @@ import { OBJECTIVE_MARKER_BASE_MM, mmToInches } from './geometry/bases';
 import { overlaps, polyDistance, rectPoly, type Poly } from './geometry/polygon';
 import { TOL } from './geometry/vec';
 import { footprint, standPolys, type FormationInput } from './formation';
+import { terrainPathProblems, terrainPositionProblems } from './terrain';
 import type { ActionKind, CharacterState, GameState, PlayerId, Pose, RegimentState } from './model/types';
 
 export type Validation = { ok: true } | { ok: false; reasons: string[] };
@@ -54,14 +55,47 @@ export function onTableRegiments(s: GameState): RegimentState[] {
   return Object.values(s.regiments).filter((r) => r.location === 'table');
 }
 
+type Box = { x0: number; y0: number; x1: number; y1: number };
+function boxOf(poly: Poly): Box {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const v of poly) {
+    if (v.x < x0) x0 = v.x;
+    if (v.y < y0) y0 = v.y;
+    if (v.x > x1) x1 = v.x;
+    if (v.y > y1) y1 = v.y;
+  }
+  return { x0, y0, x1, y1 };
+}
+/** A lower bound on the distance between two polygons, from their bounding boxes. */
+function boxGap(a: Box, b: Box): number {
+  const dx = Math.max(0, a.x0 - b.x1, b.x0 - a.x1);
+  const dy = Math.max(0, a.y0 - b.y1, b.y0 - a.y1);
+  return Math.hypot(dx, dy);
+}
+
+/** Closest edge-to-edge distance between two sets of polygons (exact; pairs whose boxes are further apart are skipped). */
 export function distancePolys(a: Poly[], b: Poly[]): number {
   let m = Infinity;
-  for (const p of a) for (const q of b) m = Math.min(m, polyDistance(p, q));
+  const bb = b.map(boxOf);
+  for (const p of a) {
+    const pb = boxOf(p);
+    for (let j = 0; j < b.length; j++) {
+      if (boxGap(pb, bb[j]!) >= m) continue;
+      m = Math.min(m, polyDistance(p, b[j]!));
+    }
+  }
   return m;
 }
 
 export function anyOverlap(a: Poly[], b: Poly[]): boolean {
-  return a.some((p) => b.some((q) => overlaps(p, q)));
+  const bb = b.map(boxOf);
+  return a.some((p) => {
+    const pb = boxOf(p);
+    return b.some((q, j) => boxGap(pb, bb[j]!) <= 0 && overlaps(p, q));
+  });
 }
 
 /** Closest edge-to-edge distance between two Regiments on the table (core p.10). */
@@ -188,6 +222,7 @@ export function positionProblems(s: GameState, r: RegimentState, polys: Poly[], 
     } else if (!opts.allowFriendOverlap && anyOverlap(polys, op)) problems.push(`Overlaps ${o.name} (core p.13).`);
   }
   if (markerPolys(s).some((m) => polys.some((p) => overlaps(p, m)))) problems.push('Cannot end overlapping an Objective Marker (pack p.8).');
+  problems.push(...terrainPositionProblems(s, polys));
   return problems;
 }
 
@@ -201,6 +236,8 @@ export function pathProblems(s: GameState, r: RegimentState, posesIn: Pose[], al
   for (const pose of poses.slice(1)) {
     const polys = regimentPolys(s, r, { pose });
     if (!allowOffTable && !onTable(s, polys)) return ['The move would take Stands off the Battlefield (core p.13).'];
+    const tp = terrainPathProblems(s, polys, flies);
+    if (tp.length) return tp;
     if (flies) continue;
     for (const e of enemies) if (anyOverlap(polys, regimentPolys(s, e))) return [`Cannot March through enemy ${e.name} (core p.30).`];
     for (const f of engagedFriends) if (anyOverlap(polys, regimentPolys(s, f))) return [`Cannot March through ${f.name}: it is in combat (core p.29).`];

@@ -1,5 +1,5 @@
 import { apply, validate, type Action } from './game';
-import { chargeDice, chargeDistanceRule, chargeFacing, chargePlacement, completeCharge } from './actions';
+import { chargeDice, chargeDistanceRule, chargeFacing, chargeHindered, chargePlacement, completeCharge } from './actions';
 import type { Ctx } from './dice';
 import type { GameState, RegimentState } from './model/types';
 import { distancePolys, marchValue, regimentPolys } from './queries';
@@ -86,6 +86,7 @@ export function previewAction(state: GameState, kind: PreviewKind, attackerId: s
       return out;
     }
     // The placed position, as the real Charge would leave it before its Impact Attacks.
+    const hindered = chargeHindered(base, r0, r0.pose, place.pose);
     const placed: GameState = structuredClone(base);
     placed.regiments[attackerId]!.pose = place.pose;
     if (place.push) placed.regiments[place.push.id]!.pose = place.push.pose;
@@ -93,7 +94,7 @@ export function previewAction(state: GameState, kind: PreviewKind, attackerId: s
     for (let i = 0; i < samples; i++) {
       const s = structuredClone(placed);
       const ctx: Ctx = { s, rng: createRng(7919 * (i + 1)), events: [] };
-      completeCharge(ctx, s.regiments[attackerId]!, s.regiments[targetId]!, facing);
+      completeCharge(ctx, s.regiments[attackerId]!, s.regiments[targetId]!, facing, { hindered });
       tally(placed, s);
     }
   } else {

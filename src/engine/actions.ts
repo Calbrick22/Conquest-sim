@@ -26,6 +26,7 @@ import {
 import { barrageOf, flatRules, hasRule, ruleX } from './rules/special/rules';
 import { magnanimity, poolMods } from './rules/special/effects';
 import { autoPassesResolve, markOnce, takeGlimmers, xhiliarchChargeBonus } from './factions/oldDominion';
+import { chargeThroughHindering, coverHalves, standLosSize, terrainBlocks, terrainPathProblems, terrainPositionProblems } from './terrain';
 
 // ---------------------------------------------------------------- shared geometry helpers
 
@@ -52,10 +53,11 @@ export function engagedFlankOrRear(s: GameState, r: RegimentState): boolean {
   return enemiesInContact(s, r).some((e) => arcOfAttack(s, e, r) !== 'front');
 }
 
+/** Regiments as Line of Sight obstacles; a Stand on an Elevated piece counts its Size plus the piece's (core p.84). */
 function obstacles(s: GameState, exclude: string[]): Obstacle[] {
   return onTableRegiments(s)
     .filter((r) => !exclude.includes(r.id))
-    .flatMap((r) => regimentPolys(s, r).map((poly) => ({ poly, size: sizeOf(r) })));
+    .flatMap((r) => regimentPolys(s, r).map((poly) => ({ poly, size: standLosSize(s, r, poly) })));
 }
 
 export function closestPointOnPoly(p: Vec, poly: Poly): Vec {
@@ -95,7 +97,14 @@ export function hasLineOfSight(s: GameState, r: RegimentState, t: RegimentState)
   const front = layout(formationInput(s, r)).filter((x) => x.rank === 0);
   return front.some((slot) => {
     const from = frontCentre(slot.rect);
-    return tPolys.some((tp) => !losLineObstructed(from, closestPointOnPoly(from, tp), sizeOf(t), obs));
+    const sp = rectPoly(slot.rect);
+    const ss = standLosSize(s, r, sp);
+    return tPolys.some((tp) => {
+      const to = closestPointOnPoly(from, tp);
+      const ts = standLosSize(s, t, tp);
+      // Obstructing terrain (core p.86) blocks by Size, unless either end is on the piece.
+      return !losLineObstructed(from, to, ts, obs) && !terrainBlocks(s, from, to, ss, ts, sp, tp);
+    });
   });
 }
 
@@ -190,6 +199,7 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
   const overlapLen = (off: number) => Math.max(0, Math.min(off + width / 2, edgeLen / 2) - Math.max(off - width / 2, -edgeLen / 2));
   candidates.sort((a, b) => overlapLen(b) - overlapLen(a) || Math.abs(a - t0) - Math.abs(b - t0));
   const others = onTableRegiments(s).filter((o) => o.id !== r.id && o.id !== t.id);
+  const flies = hasRule(r.rules, 'Fly') && !attachedCharacter(s, r.id);
   let blockedReason = 'no room to place the Regiment in contact';
   let pushOption: ChargePlacement | null = null;
   const pathClear = (to: Pose, ignore?: string) => {
@@ -199,6 +209,7 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
       const q: Pose = { x: r.pose.x + (to.x - r.pose.x) * f, y: r.pose.y + (to.y - r.pose.y) * f, angle: r.pose.angle + da * f };
       const qp = regimentPolys(s, r, { pose: q });
       if (others.some((o) => o.id !== ignore && (o.owner !== r.owner || isEngaged(s, o)) && anyOverlap(qp, regimentPolys(s, o)))) return false;
+      if (terrainPathProblems(s, qp, flies).length) return false;
     }
     return true;
   };
@@ -217,6 +228,10 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
     if (anyOverlap(polys, regimentPolys(s, t))) continue;
     if (markerPolys(s).some((m) => polys.some((p) => overlaps(p, m)))) {
       note('an Objective Marker');
+      continue;
+    }
+    if (terrainPositionProblems(s, polys).length) {
+      note('Impassable terrain');
       continue;
     }
     const blockers = others.filter((o) => {
@@ -425,6 +440,7 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
     ev(ctx, { type: 'charge', text: `The Charge succeeds but the engine cannot place it (${place.reason}). Place ${r.name} in contact by hand, or declare the Charge failed (AMB-11).`, player: r.owner, regimentId: r.id });
     return;
   }
+  const hindered = chargeHindered(s, r, r.pose, place.pose);
   r.pose = place.pose;
   if (place.push) {
     const bl = s.regiments[place.push.id]!;
@@ -435,13 +451,27 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
     t.pose = place.targetPose;
     ev(ctx, { type: 'charge', text: `${r.name} cannot pivot flush, so ${t.name} pivots to meet the Charge (core p.32).`, regimentId: t.id });
   }
-  completeCharge(ctx, r, t, facing as Arc, { resounding });
+  completeCharge(ctx, r, t, facing as Arc, { resounding, hindered });
+}
+
+/** Did at least half the charger's Stands pass through Hindering terrain (core p.86)? */
+export function chargeHindered(s: GameState, r: RegimentState, from: Pose, to: Pose): boolean {
+  const flies = hasRule(r.rules, 'Fly') && !attachedCharacter(s, r.id);
+  return chargeThroughHindering(s, (pose) => regimentPolys(s, r, { pose }), from, to, flies);
 }
 
 /** After the charger is in contact: Impact Attacks and Inspired (core p.35–36). */
-export function completeCharge(ctx: Ctx, r: RegimentState, t: RegimentState, facing: Arc, opts: { resounding?: boolean } = {}): void {
-  ev(ctx, { type: 'charge', text: `${r.name} contacts ${t.name}'s ${facing} and gains Inspired until the end of its Activation (core p.35).`, player: r.owner, regimentId: r.id });
-  ctx.s.activation!.inspired = true;
+export function completeCharge(ctx: Ctx, r: RegimentState, t: RegimentState, facing: Arc, opts: { resounding?: boolean; hindered?: boolean } = {}): void {
+  // Hindering (core p.86): no Impact Attacks, and Medium and Heavy Regiments lose Inspired this Round.
+  const loseInspired = !!opts.hindered && r.cls !== 'Light';
+  if (opts.hindered) r.flags.hindered = r.cls !== 'Light';
+  ev(ctx, {
+    type: 'charge',
+    text: `${r.name} contacts ${t.name}'s ${facing}${loseInspired ? '' : ' and gains Inspired until the end of its Activation (core p.35)'}.${opts.hindered ? ` It charged through Hindering terrain: no Impact Attacks${loseInspired ? ' and no Inspired this Round' : ''} (core p.86).` : ''}`,
+    player: r.owner,
+    regimentId: r.id,
+  });
+  ctx.s.activation!.inspired = !loseInspired;
   // Fury: +1 Attacks until the end of the Round (core p.98). Shock: +1 Clash (core p.100).
   // Glorious Charge: Terrifying (1) until the end of the Round (core p.99).
   if (hasRule(r.rules, 'Fury')) r.roundMods.push({ stat: 'A', delta: 1, source: 'Fury' });
@@ -451,7 +481,7 @@ export function completeCharge(ctx: Ctx, r: RegimentState, t: RegimentState, fac
   if ((hasRule(r.rules, 'Wedge!') || hasRule(r.rules, 'Wedge') || hasRule(r.rules, 'Sundering Charge')) && !r.roundRules.some((x) => x.raw === 'Cleave (+1) [Wedge]'))
     r.roundRules.push({ name: 'Cleave', x: 1, plus: true, raw: 'Cleave (+1) [Wedge]' });
   const engagedWith = [t.id];
-  resolveImpact(ctx, r, t, facing, opts);
+  if (!opts.hindered) resolveImpact(ctx, r, t, facing, opts);
   pressTheAttack(ctx, r, engagedWith);
 }
 
@@ -482,7 +512,7 @@ export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
   // or against Dread (core p.60, p.76, p.97). Dauntless always counts as Inspired (core p.97).
   const dread = enemies.some((e) => hasRule(e.rules, 'Dread'));
   // Siphon Strength (sp p.15): never Inspired.
-  const inspiredAllowed = !r.broken && !r.flags.declinedDuel && !dread && !r.flags.siphoned;
+  const inspiredAllowed = !r.broken && !r.flags.declinedDuel && !dread && !r.flags.siphoned && !r.flags.hindered;
   const support = engagedFlankOrRear(s, r) && !hasRule(r.rules, 'Iron Discipline') ? 1 : ruleX(r.rules, 'Support') || 1;
   const leader = r.commandModels.includes('Leader');
   const c = attachedCharacter(s, r.id);
@@ -637,7 +667,14 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
       plans.push({ label, shots: 0, arc: null, reason: `out of range (${bestD.toFixed(1)}″ > ${b.range}″)`, skill: vAimed, ap, deadly });
       continue;
     }
-    const clear = tPolys.some((tp) => !volleyLineObstructed(from, closestPointOnPoly(from, tp), sizeOf(r), sizeOf(t), obs));
+    const sp = rectPoly(sl.rect);
+    const ss = standLosSize(s, r, sp);
+    const clearTo = tPolys.find((tp) => {
+      const to = closestPointOnPoly(from, tp);
+      const ts = standLosSize(s, t, tp);
+      return !volleyLineObstructed(from, to, ss, ts, obs) && !terrainBlocks(s, from, to, ss, ts, sp, tp);
+    });
+    const clear = !!clearTo;
     if (!clear) {
       plans.push({ label, shots: 0, arc: null, reason: 'Obstructed (core p.38)', skill: vAimed, ap, deadly });
       continue;
@@ -646,9 +683,12 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
     // Effective Range: closer than half range gives +1 (core p.39). RULE-AMBIGUITY: AMB-09.
     const effective = longshot || bestD < b.range / 2;
     if (effective) shots += 1;
-    if (loose) shots = Math.ceil(shots / 2);
+    // Cover (core p.86) halves Barrage like Loose Formation; the two do not stack (core p.99).
+    // Hypersynaptic Bonding ignores Cover too (sp p.28).
+    const cover = hasRule(r.rules, 'Hypersynaptic Bonding') ? null : coverHalves(s, from, closestPointOnPoly(from, clearTo!), regimentPolys(s, r), tPolys, t.type);
+    if (loose || cover) shots = Math.ceil(shots / 2);
     const arc = majorityArc(tfp, rectPoly(sl.rect)) ?? 'front';
-    plans.push({ label: `${label}${effective ? ' (Effective Range +1)' : ''}${loose ? ' (Loose Formation: halved)' : ''}`, shots, arc, skill: vAimed, ap, deadly, effective });
+    plans.push({ label: `${label}${effective ? ' (Effective Range +1)' : ''}${loose ? ' (Loose Formation: halved)' : cover ? ` (Cover, ${cover}: halved)` : ''}`, shots, arc, skill: vAimed, ap, deadly, effective });
   }
   if (!plans.some((p) => p.shots > 0) && !problems.length) problems.push('No Stand can shoot at that Regiment (range or obstruction).');
   return { plans, problems };
@@ -966,7 +1006,11 @@ export function volleyLines(s: GameState, r: RegimentState): VolleyLine[] {
         }
       }
       if (!best || bd > b.range + TOL) continue;
-      const blocked = volleyLineObstructed(from, best, sizeOf(r), sizeOf(e), obs.filter((o) => !polys.includes(o.poly)));
+      const sp = rectPoly(sl.rect);
+      const ss = standLosSize(s, r, sp);
+      const tp = polys.find((p) => dist(closestPointOnPoly(from, p), best!) < 1e-6) ?? polys[0]!;
+      const ts = standLosSize(s, e, tp);
+      const blocked = volleyLineObstructed(from, best, ss, ts, obs.filter((o) => !polys.includes(o.poly))) || terrainBlocks(s, from, best, ss, ts, sp, tp);
       out.push({ a: from, b: best, kind: blocked ? 'blocked' : bd < b.range / 2 ? 'clear' : 'long', label: `${bd.toFixed(1)}″` });
     }
   }

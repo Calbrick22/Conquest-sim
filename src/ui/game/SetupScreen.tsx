@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createGame, rollOff, type GameEvent } from '../../engine/game';
 import type { PlayerId } from '../../engine/model/types';
 import { createRng } from '../../engine/rng';
@@ -8,8 +8,12 @@ import type { ArmyList } from '../../import/types';
 import { SCENARIOS } from '../../scenarios';
 import { deleteGame, listGames, listLists, newId, type SavedGame, type SavedList } from '../../storage/db';
 import { replay, type GameSession } from './useGame';
+import { LAYOUTS, terrainFor, type TerrainChoice } from '../../engine/terrainLayouts';
+import { ScenarioMap } from '../ScenarioPreview';
+import type { ScenarioDef } from '../../scenarios/types';
 
 const DEMO_ID = 'demo';
+
 
 export interface NewGame {
   id: string;
@@ -34,6 +38,9 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
   const [roll, setRoll] = useState<{ winner: 'you' | 'opponent'; rolls: [number, number][] } | null>(null);
   const [games, setGames] = useState<SavedGame[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Terrain: the scenario's own 2026 layout (or a random one for pack scenarios), any layout, random, or none.
+  const [terrainSel, setTerrainSel] = useState<string>('scenario');
+  const [terrainSeed, setTerrainSeed] = useState(() => ((Date.now() >>> 0) % 100_000) + 1);
 
   useEffect(() => {
     listLists().then(setSaved).catch(() => setSaved([]));
@@ -48,8 +55,21 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
     setRoll({ winner: r.winner === 'P1' ? 'you' : 'opponent', rolls: r.rolls });
   };
 
+  const baseScenario = SCENARIOS.find((s) => s.id === scenarioId)!;
+  const terrainChoice: TerrainChoice = useMemo(
+    () =>
+      terrainSel === 'none'
+        ? { mode: 'none' }
+        : terrainSel === 'random' || (terrainSel === 'scenario' && !baseScenario.defaultTerrain)
+          ? { mode: 'random', seed: terrainSeed }
+          : { mode: 'layout', id: terrainSel === 'scenario' ? baseScenario.defaultTerrain! : terrainSel },
+    [terrainSel, terrainSeed, baseScenario],
+  );
+  const terrain = useMemo(() => terrainFor(baseScenario, terrainChoice), [baseScenario, terrainChoice]);
+  const scenarioWithTerrain: ScenarioDef = { ...baseScenario, terrain: terrain.pieces, terrainLayout: terrain.name };
+
   const start = (youAre: PlayerId) => {
-    const scenario = SCENARIOS.find((s) => s.id === scenarioId)!;
+    const scenario = scenarioWithTerrain;
     const lists = youAre === 'P1' ? { P1: getList(mine), P2: getList(theirs) } : { P1: getList(theirs), P2: getList(mine) };
     const g = createGame({ seed, scenario, lists });
     const rollText = roll!.rolls.map(([a, b]) => `you ${a}, opponent ${b}`).join('; then ');
@@ -132,6 +152,28 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
             ))}
           </select>
         </label>
+        <label className="field">
+          Terrain{' '}
+          <select value={terrainSel} onChange={(e) => setTerrainSel(e.target.value)} data-testid="terrain">
+            <option value="scenario">{baseScenario.defaultTerrain ? 'Scenario layout (2026)' : 'Random layout'}</option>
+            {LAYOUTS.map((l) => (
+              <option key={l.id} value={l.id}>{l.name} layout</option>
+            ))}
+            <option value="random">Random layout</option>
+            <option value="none">No terrain</option>
+          </select>
+          {terrainChoice.mode === 'random' && (
+            <button type="button" className="secondary small" onClick={() => setTerrainSeed((terrainSeed % 99_991) + 7)} data-testid="reroll-terrain">
+              Randomise again
+            </button>
+          )}
+        </label>
+        <div className="setup-preview" data-testid="terrain-preview">
+          <ScenarioMap s={scenarioWithTerrain} />
+          <p className="meta">
+            {terrain.name}: {terrain.pieces.length} pieces, mirrored for both sides, at least 9″ apart, no Impassable piece on an objective (pack p.3; 2026 scenarios). Hover a piece for its rules.
+          </p>
+        </div>
         <label className="field">
           Opponent{' '}
           <select value={mode} onChange={(e) => setMode(e.target.value as 'ai' | 'hotseat')} data-testid="mode">

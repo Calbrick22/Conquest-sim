@@ -12,6 +12,7 @@ import {
   applyDuel,
   applyVolley,
   applyWithdraw,
+  chargeHindered,
   chargeProblems,
   clashTargets,
   completeCharge,
@@ -34,6 +35,7 @@ import {
   anyOverlap,
   attachedCharacter,
   canTakeAction,
+  formationInput,
   distancePolys,
   fail,
   footprintWidth,
@@ -68,6 +70,9 @@ import {
   markerVolleyPlan,
 } from './markers';
 import { zoneResults } from './scoring/victory';
+import { layout } from './formation';
+import { rectPoly } from './geometry/polygon';
+import { standOverlapsZone } from './geometry/zones';
 import { TOL } from './geometry/vec';
 
 function reg(s: GameState, id: string): RegimentState | undefined {
@@ -153,6 +158,8 @@ export function validateM4(s: GameState, a: Action): Validation {
     }
     case 'memories':
       return act(s, a.regimentId, 'memories', () => memoriesProblems(s.regiments[a.regimentId]!));
+    case 'burnZone':
+      return act(s, a.regimentId, 'burn', () => burnProblems(s, s.regiments[a.regimentId]!, a.zoneId));
     case 'powerPref':
       return s.players[a.player].od ? ok() : fail('Only an Old Dominion army has Power Tokens.');
     case 'odSpend': {
@@ -416,6 +423,14 @@ export function applyM4(ctx: Ctx, a: Action): void {
       void c;
       break;
     }
+    case 'burnZone': {
+      const r = s.regiments[a.regimentId]!;
+      recordAction(s.activation!, 'burn');
+      (s.burnedZones ??= []).push(a.zoneId);
+      ((s.tally.burned ??= { P1: [], P2: [] })[r.owner] ??= []).push(a.zoneId);
+      ev(ctx, { type: 'action', text: `${r.name} Burns Objective Zone ${a.zoneId}: it is removed from the game (ns p.5).`, player: r.owner, regimentId: r.id });
+      break;
+    }
     case 'memories': {
       const r = s.regiments[a.regimentId]!;
       recordAction(s.activation!, 'memories');
@@ -447,10 +462,11 @@ export function applyM4(ctx: Ctx, a: Action): void {
     case 'placeCharge': {
       const pc = s.pendingCharge!;
       const r = s.regiments[pc.regimentId]!;
+      const hindered = chargeHindered(s, r, r.pose, a.pose);
       r.pose = a.pose;
       s.pendingCharge = null;
       overrideEv(ctx, `${r.name} placed in contact by hand to finish its Charge (AMB-11).`, r.id);
-      completeCharge(ctx, r, s.regiments[pc.targetId]!, pc.facing as Arc);
+      completeCharge(ctx, r, s.regiments[pc.targetId]!, pc.facing as Arc, { hindered });
       break;
     }
     case 'failCharge': {
@@ -569,3 +585,19 @@ export function applyM4(ctx: Ctx, a: Action): void {
 }
 
 export { enemiesInContact, withdrawPose, TOL };
+
+/**
+ * Burn an Objective Zone (Flames of Conquest, ns p.5): from the scenario's Round, a Regiment that
+ * is Seizing a zone may spend an Action to Burn it. RULE-AMBIGUITY: AMB-64 — "Seizing" means its
+ * player is Seizing the zone right now and the Regiment has a Stand in range of it.
+ */
+export function burnProblems(s: GameState, r: RegimentState, zoneId: string): string[] {
+  const from = s.scenario.burnFromRound;
+  if (!from) return ['Zones cannot be Burned in this scenario.'];
+  if (s.round < from) return [`Zones can be Burned from Round ${from} (ns p.5).`];
+  const z = s.scenario.zones.find((x) => x.id === zoneId);
+  if (!z || (s.burnedZones ?? []).includes(zoneId)) return ['That zone is no longer in the game.'];
+  if (zoneResults(s)[zoneId]?.seizedBy !== r.owner) return [`${r.owner} is not Seizing zone ${zoneId}.`];
+  const inRange = layout(formationInput(s, r)).some((sl) => standOverlapsZone(rectPoly(sl.rect), { x: z.x, y: z.y }, z.diameter));
+  return inRange ? [] : [`${r.name} has no Stand in range of zone ${zoneId}.`];
+}

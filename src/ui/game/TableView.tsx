@@ -7,6 +7,8 @@ import type { Vec } from '../../engine/geometry/vec';
 import { formationInput } from '../../engine/game';
 import type { GameState, PlayerId } from '../../engine/model/types';
 import { StandIcon, standRoles } from './StandIcon';
+import { TerrainDefs, TerrainLayer } from './TerrainLayer';
+import { priorityZone } from '../../engine/scoring/scoreRound';
 
 export const OWNER_COLOR: Record<PlayerId, string> = { P1: '#c0533f', P2: '#3f67b5' };
 
@@ -199,6 +201,7 @@ export function TableView(props: Props) {
         onWheel={(e) => zoom(e.deltaY > 0 ? 1.15 : 1 / 1.15)}
         data-testid="table"
       >
+        <TerrainDefs />
         <g transform={rotated ? `matrix(0 1 -1 0 ${H} 0)` : undefined}>
         <rect x={0} y={0} width={W} height={H} className="table" />
         <g className="grid">
@@ -209,9 +212,27 @@ export function TableView(props: Props) {
             <line key={`h${i}`} y1={(i + 1) * 12} y2={(i + 1) * 12} x1={0} x2={W} />
           ))}
         </g>
-        {s.scenario.zones.map((z) => (
-          <circle key={z.id} cx={z.x} cy={fy(z.y)} r={z.diameter / 2} className="zone" fill={z.friendlyTo ? OWNER_COLOR[z.friendlyTo] : 'var(--zone)'} />
-        ))}
+        {s.scenario.territories &&
+          (['P1', 'P2'] as const).map((p) => {
+            const d = s.scenario.territories![p];
+            return <rect key={`ter${p}`} x={0} y={p === 'P1' ? fy(d) : 0} width={W} height={d} className="territory" fill={OWNER_COLOR[p]} pointerEvents="none" />;
+          })}
+        <TerrainLayer pieces={s.scenario.terrain ?? []} fy={fy} upright={upright} />
+        {s.scenario.zones
+          .filter((z) => !(s.burnedZones ?? []).includes(z.id))
+          .map((z) => {
+            const prio = priorityZone(s.scenario, s.round) === z.id;
+            return (
+              <g key={z.id}>
+                <circle cx={z.x} cy={fy(z.y)} r={z.diameter / 2} className={`zone ${prio ? 'priority' : ''}`} fill={z.friendlyTo ? OWNER_COLOR[z.friendlyTo] : 'var(--zone)'} />
+                {prio && (
+                  <text x={z.x} y={fy(z.y) - z.diameter / 2 - 0.4} className="zone-tag" {...upright(z.x, fy(z.y) - z.diameter / 2 - 0.4)}>
+                    ★ Priority
+                  </text>
+                )}
+              </g>
+            );
+          })}
         {s.scenario.markers.map((m) => {
           const st = s.markers[m.id];
           if (st?.destroyed) return null;

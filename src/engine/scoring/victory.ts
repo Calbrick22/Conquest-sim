@@ -1,4 +1,5 @@
 import { ev, type Ctx } from '../dice';
+import { resolveAttack } from '../combat';
 import { layout } from '../formation';
 import { rectPoly } from '../geometry/polygon';
 import { standOverlapsZone } from '../geometry/zones';
@@ -26,6 +27,8 @@ export function zoneResults(s: GameState): ZoneResults {
   });
   const mPolys = markerPolys(s);
   for (const z of s.scenario.zones) {
+    // A Burned zone has left the game (Flames of Conquest, ns p.5).
+    if ((s.burnedZones ?? []).includes(z.id)) continue;
     const centre = { x: z.x, y: z.y };
     const stands: StandInRange[] = [];
     for (const { r, slots, polys } of slotsByReg) {
@@ -63,6 +66,8 @@ const RULE_GROUP: Record<string, 'zones' | 'kills'> = {
   seizedCountBonus: 'zones',
   seizingMoreZonesThanOpponent: 'zones',
   pickedZoneSeized: 'zones',
+  priorityZoneSeized: 'zones',
+  zoneBurned: 'zones',
   markerDestroyed: 'kills',
   markersDestroyedCountBonus: 'kills',
   characterKilled: 'kills',
@@ -84,6 +89,7 @@ export function scoreGroups(rs: RoundScore, p: PlayerId): { zones: number; kills
 /** Victory Phase scoring (core p.106; scenario rules pack p.11–22). */
 export function victoryPhase(ctx: Ctx): RoundScore {
   const s = ctx.s;
+  cursedSanctuaries(ctx);
   const active = s.round >= s.scenario.objectivesFromRound;
   const zr = zoneResults(s);
   const seized: Record<PlayerId, string[]> = { P1: [], P2: [] };
@@ -97,6 +103,7 @@ export function victoryPhase(ctx: Ctx): RoundScore {
     warlordSlain: s.tally.warlordSlain,
     warlordScoredBefore: { ...s.warlordScored },
     ...(s.scenario.zonePick ? { zonePicks: s.zonePicks } : {}),
+    ...(s.tally.burned ? { burned: s.tally.burned } : {}),
   };
   const rs: RoundScore = { round: s.round, seized, vp: { P1: 0, P2: 0 }, lines: { P1: [], P2: [] } };
   for (const p of ['P1', 'P2'] as const) {
@@ -117,3 +124,36 @@ export function victoryPhase(ctx: Ctx): RoundScore {
 }
 
 export { scoreRound };
+
+/**
+ * Cursed Sanctuaries (ns p.4): in each Victory Phase, every Regiment within a zone suffers that
+ * zone's Hits, rolled against its Resolve (its Defense if it has none), from the front, with no
+ * Morale Tests. RULE-AMBIGUITY: AMB-63 — resolved before scoring; the Regiment's own Resolve
+ * Characteristic is used (no size bonus); Regiments destroyed this way count for the enemy.
+ */
+function cursedSanctuaries(ctx: Ctx): void {
+  const s = ctx.s;
+  const hitsBy = s.scenario.cursedSanctuaries;
+  if (!hitsBy || s.round < s.scenario.objectivesFromRound) return;
+  for (const z of s.scenario.zones) {
+    if ((s.burnedZones ?? []).includes(z.id)) continue;
+    const hits = hitsBy[String(z.diameter)];
+    if (!hits) continue;
+    for (const r of onTableRegiments(s)) {
+      const polys = layout(formationInput(s, r)).map((sl) => rectPoly(sl.rect));
+      if (!polys.some((p) => standOverlapsZone(p, { x: z.x, y: z.y }, z.diameter))) continue;
+      const R = r.profile.R;
+      ev(ctx, { type: 'note', text: `Cursed Sanctuary ${z.id}: ${r.name} suffers ${hits} Hits against its ${R === null ? 'Defense' : `Resolve ${R}`} (ns p.4).`, regimentId: r.id });
+      resolveAttack(ctx, {
+        attackerOwner: r.owner === 'P1' ? 'P2' : 'P1',
+        targetId: r.id,
+        arc: 'front',
+        pools: [{ label: 'Cursed Sanctuary', dice: 0, skill: 0, autoHits: hits, ...(R !== null ? { defenseOverride: Math.max(0, R + r.roundMods.filter((m) => m.stat === 'R').reduce((a, m) => a + m.delta, 0)) } : {}) }],
+        morale: false,
+        terrifying: 0,
+        what: 'Cursed Sanctuary',
+        kind: 'special',
+      });
+    }
+  }
+}

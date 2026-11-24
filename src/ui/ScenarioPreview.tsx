@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { OBJECTIVE_MARKER_BASE_MM, mmToInches } from '../engine/geometry/bases';
 import { SCENARIOS } from '../scenarios';
 import type { EdgeSegment, ScenarioDef } from '../scenarios/types';
+import { TerrainDefs, TerrainLayer } from './game/TerrainLayer';
+import { terrainFor } from '../engine/terrainLayouts';
 
 const P1_COLOR = '#c0533f';
 const P2_COLOR = '#3f67b5';
@@ -23,7 +25,9 @@ export function ScenarioMap({ s, showGrid = true }: { s: ScenarioDef; showGrid?:
   };
   return (
     <svg className="map" viewBox={`${-pad} ${-pad} ${W + 2 * pad} ${H + 2 * pad}`} role="img" aria-label={`${s.name} layout`}>
+      <TerrainDefs />
       <rect x={0} y={0} width={W} height={H} className="table" />
+      <TerrainLayer pieces={s.terrain ?? []} fy={fy} />
       {showGrid && (
         <g className="grid">
           {Array.from({ length: W / 12 - 1 }, (_, i) => (
@@ -70,7 +74,10 @@ export function ScenarioMap({ s, showGrid = true }: { s: ScenarioDef; showGrid?:
 
 export function ScenarioPreview() {
   const [id, setId] = useState(SCENARIOS.find((s) => s.id === 'forlorn-hope')?.id ?? SCENARIOS[0]!.id);
-  const s = SCENARIOS.find((x) => x.id === id)!;
+  const base = SCENARIOS.find((x) => x.id === id)!;
+  // Shown with the scenario's 2026 terrain layout, or a sample random layout.
+  const t = terrainFor(base, base.defaultTerrain ? { mode: 'layout', id: base.defaultTerrain } : { mode: 'random', seed: 1 });
+  const s = { ...base, terrain: t.pieces };
   return (
     <section>
       <h2>Scenario preview</h2>
@@ -87,7 +94,7 @@ export function ScenarioPreview() {
       <div className="card">
         <ScenarioMap s={s} />
         <p className="meta">
-          72″ × 48″, 12″ grid. Coordinates from Player 1's bottom-left corner. Tournament pack p.{s.page}.
+          72″ × 48″, 12″ grid. Coordinates from Player 1's bottom-left corner. {s.source === 'ns2026' ? `2026 scenarios p.${s.page}` : `Tournament pack p.${s.page}`}. Terrain: {t.name}.
           {s.noReinforcement.length > 0 && ' Thick red edges: no Reinforcements.'}
         </p>
         <ul className="plain">
@@ -108,6 +115,9 @@ export function ScenarioPreview() {
             <li key={i}>{t}</li>
           ))}
         </ul>
+        {s.manualRules?.map((m, i) => (
+          <p key={i} className="warn">Manual: {m}</p>
+        ))}
         {s.ambiguities && <p className="meta">Interpretation notes: {s.ambiguities.join(', ')} (see docs/ambiguities.md).</p>}
       </div>
     </section>

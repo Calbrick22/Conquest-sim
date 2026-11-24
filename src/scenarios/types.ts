@@ -50,7 +50,11 @@ export type ScoringRule =
   | ({ kind: 'characterKilled'; vp: number } & RoundFilter)
   | ({ kind: 'regimentDestroyed'; vp: number } & RoundFilter)
   | ({ kind: 'warlordSlain'; vp: number; oncePerGame: boolean } & RoundFilter)
-  | ({ kind: 'pickedZoneSeized'; vp: number } & RoundFilter);
+  | ({ kind: 'pickedZoneSeized'; vp: number } & RoundFilter)
+  /** Wheel of War (ns p.3): VP for Seizing this Round's Priority Zone (see ScenarioDef.priorityZones). */
+  | ({ kind: 'priorityZoneSeized'; vp: number } & RoundFilter)
+  /** Flames of Conquest (ns p.5): VP for each zone the player Burned this Round. */
+  | ({ kind: 'zoneBurned'; vp: number } & RoundFilter);
 
 /**
  * Scenario-specific zone selection each Round (pack p.12, p.19, p.22):
@@ -64,6 +68,23 @@ export interface ZonePickRule {
   mode: 'vetoDistinct' | 'vetoSecret' | 'bonusPick';
   /** Zones that may be picked; defaults to all. */
   eligibleZoneIds?: string[];
+}
+
+/** Terrain keywords (core p.86–87). */
+export type TerrainKeyword = 'Elevated' | 'Obstructing' | 'Cover' | 'Traversable' | 'Hindering' | 'Impassable' | 'Water' | 'Dangerous';
+export type TerrainKind = 'hill' | 'forest' | 'field' | 'structure' | 'pond' | 'boulder';
+
+/** A piece of Zonal Terrain: a rectangle `w` × `h` inches centred on (x, y), turned by `angle` radians. */
+export interface TerrainPiece {
+  id: string;
+  kind: TerrainKind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  angle: number;
+  size: number;
+  keywords: TerrainKeyword[];
 }
 
 export interface ScenarioDef {
@@ -85,4 +106,22 @@ export interface ScenarioDef {
   summary: string[];
   /** RULE-AMBIGUITY ids that affect this scenario. */
   ambiguities?: string[];
+  /** Where the scenario comes from: the tournament pack (default) or the 2026 new scenarios. */
+  source?: 'pack' | 'ns2026';
+  /** Wheel of War (ns p.3): the Priority Zone in Round 1, 2, … (repeating). */
+  priorityZones?: string[];
+  /** Cursed Sanctuaries (ns p.4): Hits suffered in each zone during the Victory Phase, by zone diameter. */
+  cursedSanctuaries?: Record<string, number>;
+  /** Flames of Conquest (ns p.5): Regiments may Burn a zone they are Seizing from this Round. */
+  burnFromRound?: number;
+  /** Player territories (Break the Line, ns p.6), as bands from each player's edge, for display. */
+  territories?: Record<PlayerId, number>;
+  /** Scenario rules that are not automated (shown on the preview and logged). */
+  manualRules?: string[];
+  /** The terrain layout drawn for this scenario (see terrainLayouts.ts). */
+  defaultTerrain?: string;
+  /** Terrain on the Battlefield (chosen at setup). */
+  terrain?: TerrainPiece[];
+  /** Name of the terrain layout in use, for display. */
+  terrainLayout?: string;
 }

@@ -1,0 +1,91 @@
+{
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "markers": [],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "source": "ns2026",
+  "id": "flames-of-conquest",
+  "name": "Flames of Conquest",
+  "page": 5,
+  "defaultTerrain": "flames-of-conquest",
+  "zones": [
+    {
+      "id": "w1",
+      "x": 12,
+      "y": 18,
+      "diameter": 6
+    },
+    {
+      "id": "w2",
+      "x": 12,
+      "y": 30,
+      "diameter": 6
+    },
+    {
+      "id": "c1",
+      "x": 36,
+      "y": 18,
+      "diameter": 6
+    },
+    {
+      "id": "c2",
+      "x": 36,
+      "y": 30,
+      "diameter": 6
+    },
+    {
+      "id": "e1",
+      "x": 60,
+      "y": 18,
+      "diameter": 6
+    },
+    {
+      "id": "e2",
+      "x": 60,
+      "y": 30,
+      "diameter": 6
+    }
+  ],
+  "burnFromRound": 4,
+  "scoring": [
+    {
+      "kind": "perZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 3,
+      "vp": 2
+    },
+    {
+      "kind": "zoneBurned",
+      "vp": 4
+    },
+    {
+      "kind": "warlordSlain",
+      "vp": 1,
+      "oncePerGame": true
+    },
+    {
+      "kind": "characterKilled",
+      "vp": 1
+    },
+    {
+      "kind": "regimentDestroyed",
+      "vp": 1
+    }
+  ],
+  "summary": [
+    "2 VP per 6″ zone Seized; +2 VP for three or more",
+    "From Round 4 a Regiment Seizing a zone may spend an Action to Burn it: +4 VP that Round, and the zone leaves the game",
+    "1 VP for the enemy Warlord (once), per enemy Character Stand and per enemy Regiment destroyed"
+  ]
+}

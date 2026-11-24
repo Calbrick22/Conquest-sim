@@ -119,10 +119,11 @@ describe('other scenario scorers', () => {
 });
 
 describe('scenario data (pack p.11–22)', () => {
-  it('has all 12 tournament scenarios', () => {
+  it('has all 12 tournament scenarios and the 5 new 2026 scenarios', () => {
     expect(SCENARIOS.map((s) => s.name)).toEqual([
       'Divide and Conquer', 'Declined Flank', 'Breakout', 'Echelon', 'Forlorn Hope', 'Off-Balance',
       'Melee', 'Bulwark', 'Foresight', 'Head-to-Head', 'Maelstorm', 'Grind Them Down',
+      'Seek and Destroy', 'Wheel of War', 'Cursed Sanctuaries', 'Flames of Conquest', 'Break the Line',
     ]);
   });
   for (const s of SCENARIOS) {

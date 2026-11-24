@@ -518,6 +518,13 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
               {shoots && <button type="button" onClick={() => target('volley')} data-testid="volley">Volley</button>}
               {shoots && <button type="button" className="secondary" onClick={() => run({ type: 'takeAim', regimentId: r.id })}>Take Aim</button>}
               {r.broken && <button type="button" onClick={() => run({ type: 'rally', regimentId: r.id })}>Rally</button>}
+              {s.scenario.zones
+                .filter((z) => validate(s, { type: 'burnZone', regimentId: r.id, zoneId: z.id }).ok)
+                .map((z) => (
+                  <button key={z.id} type="button" className="danger" onClick={() => run({ type: 'burnZone', regimentId: r.id, zoneId: z.id })} data-testid={`burn-${z.id}`}>
+                    Burn zone {z.label ?? z.id} (+4 VP)
+                  </button>
+                ))}
               {s.scenario.markers
                 .filter((m) => markerInContact(s, r, m.id) && markerAttackProblems(s, r.owner, m.id).length === 0)
                 .map((m) => (

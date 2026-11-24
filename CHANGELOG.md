@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.9.0] - 2026-11-24 (terrain and the 2026 scenarios)
+
+### Added
+- **Terrain** (core p.84–90; pack p.3–4), using the 2026 set: Hill, Structure, Forest, Pond, Field and Boulder.
+  - **Line of Sight:** Obstructing terrain blocks it by Size, and Elevated adds the piece's Size to Stands on it.
+  - **Volleys:** Cover halves Barrage.
+  - **Charges:** Hindering removes Impact Attacks, and Medium and Heavy Regiments lose Inspired for the Round.
+  - **Clash:** Water gives −1 Clash.
+  - **Movement:** Impassable blocks it, and Fly passes over.
+  - Terrain is drawn on the table with its keywords and Size, and the computer opponent plays legally around it.
+- **Terrain layouts:** each 2026 scenario's own layout, any of the five layouts on any scenario (moved the least distance needed to clear objectives), a **random** layout (mirrored, 9″ apart, Impassable off objectives, "Randomise again"), or no terrain. You choose on the New Game screen, with a live preview.
+- **Five new scenarios (2026):** Seek and Destroy, Wheel of War (Priority Zone), Cursed Sanctuaries (Victory Phase Hits), Flames of Conquest (Burn a zone for 4 VP) and Break the Line. Chosen Regiments and Linebreakers are listed as manual.
+
+### Changed
+- **Faster geometry:** distance and overlap checks now skip far-apart pairs using bounding boxes. With the same results, a computer-vs-computer game runs about 3 times faster, which matters most on phones.
+
 ## [1.8.0] - 2026-11-24 (rule fixes; end of battle)
 
 ### Fixed

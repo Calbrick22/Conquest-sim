@@ -1,0 +1,61 @@
+{
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "markers": [],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "source": "ns2026",
+  "id": "break-the-line",
+  "name": "Break the Line",
+  "page": 6,
+  "defaultTerrain": "break-the-line",
+  "zones": [
+    {
+      "id": "w",
+      "x": 12,
+      "y": 24,
+      "diameter": 6
+    },
+    {
+      "id": "c",
+      "x": 36,
+      "y": 24,
+      "diameter": 6
+    },
+    {
+      "id": "e",
+      "x": 60,
+      "y": 24,
+      "diameter": 6
+    }
+  ],
+  "territories": {
+    "P1": 6,
+    "P2": 6
+  },
+  "scoring": [
+    {
+      "kind": "perZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "regimentDestroyed",
+      "vp": 1
+    }
+  ],
+  "manualRules": [
+    "Linebreakers: each player nominates two friendly Regiments able to Seize (they lose Fly); +3 VP for destroying an enemy Linebreaker and +5 VP for each unengaged Linebreaker in enemy territory in the Victory Phase are added by hand."
+  ],
+  "summary": [
+    "2 VP per 6″ zone Seized",
+    "1 VP per enemy Regiment destroyed",
+    "Linebreaker bonuses are manual; player territories are the 6″ bands at each edge"
+  ]
+}

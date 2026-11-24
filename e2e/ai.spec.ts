@@ -5,6 +5,7 @@ test('play against the computer: it takes its own decisions and explains them', 
   await page.goto('/#play');
   await expect(page.getByTestId('mode')).toHaveValue('ai');
   await page.getByLabel('Seed').fill('4242');
+  await page.getByTestId('terrain').selectOption('none');
   await page.getByTestId('roll-sides').click();
   await page.getByTestId('choose-p1').click();
   await page.getByTestId('start-battle').click();

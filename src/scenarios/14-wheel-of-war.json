@@ -1,0 +1,75 @@
+{
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "markers": [],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "source": "ns2026",
+  "id": "wheel-of-war",
+  "name": "Wheel of War",
+  "page": 3,
+  "defaultTerrain": "wheel-of-war",
+  "zones": [
+    {
+      "id": "s",
+      "x": 36,
+      "y": 12,
+      "diameter": 6,
+      "label": "S"
+    },
+    {
+      "id": "w",
+      "x": 18,
+      "y": 24,
+      "diameter": 6,
+      "label": "W"
+    },
+    {
+      "id": "n",
+      "x": 36,
+      "y": 36,
+      "diameter": 6,
+      "label": "N"
+    },
+    {
+      "id": "e",
+      "x": 54,
+      "y": 24,
+      "diameter": 6,
+      "label": "E"
+    }
+  ],
+  "priorityZones": [
+    "s",
+    "w",
+    "n",
+    "e"
+  ],
+  "scoring": [
+    {
+      "kind": "perZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 3,
+      "vp": 2
+    },
+    {
+      "kind": "priorityZoneSeized",
+      "vp": 2
+    }
+  ],
+  "summary": [
+    "2 VP per 6″ zone Seized",
+    "+2 VP when Seizing three or more zones",
+    "+2 VP for Seizing the Priority Zone: the zone nearest P1 in Round 1, then one zone clockwise each Round"
+  ]
+}

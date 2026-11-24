@@ -4,6 +4,7 @@ import type { CharacterState, GameState, PlayerId, RegimentState, StatMod } from
 import { odCharacterGrants, odRegimentGrants } from '../../factions/oldDominion';
 import { spiresCharacterMods, spiresGrants, strainFor } from '../../factions/spires';
 import { distancePolys, regimentPolys } from '../../queries';
+import { waterMods } from '../../terrain';
 import { TOL } from '../../geometry/vec';
 
 /**
@@ -91,7 +92,8 @@ export function refreshRules(s: GameState): void {
     let eff = dedupe(rules);
     if (og.removeBrittle) eff = eff.filter((x) => x.name !== 'Brittle');
     r.rules = eff;
-    r.grantMods = og.mods;
+    // Water (core p.87): −1 Clash with at least half the Stands within it.
+    r.grantMods = r.location === 'table' ? [...og.mods, ...waterMods(s, regimentPolys(s, r), r.profile.C ?? 0)] : og.mods;
     r.drawEvents = [...new Set(drawEvents)];
   }
   // Strains that change enemies in contact (e.g. "enemy -1 Clash"), while the Strain is active.

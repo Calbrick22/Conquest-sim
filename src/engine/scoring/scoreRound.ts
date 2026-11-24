@@ -17,6 +17,14 @@ export interface RoundFacts {
   warlordScoredBefore: Record<PlayerId, boolean>;
   /** Zone picks for scenarios with a zonePick rule. */
   zonePicks?: Record<PlayerId, string | null>;
+  /** Zones each player Burned this Round (Flames of Conquest, ns p.5). */
+  burned?: Record<PlayerId, string[]>;
+}
+
+/** The Priority Zone this Round (Wheel of War, ns p.3): the list repeats from Round 1. */
+export function priorityZone(s: ScenarioDef, round: number): string | null {
+  const z = s.priorityZones;
+  return z && z.length ? z[(round - 1) % z.length]! : null;
 }
 
 export interface ScoreLine {
@@ -109,6 +117,14 @@ export function scoreRound(s: ScenarioDef, f: RoundFacts, player: PlayerId): Pla
         if (pick && seized.includes(pick)) add(rule.kind, rule.vp, `Seized picked zone ${pick}`);
         break;
       }
+      case 'priorityZoneSeized': {
+        const pz = priorityZone(s, f.round);
+        if (pz && seized.includes(pz)) add(rule.kind, rule.vp, `Seized the Priority Zone ${pz}`);
+        break;
+      }
+      case 'zoneBurned':
+        for (const z of f.burned?.[player] ?? []) add(rule.kind, rule.vp, `Burned zone ${z}`);
+        break;
     }
   }
   return { total: lines.reduce((a, l) => a + l.vp, 0), lines };

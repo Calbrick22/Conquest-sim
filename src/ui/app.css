@@ -234,3 +234,12 @@ select, input, textarea { max-width: 100%; }
 .end-score .vs { font-size: 0.75rem; color: var(--muted); }
 .end-table td, .end-table th { text-align: center; }
 .end-actions { justify-content: center; margin-top: 12px; }
+/* Terrain (core p.84–90; 2026 terrain set). */
+.map .terrain .piece polygon { stroke: rgba(20, 14, 8, 0.65); stroke-width: 0.12; }
+.map .terrain .tlabel { font-size: 1.05px; font-weight: 700; fill: #fff8e6; paint-order: stroke; stroke: rgba(20, 14, 8, 0.85); stroke-width: 0.22px; letter-spacing: 0.04em; text-transform: uppercase; }
+.map .terrain .tkeys { font-size: 0.62px; fill: #fff8e6; paint-order: stroke; stroke: rgba(20, 14, 8, 0.8); stroke-width: 0.16px; }
+.map .territory { fill-opacity: 0.12; }
+.map .zone.priority { stroke: #f2c94c; stroke-width: 0.35; }
+.map .zone-tag { font-size: 1px; font-weight: 700; fill: #8a6d12; paint-order: stroke; stroke: #fff; stroke-width: 0.2px; }
+.setup-preview .map { max-height: 320px; }
+button.danger { background: #8f2d22; color: #fff; border-color: #6e2018; }

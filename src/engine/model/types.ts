@@ -182,6 +182,8 @@ export interface RegimentFlags {
   compelled?: boolean;
   /** Siphon Strength: cannot be Inspired or Aimed (sp p.15). */
   siphoned?: boolean;
+  /** Charged through Hindering terrain this Round: no Inspired (Medium and Heavy, core p.86). */
+  hindered?: boolean;
   /** Epigenetic Trigger: its Command Stand +2 Attacks (sp p.9). */
   epigenetic?: boolean;
   /** Spells already cast on this Regiment this Round (core p.80: once per spell, except Hits). */
@@ -204,7 +206,8 @@ export type ActionKind =
   | 'duel'
   | 'ability'
   | 'spell'
-  | 'memories';
+  | 'memories'
+  | 'burn';
 
 export interface ActivationState {
   /** The Regiment being activated, or the Character's Regiment for a Character Activation. */
@@ -307,6 +310,8 @@ export interface RoundTally {
   regimentsDestroyed: Record<PlayerId, number>;
   warlordSlain: Record<PlayerId, boolean>;
   markersDestroyed: Record<PlayerId, string[]>;
+  /** Zones Burned by each player this Round (Flames of Conquest). */
+  burned?: Record<PlayerId, string[]>;
 }
 
 export interface GameState {
@@ -341,6 +346,8 @@ export interface GameState {
   scoreHistory: RoundScore[];
   /** A once-per-game Warlord bonus has been scored. */
   warlordScored: Record<PlayerId, boolean>;
+  /** Zones Burned and removed from the game (Flames of Conquest, ns p.5). */
+  burnedZones?: string[];
 }
 
 export interface MarkerState {

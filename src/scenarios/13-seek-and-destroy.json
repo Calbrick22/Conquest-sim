@@ -1,0 +1,79 @@
+{
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "markers": [],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "source": "ns2026",
+  "id": "seek-and-destroy",
+  "name": "Seek and Destroy",
+  "page": 2,
+  "defaultTerrain": "seek-and-destroy",
+  "zones": [
+    {
+      "id": "sw",
+      "x": 12,
+      "y": 12,
+      "diameter": 6,
+      "friendlyTo": "P1"
+    },
+    {
+      "id": "se",
+      "x": 60,
+      "y": 12,
+      "diameter": 6,
+      "friendlyTo": "P1"
+    },
+    {
+      "id": "nw",
+      "x": 12,
+      "y": 36,
+      "diameter": 6,
+      "friendlyTo": "P2"
+    },
+    {
+      "id": "ne",
+      "x": 60,
+      "y": 36,
+      "diameter": 6,
+      "friendlyTo": "P2"
+    },
+    {
+      "id": "cw",
+      "x": 24,
+      "y": 24,
+      "diameter": 6
+    },
+    {
+      "id": "ce",
+      "x": 48,
+      "y": 24,
+      "diameter": 6
+    }
+  ],
+  "scoring": [
+    {
+      "kind": "perZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "regimentDestroyed",
+      "vp": 1
+    }
+  ],
+  "manualRules": [
+    "Chosen Regiments: before the first Supremacy Phase each player marks up to three non-Light enemy Regiments; +2 VP per zone Seized with Chosen Regiments, +1 VP per Regiment destroyed by Chosen Regiments, +3 VP per enemy Chosen Regiment destroyed (and VP for missing Chosen) are added by hand."
+  ],
+  "summary": [
+    "2 VP per 6″ zone Seized (red zones are friendly to P1, blue to P2)",
+    "1 VP per enemy Regiment destroyed",
+    "Chosen Regiments bonuses are manual"
+  ]
+}

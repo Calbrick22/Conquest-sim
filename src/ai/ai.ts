@@ -340,6 +340,8 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
     if (used === 0 && !volleyAimed(s, r)) add({ type: 'takeAim', regimentId: r.id }, 2 + w * 0.4, `Takes Aim to Volley ${t.name}`);
     add({ type: 'volley', regimentId: r.id, targetId: t.id }, 2 + w, `Volleys ${t.name}: ${shots} shots, about ${w.toFixed(1)} expected Wounds`);
   }
+  // Flames of Conquest (ns p.5): Burning a zone it is Seizing is worth 4 VP at once.
+  for (const z of s.scenario.zones) add({ type: 'burnZone', regimentId: r.id, zoneId: z.id }, 6, `Burns zone ${z.label ?? z.id} for 4 VP`);
   // Objective Markers in reach.
   for (const m of s.scenario.markers) {
     if (markerAttackProblems(s, r.owner, m.id).length) continue;

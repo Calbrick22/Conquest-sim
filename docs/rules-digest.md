@@ -316,11 +316,48 @@ Only front-rank Stands shoot, unless a rule says otherwise.
 
 Spires use "Practitioner" Actions instead. They are faction-specific and listed on the army list.
 
-## 19. Terrain (core p.84–90; pack p.3–4)
+## 19. Terrain (core p.84–90; pack p.3–4; 2026 scenarios ns p.1)
 
-- Terrain is **out of scope for the MVP**. A summary is kept for the roadmap.
-- **Zonal terrain** keywords: Elevated (adds its Size to Stands on it), Cover (halves Barrage X when shooting through it or into it), Obstructing, Traversable, Hindering (no Impact, no Inspired), Dangerous, Perilous, Impassable and Water.
-- **Garrison terrain:** a Capacity, a Defense bonus, 360° sight, and its own rules for occupying and leaving.
+Code: `src/engine/terrain.ts` (rules) and `src/engine/terrainLayouts.ts` (layouts).
+
+### The 2026 terrain set (ns p.1)
+
+| Piece | Size | Keywords | Footprint |
+|---|---|---|---|
+| Hill | 2 | Elevated, Obstructing | 8″ × 6″ |
+| Structure | 2 | Impassable, Obstructing | 8″ × 6″ |
+| Forest | 3 | Traversable, Hindering, Cover | 10″ × 6″ |
+| Pond | 0 | Traversable, Water, Hindering | 10″ × 6″ |
+| Field | 1 | Traversable, Cover | 8″ × 6″ |
+| Boulder | 4 | Impassable, Obstructing | 6″ × 6″ |
+
+### Rules
+
+- **Within:** a Stand with any part inside a piece is within it (core p.86).
+- **Size and Elevated** (core p.12, p.84): Infantry 1, Cavalry/Brute/Chariot 2, Monster 3. A Stand on an Elevated piece adds the piece's Size. Stands see over Regiments and Obstructing terrain of lower Size, and a Volley at a larger target ignores anything smaller than the target.
+- **Obstructing** (core p.86; pack p.4): blocks Line of Sight when its Size is at least the shooter's and the target's. Stands on the piece see and are seen freely.
+- **Cover** (core p.86): Barrage is halved (rounding up) when the line passes through Cover, or when the target has every Stand within Cover of at least its Size. There is no penalty when the whole shooting Regiment is in the same piece as the target, and no penalty from the piece a shooting Stand is in (AMB-62). It does not stack with Loose Formation (core p.99).
+- **Hindering** (core p.86): if at least half the Stands charge through it, there are no Impact Attacks, and a Medium or Heavy Regiment cannot be Inspired for the rest of the Round.
+- **Water** (core p.87): −1 Clash (minimum 1) with at least half the Stands within it.
+- **Impassable** (core p.87): no moving through or ending on it.
+- **Fly** (core p.98): passes over Impassable terrain but cannot end on it. It ignores Zonal Terrain it does not start or end in.
+- **Garrison Terrain:** not modelled (AMB-61).
+
+### Placement (pack p.3–4; ns p.1)
+
+- **Spacing:** pieces at least 9″ apart; about 6 pieces, never more than 9; at least 2 Obstructing.
+- **Objectives:** no Impassable piece on an Objective Zone, and nothing on an Objective Marker.
+- **Symmetry:** both halves of the table match. Every 2026 layout pairs each piece with a twin turned half a turn about the centre.
+- **Layouts:** the five 2026 layouts are read off their diagrams (ns p.7–9). When a layout is used on a scenario whose objectives it clashes with, the offending pair moves the least distance that makes it legal (pack p.4), keeping the symmetry.
+- **Random layouts:** three mirrored pairs (one Obstructing, one Cover) and sometimes a centre piece, checked against all the rules above. The same seed always gives the same table.
+
+### 2026 scenarios (ns p.2–6)
+
+- **Seek and Destroy:** 2 VP per zone and 1 VP per Regiment destroyed. Chosen Regiments are manual.
+- **Wheel of War:** a Priority Zone (+2 VP), starting nearest P1 and moving clockwise each Round.
+- **Cursed Sanctuaries:** Victory Phase Hits against Resolve, 4 in a 6″ zone and 8 in a 9″ zone (AMB-63).
+- **Flames of Conquest:** from Round 4 a Regiment Seizing a zone may Burn it for 4 VP, and the zone leaves the game (AMB-64).
+- **Break the Line:** 2 VP per zone and 1 VP per Regiment destroyed. Linebreakers are manual.
 
 ## 20. Draw Events and special rules (core p.94–101)
 
