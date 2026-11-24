@@ -101,6 +101,18 @@ describe('Spires Strains (sp p.5, p.21–33)', () => {
   });
 });
 
+describe('Strains and attached Characters (core p.72)', () => {
+  it('an attached Character shares its Regiment\'s Strain: Brute Drones\' Cleave (+1) applies to the Pheromancer too (core p.72)', () => {
+    const ph = { ...hero('Pheromancer', 'Brute'), specialRules: [R('Impact (3)')] };
+    const { s, rng } = arena(unit('Brute Drones', { type: 'Brute' }), undefined, 10, ph);
+    let u = activate(s, rng, 'P1-w0-r0');
+    u = step(u, rng, { type: 'drawEvent', name: 'Strain Expression' }).state;
+    expect(u.characters['P1-w0-c']!.rules.some((x) => x.raw === 'Cleave (+1)')).toBe(true);
+    // Decay is the Regiment's, not shared as a rule.
+    expect(u.characters['P1-w0-c']!.rules.some((x) => x.name === 'Decay')).toBe(false);
+  });
+});
+
 describe('Spires Practitioner Actions (sp p.15)', () => {
   const pheromancer = () => ({ ...hero('Pheromancer'), supremacyAbilities: ['Induced Aggression'], specialRules: [R('Practitioner (Pheromancy)')] });
   function charActive(s: GameState, rng: RngState) {

@@ -293,6 +293,7 @@ Only front-rank Stands shoot, unless a rule says otherwise.
 - When its Regiment acts, it fights and shoots alongside it: full Attacks if Engaged, otherwise 1 Support Attack.
 - **Entourage Activation:** after the Character's activation, the player may draw the next card. If it belongs to that Character's unactivated, non-Monster Regiment, that Regiment activates at once. Otherwise the card goes back on top of the Stack.
 - A Character can only be wounded by **Duels** and by rules that specifically wound Characters. Clash and Volley can't target it.
+- **Shared effects:** an attached Character is affected by the Regiment's rules and characteristic changes gained this Round (Strains, Draw Events, Spells; core p.72; AMB-59).
 - **Die Fighting:** if the Regiment is destroyed and the Character hasn't acted, it makes a free Clash, or is removed if nothing is in contact. This doesn't apply to Monster Characters. The engine removes the Character after that Clash (AMB-35).
 - **Character Actions:** Snapshot (a small Volley) and Mighty Swing (a Clash) are automated. Other Character Actions stay manual.
 - **Duel** (Combat Action):

@@ -217,3 +217,20 @@ select, input, textarea { max-width: 100%; }
 .map .area.threat.spent polygon { fill-opacity: 0.03; stroke-opacity: 0.25; }
 /* Table buttons sit in a strip below the table, so they never cover a Regiment. */
 .table-wrap .zoom { position: static; justify-content: flex-end; flex-wrap: wrap; padding: 4px 6px; border-top: 1px solid var(--line); }
+/* Modal dialogs (end-of-battle summary, confirmations). */
+.modal-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(12, 9, 6, 0.62); display: grid; place-items: center; padding: 16px; }
+.modal { width: min(720px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45); }
+.end-banner { text-align: center; padding: 8px 0 12px; }
+.end-banner h2 { font-size: 2rem; margin: 4px 0 8px; letter-spacing: 0.04em; }
+.end-summary.victory .end-banner h2 { color: #b8860b; }
+.end-summary.defeat .end-banner h2 { color: #9b2c2c; }
+.eyebrow { text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.72rem; color: var(--muted); }
+.end-score { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.end-score .side { display: flex; align-items: center; gap: 8px; }
+.end-score .vp { font-size: 2.2rem; font-weight: 800; }
+.end-score .p1 .vp { color: #c0533f; }
+.end-score .p2 .vp { color: #3f67b5; }
+.end-score .who { font-size: 0.8rem; color: var(--muted); max-width: 140px; }
+.end-score .vs { font-size: 0.75rem; color: var(--muted); }
+.end-table td, .end-table th { text-align: center; }
+.end-actions { justify-content: center; margin-top: 12px; }

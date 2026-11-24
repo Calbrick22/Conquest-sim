@@ -229,7 +229,9 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
       ev(ctx, { type: 'note', text: `${target.name} is Marked until the end of the Round (Designate Target): friendly Charges against it get +2″ and re-roll failed Hit Rolls.`, regimentId: target.id });
     }
     const before = target.stands.length;
-    allocateWounds(ctx, target, wounds, spec.attackerOwner, spec.noLethalDemise ? undefined : spec.attackerId);
+    // Lethal Demise (core p.99) only answers a Stand destroyed by the enemy in contact in a Clash
+    // (RULE-AMBIGUITY: AMB-60): not Volleys, Impact Attacks, Spells or other Hits.
+    allocateWounds(ctx, target, wounds, spec.attackerOwner, spec.noLethalDemise || kind !== 'clash' ? undefined : spec.attackerId);
     if (!isDestroyed(target) && spec.morale) res.moraleWounds = moraleTest(ctx, target, wounds, spec);
     res.standsLost = before - target.stands.length;
     res.destroyed = isDestroyed(target);

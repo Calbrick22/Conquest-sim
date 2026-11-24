@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.8.0] - 2026-11-24 (rule fixes; end of battle)
+
+### Fixed
+- **An attached Character shares its Regiment's Strain, Draw Events and Spells this Round** (core p.72; AMB-59). For example, a Pheromancer attached to Brute Drones now gets their Cleave (+1).
+- **Lethal Demise** only answers a Stand destroyed by the enemy in contact during a Clash. Volleys, Impact Attacks and Spells no longer trigger it (owner's ruling; AMB-60).
+
+### Added
+- **Simulate the remaining Rounds:** when one side has no Regiments left, a button plays the rest of the battle automatically. The surviving army keeps moving to Seize objectives and score.
+- **End-of-battle summary:** a Victory, Defeat or Draw screen with the final score and a Round-by-Round breakdown (VP, zones seized, running total). It has "Save and return home", "Export battle report" and "View the battlefield"; it can be reopened afterwards.
+
 ## [1.7.0] - 2026-11-24 (roadmap 2.1 and 2.2: odds and reach)
 
 ### Added

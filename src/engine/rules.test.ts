@@ -176,6 +176,12 @@ describe('triggered Hits (core p.97, p.99, p.101)', () => {
     resolveAttack(ctx, { attackerOwner: 'P1', attackerId: 'P1-w0-r0', targetId: 'P2-w0-r0', arc: 'front', pools: [{ label: 'x', dice: 1, skill: 3 }], morale: false, terrifying: 0, what: 't', kind: 'clash' });
     expect(ctx.events.some((e) => /Lethal Demise: Attackers suffers 2 Hits/.test(e.text))).toBe(true);
   });
+  it('Lethal Demise: not triggered by a Volley, even from a Regiment in contact (core p.99; AMB-60)', () => {
+    const { s } = arena({ stats: { D: 0 } }, { rules: ['Lethal Demise (2)'], stats: { W: 1, D: 0 } });
+    const ctx = ctxOf(s, [1, 6, 6]);
+    resolveAttack(ctx, { attackerOwner: 'P1', attackerId: 'P1-w0-r0', targetId: 'P2-w0-r0', arc: 'front', pools: [{ label: 'x', dice: 1, skill: 3 }], morale: false, terrifying: 0, what: 't', kind: 'volley' });
+    expect(ctx.events.some((e) => /Lethal Demise/.test(e.text))).toBe(false);
+  });
   it('Trample (X): automatic Hits at the end of the Activation (core p.101)', () => {
     const { s, rng } = arena({ rules: ['Trample (1)'], stands: 2 }, { stats: { D: 0, W: 10 } });
     const t = activate(s, rng, 'P1-w0-r0');

@@ -106,9 +106,16 @@ export function refreshRules(s: GameState): void {
   }
   for (const c of Object.values(s.characters)) {
     const og = odCharacterGrants(s, c);
-    c.rules = dedupe([...c.baseRules, ...(charRuleAdds.get(c.id) ?? []), ...og.rules]);
+    // An attached Character is affected by Special Rules, Draw Events and abilities that affect
+    // every Stand in its Regiment (core p.72): the Regiment's until-end-of-Round rules and
+    // characteristic changes (Strains, Draw Events, Spells) apply to it too.
+    // RULE-AMBIGUITY: AMB-59 — the Regiment's own list rules are not shared, only those gained this Round.
+    const host = c.attachedTo && !c.embodied ? s.regiments[c.attachedTo] : undefined;
+    const shared = host ? host.roundRules.filter((x) => x.name !== 'Decay') : [];
+    const sharedMods = host ? host.roundMods.filter((m) => m.source !== 'manual' && m.source !== 'Bastion') : [];
+    c.rules = dedupe([...c.baseRules, ...(charRuleAdds.get(c.id) ?? []), ...og.rules, ...shared]);
     c.drawEvents = [...new Set([...(c.baseDrawEvents ?? c.drawEvents), ...og.drawEvents])];
-    c.grantMods = [...(og.mods as StatMod[]), ...spiresCharacterMods(c)];
+    c.grantMods = [...(og.mods as StatMod[]), ...spiresCharacterMods(c), ...sharedMods];
   }
   spiresGrants(s);
 }

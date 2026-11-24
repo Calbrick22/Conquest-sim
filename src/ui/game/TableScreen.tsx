@@ -37,6 +37,8 @@ import { isOdDrawEvent } from '../../engine/factions/oldDominionActions';
 import { canInduceAggression, strainFor } from '../../engine/factions/spires';
 import { PractitionerButtons } from './SpiresPanel';
 import { usePreviews } from './usePreviews';
+import { useAutoplay, wipedOut } from './useAutoplay';
+import { EndGameSummary } from './EndGameSummary';
 import { chargeBands, frontReachPolygon, maxReach } from '../../engine/reach';
 import type { OutcomePreview } from '../../engine/preview';
 import { volleyAimed, volleyLines } from '../../engine/actions';
@@ -102,7 +104,11 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
   const [closedCallout, setClosedCallout] = useState(-1);
   const [showUnit, setShowUnit] = useState(true);
   const [rulerMode, setRulerMode] = useState<'point' | 'regiment'>('point');
-  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused, dispatch, needsAck);
+  // Once one side has nothing left, the rest of the game can be played out automatically.
+  const auto = useAutoplay(s, dispatch);
+  const wiped = (['P1', 'P2'] as const).find((p) => wipedOut(s, p)) ?? null;
+  const [summaryClosed, setSummaryClosed] = useState(false);
+  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused || auto.running, dispatch, needsAck);
   const aiActing = !!aiPlayer && (active?.owner === aiPlayer || (s.step === 'action' && !active && (s.drawn?.player ?? s.turn) === aiPlayer));
 
   // Autosave on this device after every action (replayable from seed + actions).
@@ -549,7 +555,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
   };
   const overlays: { id: string; at: Vec | null; node: React.ReactNode; className?: string; clear?: number }[] = [];
   const last = session.last;
-  const showAction = !!last && showsCallout(last.action.type, last.events) && (needsAck || closedCallout !== session.actions.length);
+  const showAction = !auto.running && !!last && showsCallout(last.action.type, last.events) && (needsAck || closedCallout !== session.actions.length);
   if (showAction && last) {
     overlays.push({
       id: 'action',
@@ -862,6 +868,26 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
         </div>
       )}
 
+      {s.phase === 'play' && wiped && (
+        <div className="card warn" data-testid="wiped-out">
+          <strong>{wiped} has no Regiments left.</strong>{' '}
+          {auto.running ? (
+            <>
+              Simulating Round {s.round} of {s.scenario.rounds}…{' '}
+              <button type="button" className="secondary small" onClick={auto.stop}>Stop</button>
+            </>
+          ) : (
+            <>
+              The remaining Rounds can be played out automatically: {wiped === 'P1' ? 'P2' : 'P1'}&apos;s army keeps manoeuvring to Seize objectives and score what it can.{' '}
+              <button type="button" className="small" onClick={auto.start} data-testid="simulate-rest">Simulate remaining Rounds</button>
+            </>
+          )}
+          {auto.error && <p className="warn">{auto.error}</p>}
+        </div>
+      )}
+      {s.phase === 'ended' && !summaryClosed && (
+        <EndGameSummary s={s} you={game.you} mode={game.mode} onHome={onQuit} onExport={() => download(`${fileBase}.md`, markdown(), 'text/markdown')} onClose={() => setSummaryClosed(true)} />
+      )}
       {s.phase === 'ended' && (
         <div className="card result" data-testid="result">
           <h3>Battle over</h3>
@@ -869,6 +895,10 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
             {s.players.P1.vp === s.players.P2.vp ? 'A draw' : `${s.players.P1.vp > s.players.P2.vp ? 'P1' : 'P2'} wins`}: P1 {s.players.P1.vp} – {s.players.P2.vp} P2.
             {` You were ${game.you}.`}
           </p>
+          <div className="actions">
+            <button type="button" className="small" onClick={() => setSummaryClosed(false)}>Battle summary</button>
+            <button type="button" className="secondary small" onClick={onQuit}>Save and return home</button>
+          </div>
         </div>
       )}
       <Scoreboard s={s} />
