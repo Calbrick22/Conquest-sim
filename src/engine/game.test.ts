@@ -14,8 +14,21 @@ function setup(scenario = 'forlorn-hope') {
   return { s: g.state, rng: g.rng };
 }
 
+/** Test helper: 'activate' is preceded by drawing a matching Command Card (core p.22). */
+function prime(s: GameState, a: Action): GameState {
+  if (a.type !== 'activate') return s;
+  const t = structuredClone(s);
+  const r = t.regiments[a.regimentId]!;
+  t.step = 'action';
+  t.turn = r.owner;
+  t.drawn = { player: r.owner, card: { id: `card-${r.id}`, kind: 'regiment', name: r.name, refId: r.id } };
+  return t;
+}
+
 function run(s: GameState, rng: RngState, ...actions: Action[]): GameState {
-  for (const a of actions) {
+  for (const a0 of actions) {
+    const a = a0;
+    s = prime(s, a);
     const v = validate(s, a);
     if (!v.ok) throw new Error(`${a.type}: ${v.reasons.join(' ')}`);
     s = apply(s, a, rng).state;
@@ -121,12 +134,14 @@ describe('March restrictions (core p.28–30)', () => {
     const v = validate(a, { type: 'march', regimentId: RIDERS, moves: [{ kind: 'forward', d: 8 }] });
     expect(v.ok).toBe(false);
   });
-  it('two actions per activation; only march repeats (core p.23)', () => {
+  it('two actions per activation; March and Reform may repeat (core p.23, p.37)', () => {
     const { t, rng } = base();
-    let a = run(t, rng, { type: 'activate', regimentId: SPEARS }, { type: 'reform', regimentId: SPEARS, files: 4, rotation: 0 });
-    expect(validate(a, { type: 'reform', regimentId: SPEARS, files: 3, rotation: 0 }).ok).toBe(false);
-    a = run(a, rng, { type: 'march', regimentId: SPEARS, moves: [{ kind: 'forward', d: 2 }] });
-    expect(validate(a, { type: 'march', regimentId: SPEARS, moves: [{ kind: 'forward', d: 1 }] }).ok).toBe(false);
+    const a = run(t, rng, { type: 'activate', regimentId: SPEARS }, { type: 'reform', regimentId: SPEARS, files: 4, rotation: 0 });
+    expect(validate(a, { type: 'reform', regimentId: SPEARS, files: 5, rotation: 0 })).toEqual({ ok: true });
+    const b = run(a, rng, { type: 'march', regimentId: SPEARS, moves: [{ kind: 'forward', d: 2 }] });
+    expect(validate(b, { type: 'march', regimentId: SPEARS, moves: [{ kind: 'forward', d: 1 }] }).ok).toBe(false);
+    const c = run(t, rng, { type: 'activate', regimentId: SPEARS }, { type: 'pass' });
+    expect(validate(c, { type: 'pass' }).ok).toBe(true);
   });
   it('standard bearer adds 1″ to the second March (core p.69)', () => {
     const { t, rng } = base();
