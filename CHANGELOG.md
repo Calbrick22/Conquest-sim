@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.1] - 2026-11-24 (Old Dominion list import)
+
+### Fixed
+- **Fallen Divinity profiles by Tier:** the export prints "<Name> (Tier I)", "(Tier II)" and "(Tier III)" blocks, which stopped the entry being read. Tier I is now the main profile; Tiers II and III fill the Tier profiles automatically (still editable on the list review screen).
+- **"Memories of Old" on its own line** with the sentence below it (Legionnaires) was read as a note.
+- **Two-word option groups** such as "Dark Blessings" were split wrongly, so Eternal Discipline, Devoted to Hazlia, Schemophore and similar options had no effect.
+- **Restriction notes** starting "A …" were read as options.
+- After the Fallen Divinity is destroyed, new Power Tokens go to the Dark Power Pool.
+
 ## [1.3.0] - 2026-11-24 (Old Dominion, 2026 Tainted Earth update)
 
 ### Added

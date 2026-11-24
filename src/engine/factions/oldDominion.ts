@@ -86,7 +86,8 @@ export function isFallenDivinity(r: RegimentState): boolean {
 /** Fallen Pantheon Tier (od p.7): only when the Fallen Divinity is the Warlord. */
 export function pantheonTier(s: GameState, p: PlayerId): number {
   const w = warlord(s, p);
-  if (!w || !w.embodied || !w.attachedTo || !s.regiments[w.attachedTo] || !isFallenDivinity(s.regiments[w.attachedTo]!)) return 0;
+  // Once the Fallen Divinity is destroyed the pool is gone (its Tokens move to Dark Power, od p.8).
+  if (!w || w.destroyed || !w.embodied || !w.attachedTo || !s.regiments[w.attachedTo] || !isFallenDivinity(s.regiments[w.attachedTo]!)) return 0;
   return poolTier(s, p, 'pantheon');
 }
 
@@ -227,7 +228,7 @@ export function afterPowerChange(ctx: Ctx, p: PlayerId): void {
   const tier = pantheonTier(s, p);
   const def = tier >= 2 ? s.players[p].tierProfiles?.[fd.name]?.[String(tier)] : undefined;
   if (tier >= 2 && !def) {
-    if (o.pantheonReached < tier) ev(ctx, { type: 'manual', text: `${fd.name} reaches Fallen Pantheon Tier ${tier}: no Tier ${tier} profile was entered on the list review screen, so update its profile with the manual tools.`, player: p });
+    if (o.pantheonReached < tier) ev(ctx, { type: 'manual', text: `${fd.name} reaches Fallen Pantheon Tier ${['', 'I', 'II', 'III'][tier]}: the list has no profile for that Tier (enter it on the list review screen), so update its profile with the manual tools.`, player: p });
   }
   fd.profile = { ...fd.tierBase.profile, ...(def?.stats ?? {}) };
   fd.baseRules = def && def.rules.length ? [...def.rules, ...fd.tierBase.rules.filter((x) => !def.rules.some((d) => lc(d.name) === lc(x.name)))] : [...fd.tierBase.rules];
@@ -238,7 +239,7 @@ export function afterPowerChange(ctx: Ctx, p: PlayerId): void {
       const st = fd.stands[0];
       if (st) st.wounds = Math.max(0, st.wounds - h);
     }
-    ev(ctx, { type: 'heal', text: `${fd.name} reaches Fallen Pantheon Tier ${tier}${def ? ' and uses that profile' : ''}; it Heals ${heal} Wounds (od p.7).`, player: p, regimentId: fd.id });
+    ev(ctx, { type: 'heal', text: `${fd.name} reaches Fallen Pantheon Tier ${['', 'I', 'II', 'III'][tier]}${def ? ' and uses that profile' : ''}; it Heals ${heal} Wounds (od p.7).`, player: p, regimentId: fd.id });
     o.pantheonReached = tier;
   }
 }

@@ -110,9 +110,8 @@ function RuleChip({ r, glossary }: { r: RuleRef; glossary: Record<string, string
 type Tiers = NonNullable<ArmyList['tierProfiles']>[string];
 
 /**
- * Profiles for Fallen Pantheon Tiers II and III (Old Dominion Fallen Divinity, od p.7, p.12).
- * The export holds only one profile, so the owner types the others from their faction book;
- * they stay on this device with the list.
+ * Profiles for Fallen Pantheon Tiers II and III (Old Dominion Fallen Divinity, od p.7, p.12),
+ * read from the export's Tier blocks and editable here; they stay on this device with the list.
  */
 function TierEditor({ entry, tiers, onTiers }: { entry: ListEntry; tiers: Tiers; onTiers: (t: Tiers) => void }) {
   const set = (tier: string, mut: (d: { stats: Record<string, number>; rules: string[] }) => void) => {
@@ -124,7 +123,7 @@ function TierEditor({ entry, tiers, onTiers }: { entry: ListEntry; tiers: Tiers;
   };
   return (
     <div className="tiers" data-testid={`tiers-${entry.name}`}>
-      <p className="meta">Fallen Pantheon Tier profiles (not in the export: type them from your faction book). Blank values keep the Tier I profile.</p>
+      <p className="meta">Fallen Pantheon Tier profiles, read from the export&apos;s “(Tier II)” and “(Tier III)” blocks. Correct them here if needed; blank values keep the Tier I profile.</p>
       {['2', '3'].map((t) => (
         <div key={t}>
           <strong>Tier {t === '2' ? 'II' : 'III'}</strong>

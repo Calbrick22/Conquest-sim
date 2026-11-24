@@ -444,7 +444,7 @@ It affects Animate Vessel Regiments only, not the Fallen Divinity.
 - **Font of Dark Power:** Tokens from friendly Stands lost within 12″ of the Fallen Divinity go to this pool.
 - **Divine Shard** (od p.27): one extra Token when that happens.
 - **Tiers II and III:**
-  - the Fallen Divinity uses that Tier's profile (typed on the list review screen; AMB-47) and Heals 4 or 6 the first time;
+  - the Fallen Divinity uses that Tier's profile (read from the export's Tier blocks, editable on the list review screen; AMB-47) and Heals 4 or 6 the first time;
   - other [The Fallen Pantheon] Animate Vessels within 12″ get +1 or +2 Attacks and Memories of Old as a Draw Event;
   - at Tier III, Animate Vessels within 12″ are also Inspired.
 - When the Fallen Divinity is destroyed, its Tokens move to the Dark Power Pool.

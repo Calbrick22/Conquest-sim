@@ -56,6 +56,8 @@ export interface ListEntry {
   notes: string[];
   /** Spells known (core p.80). */
   spells?: string[];
+  /** Later Tier profiles printed in the export ("<Name> (Tier II)"), by Tier number ("2", "3"). */
+  tierProfiles?: Record<string, { stats: Characteristics; rules: RuleRef[] }>;
   /** Memories of Old (Old Dominion): rules gained, or a text-only effect. */
   memories?: RuleRef[];
   memoriesText?: string;

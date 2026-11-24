@@ -349,4 +349,56 @@ describe('list import: Old Dominion labels', () => {
     ]);
     expect(r.stats.R).toBeNull();
   });
+
+  it('reads profiles by Tier ("<Name> (Tier II)" blocks) and two-word option groups', () => {
+    const text = [
+      'Testland 2000 / 2000',
+      'The Old Dominion',
+      'Warband 1',
+      'Grim Idol 1 300',
+      'Grim Idol (Tier I)',
+      'M V C A W R D E Type Monster',
+      '6 2 2 8 16 - 3 2 Class Heavy',
+      'Special Rules',
+      'Animate Vessel, Cleave (1), Font',
+      'of Dark Power, Impact (4)',
+      'Supremacy Abilities Surrounded by Fear and Dead Men',
+      'Battlefield Role The Fallen Pantheon',
+      'Grim Idol (Tier II)',
+      'M V C A W R D E Type Monster',
+      '6 3 3 10 16 - 4 2 Class Heavy',
+      'Special Rules Animate Vessel, Cleave (2), Font',
+      'of Dark Power, Impact (5)',
+      'Supremacy Abilities Surrounded by Fear and Dead Men',
+      'Battlefield Role The Fallen Pantheon',
+      'Grim Idol (Tier III)',
+      'M V C A W R D E Type Monster',
+      '8 4 4 12 16 - 4 3 Class Heavy',
+      'Special Rules Animate Vessel, Cleave (3), Font of Dark Power, Impact (5)',
+      'Options',
+      'Dark Blessings Eternal Discipline',
+      'A Grim Idol must be your Warlord and can only have up to two Regiments in its',
+      'Warband.',
+      'Bone Spears Mainstay 3 125',
+      'M V C A W R D E Type Infantry',
+      '5 0 2 4 4 - 1 1 Class Medium',
+      'Special Rules Animate Vessel, Shield',
+      'Battlefield Role The Legion',
+      'Memories of Old',
+      "This Regiment's Command Stand counts as +1 Stands for the",
+      'purposes of Seizing Objective Zones until the end of the',
+      'Round.',
+      'Rules',
+    ].join('\n');
+    const l = parseArmyList(text);
+    const c = l.warbands[0]!.character!;
+    expect(c.warnings).toEqual([]);
+    expect(c.stats.A).toBe(8);
+    expect(c.specialRules.map((r) => r.raw)).toEqual(['Animate Vessel', 'Cleave (1)', 'Font of Dark Power', 'Impact (4)']);
+    expect(c.options).toEqual({ 'Dark Blessings': ['Eternal Discipline'] });
+    expect(c.notes[0]).toMatch(/^A Grim Idol must be your Warlord/);
+    expect(l.tierProfiles?.['Grim Idol']?.['2']).toEqual({ stats: { M: 6, V: 3, C: 3, A: 10, W: 16, D: 4, E: 2 }, rules: ['Animate Vessel', 'Cleave (2)', 'Font of Dark Power', 'Impact (5)'] });
+    expect(l.tierProfiles?.['Grim Idol']?.['3']?.stats.M).toBe(8);
+    expect(l.warbands[0]!.regiments[0]!.memoriesText).toMatch(/counts as \+1 Stands for the purposes of Seizing/);
+  });
 });

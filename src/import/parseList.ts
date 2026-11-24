@@ -1,5 +1,5 @@
 import { collectRuleNames, parseRuleList, parseRuleRef, splitTopLevel } from './ruleTokens';
-import type { ArmyList, Characteristics, ListEntry, Slot, Warband } from './types';
+import type { ArmyList, Characteristics, ListEntry, RuleRef, Slot, Warband } from './types';
 
 /**
  * Parser for the official Army Builder export layout (any faction).
@@ -26,7 +26,12 @@ const STAT_HEADER_RE = /^M\s+V\s+C\s+A\s+W\s+R\s+D\s+E\b/;
 const ENTRY_HEADER_RE = /^(.+?)\s+(?:(Mainstay|Restricted)\s+)?(\d+)\s+(\d+)$/;
 const WARBAND_RE = /^Warband\s+(\d+)$/;
 const TITLE_RE = /^(.*?)\s+(\d+)\s*\/\s*(\d+)$/;
-const SENTENCE_START_RE = /^(This|Should|If|Each|Only|When|While|Up to|May|Must)\b/;
+/** A profile line for one Tier of a Character, e.g. "Fallen Divinity (Tier II)" (Old Dominion export). */
+const TIER_RE = /^(.+?)\s*\(Tier\s+(I|II|III|IV)\)$/;
+const ROMAN: Record<string, string> = { I: '1', II: '2', III: '3', IV: '4' };
+const SENTENCE_START_RE = /^(This|Should|If|Each|Only|When|While|Up to|May|Must|A|An|Your)\b/;
+/** Option groups whose names have more than one word (the group is otherwise the first word). */
+const MULTI_WORD_GROUPS = ['Dark Blessings'];
 
 function startsWithLabel(line: string): Label | null {
   for (const l of LABELS) if (line === l || line.startsWith(l + ' ') || line.startsWith(l + ':')) return l;
@@ -44,7 +49,22 @@ function normaliseLines(text: string): string[] {
 function isEntryHeader(lines: string[], i: number): boolean {
   const l = lines[i];
   const next = lines[i + 1];
-  return l !== undefined && next !== undefined && ENTRY_HEADER_RE.test(l) && STAT_HEADER_RE.test(next);
+  if (l === undefined || next === undefined || !ENTRY_HEADER_RE.test(l)) return false;
+  // Entries with profiles by Tier put "<Name> (Tier I)" between the header and the stat header.
+  return STAT_HEADER_RE.test(next) || (TIER_RE.test(next) && STAT_HEADER_RE.test(lines[i + 2] ?? ''));
+}
+
+/** "<8 values> Class <Class>" → stats and Class, with warnings. */
+function parseStatLine(vl: string, warnings: string[]): { stats: Characteristics; cls: string | null; found: boolean } {
+  const classM = vl.match(/^(.*?)\s*Class\s+(.+)$/);
+  const valuesPart = classM ? (classM[1] ?? '') : vl;
+  const c = classM ? (classM[2] ?? '').trim() : null;
+  const toks = valuesPart.split(' ').filter(Boolean);
+  if (toks.length !== 8) warnings.push(`Expected 8 characteristics, found ${toks.length}: "${valuesPart}"`);
+  const keys = ['M', 'V', 'C', 'A', 'W', 'R', 'D', 'E'] as const;
+  const stats = {} as Characteristics;
+  keys.forEach((k, n) => (stats[k] = parseStat(toks[n], warnings, k)));
+  return { stats, cls: c === '-' ? null : c, found: !!classM };
 }
 
 function isSentence(line: string): boolean {
@@ -134,10 +154,19 @@ export function parseArmyList(text: string): ArmyList {
   let labelText = '';
   let optionGroup: string | null = null;
   let note: { target: string[]; text: string } | null = null;
+  /** The Tier II+ profile being read (Old Dominion Fallen Divinity), if any. */
+  let tierBlock: { stats: Characteristics; rules: RuleRef[] } | null = null;
 
   const flushLabel = () => {
     if (!entry || !label) return;
     const t = labelText.trim();
+    // Inside a later Tier's profile, only its Special Rules are kept; the other blocks repeat Tier I.
+    if (tierBlock && label !== 'Options') {
+      if (label === 'Special Rules') tierBlock.rules.push(...parseRuleList(t));
+      label = null;
+      labelText = '';
+      return;
+    }
     switch (label) {
       case 'Special Rules':
         entry.specialRules.push(...parseRuleList(t));
@@ -182,6 +211,7 @@ export function parseArmyList(text: string): ArmyList {
     flushNote();
     optionGroup = null;
     entry = null;
+    tierBlock = null;
   };
 
   for (; i < lines.length; i++) {
@@ -201,26 +231,19 @@ export function parseArmyList(text: string): ArmyList {
       const h = line.match(ENTRY_HEADER_RE)!;
       const slot: Slot = (h[2] as Slot | undefined) ?? 'Character';
       const e = emptyEntry((h[1] ?? '').trim(), slot, Number(h[3]), Number(h[4]));
+      // An optional "<Name> (Tier I)" line: the main profile is Tier I (Old Dominion export).
+      const off = TIER_RE.test(lines[i + 1]!) ? 1 : 0;
       // Stat header: "M V C A W R D E Type <Type>"
-      const sh = lines[i + 1]!;
+      const sh = lines[i + 1 + off]!;
       const typeM = sh.match(/Type\s+(.+)$/);
       if (typeM) e.type = (typeM[1] ?? '').trim();
       else e.warnings.push('Type not found');
       // Values: "<8 values> Class <Class>"
-      const vl = lines[i + 2] ?? '';
-      const classM = vl.match(/^(.*?)\s*Class\s+(.+)$/);
-      const valuesPart = classM ? (classM[1] ?? '') : vl;
-      if (classM) {
-        const c = (classM[2] ?? '').trim();
-        e.cls = c === '-' ? null : c;
-      } else e.warnings.push('Class not found');
-      const toks = valuesPart.split(' ').filter(Boolean);
-      if (toks.length !== 8) e.warnings.push(`Expected 8 characteristics, found ${toks.length}: "${valuesPart}"`);
-      const keys = ['M', 'V', 'C', 'A', 'W', 'R', 'D', 'E'] as const;
-      const stats = {} as Characteristics;
-      keys.forEach((k, n) => (stats[k] = parseStat(toks[n], e.warnings, k)));
-      e.stats = stats;
-      i += 2;
+      const st = parseStatLine(lines[i + 2 + off] ?? '', e.warnings);
+      if (st.found) e.cls = st.cls;
+      else e.warnings.push('Class not found');
+      e.stats = st.stats;
+      i += 2 + off;
 
       if (!warband) {
         warband = { declaredSize: 0, character: null, regiments: [], restrictions: [] };
@@ -236,18 +259,34 @@ export function parseArmyList(text: string): ArmyList {
       continue;
     }
 
+    // A later Tier's profile: "<Name> (Tier II)", the stat header, then its values.
+    const tm = entry ? line.match(TIER_RE) : null;
+    if (tm && entry && STAT_HEADER_RE.test(lines[i + 1] ?? '')) {
+      flushLabel();
+      flushNote();
+      label = null;
+      const tier = ROMAN[tm[2]!]!;
+      const st = parseStatLine(lines[i + 2] ?? '', entry.warnings);
+      tierBlock = tier === '1' ? null : { stats: st.stats, rules: [] };
+      if (tierBlock) (entry.tierProfiles ??= {})[tier] = tierBlock;
+      i += 2;
+      continue;
+    }
+
     const lab = startsWithLabel(line);
     if (lab && entry) {
       flushLabel();
       flushNote();
       optionGroup = null;
+      if (lab === 'Options') tierBlock = null;
       label = lab;
       labelText = line.slice(lab.length).replace(/^:/, '').trim();
       continue;
     }
 
     // A Memories of Old sentence wraps over several lines until it ends with a full stop.
-    if ((label === 'Memories of Old' || label === 'Memory of Old') && entry && /\b(counts|may|gains|perform)\b/i.test(labelText) && !/[.]$/.test(labelText)) {
+    // The label may also stand alone with the sentence on the next lines.
+    if ((label === 'Memories of Old' || label === 'Memory of Old') && entry && (labelText === '' || /\b(counts|may|gains|perform)\b/i.test(labelText)) && !/[.]$/.test(labelText)) {
       labelText += ' ' + line;
       continue;
     }
@@ -263,14 +302,16 @@ export function parseArmyList(text: string): ArmyList {
     if (isSentence(line) && (label !== 'Options' || /[.!?]$/.test(line) || SENTENCE_START_RE.test(line))) {
       flushLabel();
       flushNote();
+      tierBlock = null;
       const target = /^This Warband\b/.test(line) && warband ? warband.restrictions : entry ? entry.notes : list.warnings;
       note = { target, text: line };
       continue;
     }
 
     if (label === 'Options' && entry) {
-      // "<Group> <item>, <item>" — group is the first word.
-      const sp = line.indexOf(' ');
+      // "<Group> <item>, <item>" — group is the first word, unless it is a known multi-word group.
+      const multi = MULTI_WORD_GROUPS.find((g) => line.startsWith(g + ' '));
+      const sp = multi ? multi.length : line.indexOf(' ');
       if (sp > 0) {
         optionGroup = line.slice(0, sp);
         const items = splitNames(line.slice(sp + 1));
@@ -290,6 +331,19 @@ export function parseArmyList(text: string): ArmyList {
     (entry ? entry.warnings : list.warnings).push(`Unrecognised line: "${line}"`);
   }
   flushEntry();
+
+  // Tier profiles printed in the export become the list's Tier profiles (editable on review).
+  for (const w of list.warbands)
+    for (const e of [w.character, ...w.regiments]) {
+      if (!e?.tierProfiles) continue;
+      const out: NonNullable<ArmyList['tierProfiles']>[string] = {};
+      for (const [t, d] of Object.entries(e.tierProfiles)) {
+        const stats: Record<string, number> = {};
+        for (const [k, v] of Object.entries(d.stats)) if (v !== null) stats[k] = v;
+        out[t] = { stats, rules: d.rules.map((r) => r.raw) };
+      }
+      list.tierProfiles = { ...(list.tierProfiles ?? {}), [e.name]: out };
+    }
 
   // --- Glossary ("Rules") and "Army Rules".
   const known = new Set<string>();
