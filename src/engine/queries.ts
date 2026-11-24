@@ -225,10 +225,34 @@ export function marchAllowance(s: GameState, r: RegimentState): number {
   // Standard Bearer: +1″ on the second March of the Activation (core p.69).
   const sb = r.commandModels.includes('Standard Bearer') && r.stands.some((x) => x.isCommand);
   if (sb && s.activation?.actions.filter((k) => k === 'march').length === 1) m += 1;
+  // Vanguard (X): +X to the first March when entering from Reinforcements (core p.101).
+  if (s.activation?.regimentId === r.id && s.activation.entering && !s.activation.actions.includes('march')) m += vanguardX(r);
   return m;
 }
 
 
 export function footprintWidth(s: GameState, r: RegimentState): number {
   return footprint(formationInput(s, r)).halfWidth * 2;
+}
+
+/** Vanguard (X) value of a Regiment (core p.101). */
+export function vanguardX(r: RegimentState): number {
+  let best = 0;
+  for (const x of r.rules) if (x.name.toLowerCase() === 'vanguard') best = Math.max(best, x.x ?? 0);
+  return best;
+}
+
+/**
+ * Does the Regiment have Flank (core p.98)? Either itself, or granted by its attached Character:
+ * Forward Force (core p.98: non-Monster Regiment) or the Spires Eccentricity Forlorn Drive
+ * ([Drone] or [Clone] Regiment, from the imported list's rule text).
+ */
+export function hasFlank(s: GameState, r: RegimentState): boolean {
+  if (r.rules.some((x) => x.name.toLowerCase() === 'flank')) return true;
+  const c = attachedCharacter(s, r.id);
+  if (!c) return false;
+  const names = [...c.rules.map((x) => x.name.toLowerCase()), ...c.options.map((o) => o.toLowerCase())];
+  if (names.includes('forward force') && r.type !== 'Monster') return true;
+  if (names.includes('forlorn drive') && r.roles.some((x) => /^(drone|clone)$/i.test(x))) return true;
+  return false;
 }

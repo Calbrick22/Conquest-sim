@@ -50,6 +50,8 @@ export interface CharacterState {
   actions: RuleRef[];
   drawEvents: string[];
   supremacyAbilities: string[];
+  /** Purchased options (e.g. Eccentricities, Mutations) by name. */
+  options: string[];
   wounds: number;
   isWarlord: boolean;
   /** Index of the Warband the Character leads. */
@@ -70,6 +72,8 @@ export interface RegimentState {
   rules: RuleRef[];
   drawEvents: string[];
   commandModels: string[];
+  /** Battlefield Roles, e.g. [Drone], [Husk] (Spires; used by some rules). */
+  roles: string[];
   warband: number;
   /** Regular Stands, in formation order (see formation.ts). Excludes any Character. */
   stands: StandState[];

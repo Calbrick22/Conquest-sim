@@ -47,7 +47,7 @@ export type ActionBody =
   | { type: 'endActivation'; entourage?: boolean }
   | { type: 'endRound' }
   // Round sequence (core p.20–25)
-  | { type: 'reinforcements'; player: PlayerId; choice: ReinforcementChoice | null }
+  | { type: 'reinforcements'; player: PlayerId; choice: ReinforcementChoice | null; flank?: Record<string, boolean> }
   | { type: 'setStack'; player: PlayerId; order: string[] }
   | { type: 'supremacyRollOff' }
   | { type: 'chooseFirst'; first: PlayerId }
@@ -157,6 +157,7 @@ export function createGame(input: SetupInput): SetupResult {
           rules: e.specialRules,
           drawEvents: e.drawEvents,
           commandModels: e.commandModels,
+          roles: e.battlefieldRoles,
           warband: wi,
           stands: Array.from({ length: n }, (_, k) => ({ id: `${id}-s${k}`, wounds: 0, isCommand: hasCommand && k === 0 })),
           startingStands: n,
@@ -187,6 +188,7 @@ export function createGame(input: SetupInput): SetupResult {
           actions: c.actions,
           drawEvents: c.drawEvents,
           supremacyAbilities: c.supremacyAbilities,
+          options: Object.values(c.options).flat(),
           wounds: 0,
           isWarlord: c.supremacyAbilities.length > 0,
           warband: wi,
@@ -280,7 +282,6 @@ export function validate(s: GameState, a: Action): Validation {
       if (a.moves.some((m) => m.kind === 'sideways' || m.kind === 'backward')) return fail('Entering Regiments March forward, with Wheels if needed (core p.31).');
       const start = entryPose(s, a.edge, a.along);
       const width = footprint(formationInput(s, r, { files, pose: start })).halfWidth * 2;
-      // Vanguard (X) adds X to the first March when entering (core p.101) — manual in the MVP.
       const shape = marchShapeProblems(a.moves, marchAllowance(s, r), width);
       if (shape.length) return fail(...shape);
       const tmp: RegimentState = { ...r, files, pose: start };

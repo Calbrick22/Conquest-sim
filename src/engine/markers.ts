@@ -68,6 +68,7 @@ export function virtualMarker(s: GameState, id: string, attacker: RegimentState)
     rules: [],
     drawEvents: [],
     commandModels: [],
+    roles: [],
     warband: -1,
     stands: [{ id: `${id}-s`, wounds: 0, isCommand: false }],
     startingStands: 1,

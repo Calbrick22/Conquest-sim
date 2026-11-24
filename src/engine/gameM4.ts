@@ -78,7 +78,7 @@ export function validateM4(s: GameState, a: Action): Validation {
     case 'reinforcements': {
       if (s.phase !== 'play' || s.step !== 'reinforcement') return fail('Not in the Reinforcement Phase.');
       if (s.players[a.player].reinforcementDone) return fail(`${a.player} has already rolled for Reinforcements this Round.`);
-      const p = reinforcementChoiceProblems(s, a.player, a.choice);
+      const p = reinforcementChoiceProblems(s, a.player, a.choice, a.flank ?? {});
       return p.length ? fail(...p) : ok();
     }
     case 'setStack': {
@@ -294,7 +294,7 @@ export function applyM4(ctx: Ctx, a: Action): void {
   const s = ctx.s;
   switch (a.type) {
     case 'reinforcements': {
-      doReinforcements(ctx, a.player, a.choice);
+      doReinforcements(ctx, a.player, a.choice, a.flank ?? {});
       if (s.players.P1.reinforcementDone && s.players.P2.reinforcementDone) {
         s.step = 'command';
         ev(ctx, { type: 'phase', text: 'Command Phase: both players build their Command Stacks (core p.21).' });

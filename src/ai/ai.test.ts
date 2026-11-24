@@ -50,6 +50,8 @@ describe('computer opponent', () => {
       expect(s.scoreHistory).toHaveLength(10);
       expect(events.some((e) => e.type === 'ai')).toBe(true);
       expect(events.some((e) => e.type === 'march' || e.text.includes('marches on'))).toBe(true);
+      // Every Regiment gets onto the table at some point (no Regiment stuck in Reinforcements).
+      expect(Object.values(s.regiments).filter((r) => r.location === 'reserve' || r.location === 'arriving').map((r) => r.name)).toEqual([]);
       // Every AI action carries a one-line reason.
       expect(events.filter((e) => e.type === 'ai').every((e) => e.text.length > 4)).toBe(true);
     },

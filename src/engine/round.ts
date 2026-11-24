@@ -1,6 +1,6 @@
 import { ev, rollN, type Ctx } from './dice';
 import type { CommandCard, GameState, PlayerId, RegimentState, UnitClass } from './model/types';
-import { computeReinforcementLine, other, regimentStandCount } from './queries';
+import { computeReinforcementLine, hasFlank, other, regimentStandCount } from './queries';
 
 /**
  * Reinforcement table (core p.21): the roll needed this Round per Class, 'auto' when the Class
@@ -30,7 +30,17 @@ export interface ReinforcementChoice {
   arrive: boolean;
 }
 
-export function reinforcementChoiceProblems(s: GameState, p: PlayerId, c: ReinforcementChoice | null): string[] {
+/** Flank Regiments that may decide to arrive or stay this Round (core p.98). */
+export function flankChoices(s: GameState, p: PlayerId): RegimentState[] {
+  return reserveRegiments(s, p).filter((r) => hasFlank(s, r) && !r.flags.autoArrive && reinforcementNeed(s.round, r.cls) !== null);
+}
+
+export function reinforcementChoiceProblems(s: GameState, p: PlayerId, c: ReinforcementChoice | null, flank: Record<string, boolean> = {}): string[] {
+  for (const [id, arrive] of Object.entries(flank)) {
+    const r = s.regiments[id];
+    if (!r || r.owner !== p || !flankChoices(s, p).includes(r)) return ['Only your Flank Regiments that can arrive this Round may be declared (core p.98).'];
+    if (!arrive && reinforcementNeed(s.round, r.cls) === 'auto') return [`${r.name} cannot stay past the Round its Class must arrive (core p.98).`];
+  }
   if (!c) return [];
   const r = s.regiments[c.regimentId];
   if (!r || r.owner !== p || r.location !== 'reserve') return ['Choose one of your Regiments in Reinforcements.'];
@@ -45,9 +55,18 @@ export function reinforcementChoiceProblems(s: GameState, p: PlayerId, c: Reinfo
  * rolling; every other eligible Regiment rolls against the table. Regiments that failed to enter
  * last Round arrive automatically (core p.31). Flank (X) Regiments are manual (core p.98).
  */
-export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementChoice | null): void {
+export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementChoice | null, flank: Record<string, boolean> = {}): void {
   const s = ctx.s;
   for (const r of reserveRegiments(s, p)) {
+    // Flank (core p.98): no die; the player declares whether it arrives or stays, within its Class's window.
+    if (hasFlank(s, r) && !(choice && r.id === choice.regimentId) && !r.flags.autoArrive) {
+      const need = reinforcementNeed(s.round, r.cls);
+      if (need === null) continue;
+      const arrive = need === 'auto' ? true : flank[r.id] ?? true;
+      r.location = arrive ? 'arriving' : 'reserve';
+      ev(ctx, { type: 'reinforcement', text: `${r.name} has Flank: ${arrive ? 'arrives' : 'stays in Reinforcements'} without rolling (core p.98).`, player: p, regimentId: r.id });
+      continue;
+    }
     if (choice && r.id === choice.regimentId) {
       r.location = choice.arrive ? 'arriving' : 'reserve';
       ev(ctx, { type: 'reinforcement', text: `${p} chooses ${r.name} to ${choice.arrive ? 'arrive automatically' : 'stay in Reinforcements'}.`, player: p, regimentId: r.id });

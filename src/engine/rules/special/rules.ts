@@ -26,6 +26,10 @@ const IMPLEMENTED: [string, string][] = [
   ['Aimed Shot', 'core p.97'],
   ['Inspired', 'core p.99'],
   ['Deadly Blades', 'core p.97'],
+  ['Vanguard', 'core p.101'],
+  ['Flank', 'core p.98'],
+  ['Forward Force', 'core p.98'],
+  ['Forlorn Drive', 'Spires Eccentricity (rule text from the list)'],
 ];
 for (const [name, ref] of IMPLEMENTED) registerSpecialRule({ name, ref });
 

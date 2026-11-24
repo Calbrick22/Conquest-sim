@@ -23,10 +23,12 @@ import {
   onTableRegiments,
   positionProblems,
   regimentPolys,
+  regimentStandCount,
   other,
   regimentDistance,
 } from '../engine/queries';
-import { buildCards, cardTargets, reinforcementChoices, reinforcementNeed } from '../engine/round';
+import { buildCards, cardTargets, flankChoices, reinforcementChoices, reinforcementNeed } from '../engine/round';
+import { legalFiles } from '../engine/formation';
 import { hasRule, manualRules, ruleX } from '../engine/rules/special/rules';
 import { zoneResults } from '../engine/scoring/victory';
 
@@ -152,8 +154,8 @@ function exposure(s: GameState, r: RegimentState, at: Vec): number {
 // ---------------------------------------------------------------- movement planning
 
 /** A March toward a point: wheel to face it (within budget), then forward as far as legal. */
-function marchToward(s: GameState, r: RegimentState, target: Vec, stopShort: number, kind: 'march' | 'enter', entry?: { edge: 'bottom' | 'top' | 'left' | 'right'; along: number }): Action | null {
-  const files = r.files;
+function marchToward(s: GameState, r: RegimentState, target: Vec, stopShort: number, kind: 'march' | 'enter', entry?: { edge: 'bottom' | 'top' | 'left' | 'right'; along: number }, filesIn?: number, partialOk = false): Action | null {
+  const files = filesIn ?? r.files;
   const start = kind === 'enter' ? entryPose(s, entry!.edge, entry!.along) : r.pose;
   const width = footprintOf(s, r, kind === 'enter' ? { pose: start, files } : {}).halfWidth * 2;
   const budget = marchAllowance(s, r);
@@ -174,7 +176,7 @@ function marchToward(s: GameState, r: RegimentState, target: Vec, stopShort: num
     if (!validate(s, a).ok) return false;
     // Only moves that leave the Regiment in a final legal position (no overlap, fully on the table).
     const end = applyPath(start, a.type === 'march' || a.type === 'enter' ? a.moves : [], width);
-    return positionProblems(s, r, regimentPolys(s, r, { pose: end, files }), { allowFriendOverlap: false, allowOffTable: false }).length === 0;
+    return positionProblems(s, r, regimentPolys(s, r, { pose: end, files }), { allowFriendOverlap: false, allowOffTable: partialOk }).length === 0;
   };
   for (let i = 0; i < 6 && f >= 0; i++) {
     const a = mk(f);
@@ -205,8 +207,11 @@ function decideReinforcements(s: GameState, p: PlayerId): AiDecision {
   const choices = reinforcementChoices(s, p).filter((r) => reinforcementNeed(s.round, r.cls) !== 'auto');
   const rank = (r: RegimentState) => (r.cls === 'Heavy' ? 3 : r.cls === 'Medium' ? 2 : 1) * 10 + regimentValue(r);
   const best = choices.sort((a, b) => rank(b) - rank(a))[0];
-  if (best) return { action: { type: 'reinforcements', player: p, choice: { regimentId: best.id, arrive: true } }, reason: `brings ${best.name} on automatically; rolls for the rest` };
-  return { action: { type: 'reinforcements', player: p, choice: null }, reason: 'rolls for Reinforcements' };
+  // Flank Regiments arrive as soon as they may (core p.98).
+  const flank = Object.fromEntries(flankChoices(s, p).map((r) => [r.id, true]));
+  const flankNote = Object.keys(flank).length ? `; Flank: ${flankChoices(s, p).map((r) => r.name).join(', ')} arrive` : '';
+  if (best) return { action: { type: 'reinforcements', player: p, choice: { regimentId: best.id, arrive: true }, flank }, reason: `brings ${best.name} on automatically; rolls for the rest${flankNote}` };
+  return { action: { type: 'reinforcements', player: p, choice: null, flank }, reason: `rolls for Reinforcements${flankNote}` };
 }
 
 /** Command Stack: ranged and fast first, units likely to charge later (they want targets to come closer). */
@@ -272,8 +277,16 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
   if (r.location === 'arriving') {
     const own = s.scenario.reinforcementZones[r.owner];
     const zones = targetZones(s, r.owner);
+    // Formation for entering: the narrowest one whose depth fits in a single March (core p.31);
+    // otherwise the widest, entering over two Marches.
+    const n = regimentStandCount(s, r);
+    const budget = marchAllowance(s, r);
+    const options = legalFiles(n);
+    const fits = options.filter((f) => footprintOf(s, r, { files: f }).halfDepth * 2 <= budget - 0.2);
+    const files = fits.length ? fits[0]! : options[options.length - 1]!;
+    const partial = !fits.length && act.actions.length === 0;
     for (let x = 8; x <= s.scenario.table.width - 8; x += 8) {
-      const a = marchToward(s, r, nearestZone(zones, { x, y: own === 'bottom' ? 0 : s.scenario.table.height }) ?? { x: 36, y: 24 }, 1, 'enter', { edge: own, along: x });
+      const a = marchToward(s, r, nearestZone(zones, { x, y: own === 'bottom' ? 0 : s.scenario.table.height }) ?? { x: 36, y: 24 }, 1, 'enter', { edge: own, along: x }, files, partial);
       if (a) {
         const end = a.type === 'enter' ? applyPath(entryPose(s, a.edge, a.along), a.moves, footprintOf(s, r).halfWidth * 2) : r.pose;
         out.push({ action: a, score: 5 - 0.05 * Math.abs(x - 36) - 0.3 * exposure(s, r, end) + noise(s, x), reason: `marches on toward the objectives at ${x}″` });
