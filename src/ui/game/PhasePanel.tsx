@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import type { Action } from '../../engine/game';
 import type { GameState, PlayerId } from '../../engine/model/types';
-import { flankChoices, reinforcementChoices, reinforcementNeed, reserveRegiments } from '../../engine/round';
+import { flankChoices, reinforcementChoices, reinforcementClass, reinforcementNeed, reserveRegiments } from '../../engine/round';
 import { zoneResults } from '../../engine/scoring/victory';
 import { decisionMaker } from '../../ai/ai';
+import { warlordHas } from '../../engine/factions/oldDominion';
+import { isOdSupremacy } from '../../engine/factions/oldDominionActions';
+import { OdSupremacy } from './OldDominionPanel';
 
 const PLAYERS: PlayerId[] = ['P1', 'P2'];
 
@@ -16,7 +19,7 @@ export function PhasePanel({ s, dispatch, aiPlayer }: { s: GameState; dispatch: 
     <div className="card phase-panel" data-testid="phase-panel">
       {s.step === 'reinforcement' && <Reinforcements s={s} dispatch={dispatch} ai={aiPlayer ?? null} />}
       {s.step === 'command' && <Stacks s={s} ai={aiPlayer ?? null} />}
-      {s.step === 'supremacy' && <Supremacy s={s} dispatch={dispatch} />}
+      {s.step === 'supremacy' && <Supremacy s={s} dispatch={dispatch} aiPlayer={aiPlayer ?? null} />}
       {s.step === 'action' && <Draw s={s} />}
       {s.step === 'victory' && (
         <>
@@ -56,7 +59,7 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
             <strong>{p}</strong>
             <ul className="plain">
               {reserve.map((r) => {
-                const need = reinforcementNeed(s.round, r.cls);
+                const need = reinforcementNeed(s.round, reinforcementClass(r));
                 const isAuto = auto[p] === r.id;
                 const isFlank = flank.has(r.id);
                 const canPick = eligible.has(r.id) && need !== 'auto' && !r.flags.autoArrive && !isFlank;
@@ -129,7 +132,7 @@ function Stacks({ s, ai }: { s: GameState; ai: PlayerId | null }) {
   );
 }
 
-function Supremacy({ s, dispatch }: { s: GameState; dispatch: (a: Action) => boolean }) {
+function Supremacy({ s, dispatch, aiPlayer }: { s: GameState; dispatch: (a: Action) => boolean; aiPlayer: PlayerId | null }) {
   return (
     <>
       <h3>Supremacy Phase</h3>
@@ -156,7 +159,12 @@ function Supremacy({ s, dispatch }: { s: GameState; dispatch: (a: Action) => boo
       <div className="actions wrap">
         {PLAYERS.map((p) => {
           const w = Object.values(s.characters).find((c) => c.isWarlord && c.id.startsWith(p));
-          if (!w || s.players[p].supremacyUsed) return null;
+          if (!w || p === aiPlayer) return null;
+          if (isOdSupremacy(s, p)) {
+            const used = warlordHas(s, p, 'Master of the Legions') ? !!s.players[p].od?.supremacyThisRound : s.players[p].supremacyUsed;
+            return used ? null : <OdSupremacy key={p} s={s} p={p} dispatch={dispatch} />;
+          }
+          if (s.players[p].supremacyUsed) return null;
           return (
             <button key={p} type="button" className="secondary small" onClick={() => dispatch({ type: 'useSupremacy', player: p })}>
               {p}: activate {w.supremacyAbilities.join(', ') || 'Supremacy'} (manual)

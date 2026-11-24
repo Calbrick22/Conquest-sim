@@ -41,6 +41,14 @@ export function parseRuleRef(rawInput: string): RuleRef {
     } else {
       ref.param = inner;
     }
+  } else {
+    // Unbracketed values, e.g. "Cleave 1" or "Bastion +1" (faction documents write them this way).
+    const q = rest.match(/^(.*?[A-Za-z!'’])\s+(\+)?(\d+)$/);
+    if (q) {
+      ref.name = (q[1] ?? '').trim();
+      ref.x = Number(q[3]);
+      if (q[2]) ref.plus = true;
+    }
   }
   if (bracket !== undefined) {
     const parts = splitTopLevel(bracket);

@@ -16,6 +16,9 @@ const LABELS = [
   'Battlefield Role',
   'Command Models',
   'Options',
+  'Spells',
+  'Memories of Old',
+  'Memory of Old',
 ] as const;
 type Label = (typeof LABELS)[number];
 
@@ -26,7 +29,7 @@ const TITLE_RE = /^(.*?)\s+(\d+)\s*\/\s*(\d+)$/;
 const SENTENCE_START_RE = /^(This|Should|If|Each|Only|When|While|Up to|May|Must)\b/;
 
 function startsWithLabel(line: string): Label | null {
-  for (const l of LABELS) if (line === l || line.startsWith(l + ' ')) return l;
+  for (const l of LABELS) if (line === l || line.startsWith(l + ' ') || line.startsWith(l + ':')) return l;
   return null;
 }
 
@@ -154,6 +157,16 @@ export function parseArmyList(text: string): ArmyList {
       case 'Battlefield Role':
         entry.battlefieldRoles.push(...splitNames(t));
         break;
+      case 'Spells':
+        (entry.spells ??= []).push(...splitNames(t));
+        break;
+      // RULE-AMBIGUITY: AMB-47 — the export layout for Memories of Old and Spells is not known yet.
+      case 'Memories of Old':
+      case 'Memory of Old':
+        // Old Dominion: either a list of rules gained, or a sentence describing the effect.
+        if (/[.]/.test(t) || /\b(counts|may|gains|perform)\b/i.test(t)) entry.memoriesText = t.replace(/^:\s*/, '');
+        else (entry.memories ??= []).push(...parseRuleList(t.replace(/^:\s*/, '')));
+        break;
       case 'Options':
         break;
     }
@@ -229,7 +242,13 @@ export function parseArmyList(text: string): ArmyList {
       flushNote();
       optionGroup = null;
       label = lab;
-      labelText = line.slice(lab.length).trim();
+      labelText = line.slice(lab.length).replace(/^:/, '').trim();
+      continue;
+    }
+
+    // A Memories of Old sentence wraps over several lines until it ends with a full stop.
+    if ((label === 'Memories of Old' || label === 'Memory of Old') && entry && /\b(counts|may|gains|perform)\b/i.test(labelText) && !/[.]$/.test(labelText)) {
+      labelText += ' ' + line;
       continue;
     }
 

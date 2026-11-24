@@ -9,6 +9,7 @@ import type { ActionKind, ActivationState, CharacterState, CommandCard, GameStat
 import { attachedCharacter, distancePolys, formationInput, isEngaged, regimentPolys } from './queries';
 import { hasRole, sectOf } from './rules/special/grants';
 import { barrageOf, hasRule, ruleX } from './rules/special/rules';
+import { OD_DRAW_EVENTS, applyOdDrawEvent, isOdDrawEvent, odDrawEventProblems } from './factions/oldDominionActions';
 
 // ---------------------------------------------------------------- Action bookkeeping
 
@@ -19,6 +20,11 @@ import { barrageOf, hasRule, ruleX } from './rules/special/rules';
  */
 export function recordAction(act: ActivationState, kind: ActionKind): void {
   const extra = act.extra?.find((e) => !e.used && e.kind === kind);
+  // A free Spellcasting Action (od p.9, p.16, p.23) never uses up a normal Action.
+  if (extra && kind === 'spell' && extra.free) {
+    extra.used = true;
+    return;
+  }
   if (extra && (act.actions.length >= 2 || (extra.free && kind === 'reform' && act.actions.length === 0) || (extra.free && kind === 'combatReform'))) {
     extra.used = true;
     return;
@@ -126,6 +132,8 @@ export function onActivationEnd(ctx: Ctx, act: ActivationState, r: RegimentState
 // ---------------------------------------------------------------- healing (core p.56)
 
 export function canHeal(s: GameState, r: RegimentState): boolean {
+  // Unhallowed Ground (od p.15, p.30): cannot be Healed.
+  if (hasRule(r.rules, 'Unhallowed Ground')) return false;
   // Broken Regiments cannot be Healed (core p.60), except [Drone] Regiments with Violent Delirium (Underspires).
   return !r.broken || (sectOf(s, r.owner) === 'underspires' && hasRole(r, 'Drone'));
 }
@@ -138,7 +146,7 @@ export function canHeal(s: GameState, r: RegimentState): boolean {
 export function heal(ctx: Ctx, r: RegimentState, points: number, why: string): void {
   const s = ctx.s;
   if (!canHeal(s, r)) {
-    ev(ctx, { type: 'note', text: `${r.name} is Broken and cannot be Healed (core p.60).`, regimentId: r.id });
+    ev(ctx, { type: 'note', text: hasRule(r.rules, 'Unhallowed Ground') ? `${r.name} has Unhallowed Ground and cannot be Healed (od p.15).` : `${r.name} is Broken and cannot be Healed (core p.60).`, regimentId: r.id });
     return;
   }
   let left = points;
@@ -168,6 +176,7 @@ export function heal(ctx: Ctx, r: RegimentState, points: number, why: string): v
 // ---------------------------------------------------------------- Draw Events (core p.94–95 and list rule text)
 
 export const DRAW_EVENTS_AUTOMATED = [
+  ...OD_DRAW_EVENTS,
   'Bastion',
   'Biotic Renewal',
   'Double Time',
@@ -197,8 +206,10 @@ function regenerationValue(names: string[]): number {
 }
 
 export interface DrawEventChoice {
-  /** Flux-Powered: which bonus. */
-  option?: 'C' | 'A';
+  /** Flux-Powered: which bonus ('C' or 'A'); Old Dominion Draw Events: which effect. */
+  option?: string;
+  /** Dark Awakening: several effects. */
+  options?: string[];
   /** Suppress Higher Functions: the friendly Regiment targeted. */
   targetId?: string;
 }
@@ -212,11 +223,14 @@ export function drawEventProblems(s: GameState, name: string, choice: DrawEventC
   const available = c ? c.drawEvents : r.drawEvents;
   if (!available.some((d) => baseName(d) === baseName(name))) return [`${name} is not one of this unit's Draw Events.`];
   const done = act.drawEvents ?? [];
-  const isStrain = baseName(name) === 'Strain Expression';
-  // One Draw Event per Activation; Strain Expression may be used in addition (Spires army rules).
+  // Strain Expression (Spires) and Memories of Old (od p.7) may be used in addition to another Draw Event.
+  const additional = (d: string) => d === 'Strain Expression' || d === 'Memories of Old';
+  const isExtra = additional(baseName(name));
+  // One Draw Event per Activation (core p.23).
   if (done.includes(baseName(name))) return [`${name} has already been resolved.`];
-  if (!isStrain && done.some((d) => d !== 'Strain Expression')) return ['Only one Draw Event per Activation (core p.23).'];
+  if (!isExtra && done.some((d) => !additional(d))) return ['Only one Draw Event per Activation (core p.23).'];
   if (r.location !== 'table') return ['Draw Events are not resolved while arriving from Reinforcements (core p.23).'];
+  if (isOdDrawEvent(baseName(name))) return odDrawEventProblems(s, r, baseName(name), choice);
   if (baseName(name) === 'Suppress Higher Functions') {
     const t = choice.targetId ? s.regiments[choice.targetId] : r;
     if (!t || t.owner !== r.owner || t.location !== 'table') return ['Choose a friendly Regiment on the Battlefield.'];
@@ -254,7 +268,7 @@ export function applyDrawEvent(ctx: Ctx, name: string, choice: DrawEventChoice):
       ev(ctx, { type: 'draw-event', text: `${bn}: ${r.name} may earn a free March this Activation (core p.94).`, regimentId: r.id });
       return;
     case 'Flux-Powered': {
-      const k = choice.option ?? 'C';
+      const k = choice.option === 'A' ? 'A' : 'C';
       r.roundMods.push({ stat: k, delta: 2, source: 'Flux-Powered' });
       ev(ctx, { type: 'draw-event', text: `Flux-Powered: ${r.name} +2 ${k === 'C' ? 'Clash' : 'Attacks'} until the end of the Round (core p.94).`, regimentId: r.id });
       return;
@@ -299,6 +313,10 @@ export function applyDrawEvent(ctx: Ctx, name: string, choice: DrawEventChoice):
       return;
     }
     default:
+      if (isOdDrawEvent(bn)) {
+        applyOdDrawEvent(ctx, r, bn, choice);
+        return;
+      }
       ev(ctx, { type: 'manual', text: `Draw Event: ${name} (manual — apply its effect with the manual tools).`, regimentId: r.id });
   }
 }

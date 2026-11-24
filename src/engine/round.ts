@@ -1,6 +1,7 @@
 import { ev, rollN, type Ctx } from './dice';
 import type { CommandCard, GameState, PlayerId, RegimentState, UnitClass } from './model/types';
 import { computeReinforcementLine, hasFlank, other, regimentStandCount } from './queries';
+import { beginRoundOd } from './factions/oldDominion';
 
 /**
  * Reinforcement table (core p.21): the roll needed this Round per Class, 'auto' when the Class
@@ -22,7 +23,12 @@ export function reserveRegiments(s: GameState, p: PlayerId): RegimentState[] {
 
 /** Regiments that may be chosen to arrive automatically or stay back (core p.20–21). */
 export function reinforcementChoices(s: GameState, p: PlayerId): RegimentState[] {
-  return reserveRegiments(s, p).filter((r) => reinforcementNeed(s.round, r.cls) !== null);
+  return reserveRegiments(s, p).filter((r) => reinforcementNeed(s.round, reinforcementClass(r)) !== null);
+}
+
+/** The Class used for Reinforcements: the Fallen Divinity counts as Light (od p.13). */
+export function reinforcementClass(r: RegimentState): UnitClass {
+  return (r.notes ?? []).some((n) => /class as light for the purposes of its reinforcement/i.test(n)) ? 'Light' : r.cls;
 }
 
 export interface ReinforcementChoice {
@@ -32,19 +38,19 @@ export interface ReinforcementChoice {
 
 /** Flank Regiments that may decide to arrive or stay this Round (core p.98). */
 export function flankChoices(s: GameState, p: PlayerId): RegimentState[] {
-  return reserveRegiments(s, p).filter((r) => hasFlank(s, r) && !r.flags.autoArrive && reinforcementNeed(s.round, r.cls) !== null);
+  return reserveRegiments(s, p).filter((r) => hasFlank(s, r) && !r.flags.autoArrive && reinforcementNeed(s.round, reinforcementClass(r)) !== null);
 }
 
 export function reinforcementChoiceProblems(s: GameState, p: PlayerId, c: ReinforcementChoice | null, flank: Record<string, boolean> = {}): string[] {
   for (const [id, arrive] of Object.entries(flank)) {
     const r = s.regiments[id];
     if (!r || r.owner !== p || !flankChoices(s, p).includes(r)) return ['Only your Flank Regiments that can arrive this Round may be declared (core p.98).'];
-    if (!arrive && reinforcementNeed(s.round, r.cls) === 'auto') return [`${r.name} cannot stay past the Round its Class must arrive (core p.98).`];
+    if (!arrive && reinforcementNeed(s.round, reinforcementClass(r)) === 'auto') return [`${r.name} cannot stay past the Round its Class must arrive (core p.98).`];
   }
   if (!c) return [];
   const r = s.regiments[c.regimentId];
   if (!r || r.owner !== p || r.location !== 'reserve') return ['Choose one of your Regiments in Reinforcements.'];
-  const need = reinforcementNeed(s.round, r.cls);
+  const need = reinforcementNeed(s.round, reinforcementClass(r));
   if (need === null) return [`${r.cls} Regiments cannot arrive in Round ${s.round} (core p.21).`];
   if (!c.arrive && need === 'auto') return [`${r.name} must arrive this Round (core p.21).`];
   return [];
@@ -60,7 +66,7 @@ export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementCho
   for (const r of reserveRegiments(s, p)) {
     // Flank (core p.98): no die; the player declares whether it arrives or stays, within its Class's window.
     if (hasFlank(s, r) && !(choice && r.id === choice.regimentId) && !r.flags.autoArrive) {
-      const need = reinforcementNeed(s.round, r.cls);
+      const need = reinforcementNeed(s.round, reinforcementClass(r));
       if (need === null) continue;
       const arrive = need === 'auto' ? true : flank[r.id] ?? true;
       r.location = arrive ? 'arriving' : 'reserve';
@@ -78,7 +84,7 @@ export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementCho
       ev(ctx, { type: 'reinforcement', text: `${r.name} arrives automatically after failing to enter last Round (core p.31).`, player: p, regimentId: r.id });
       continue;
     }
-    const need = reinforcementNeed(s.round, r.cls);
+    const need = reinforcementNeed(s.round, reinforcementClass(r));
     if (need === null) continue;
     if (need === 'auto') {
       r.location = 'arriving';
@@ -108,7 +114,8 @@ export function buildCards(s: GameState, p: PlayerId): CommandCard[] {
     cards.push({ id: `card-${r.id}`, kind: 'regiment', name: r.name, refId: r.id });
   }
   for (const c of Object.values(s.characters)) {
-    if (c.destroyed || !c.id.startsWith(p) || !c.attachedTo) continue;
+    // An embodied Character Activates with its own Regiment's card (od p.8).
+    if (c.destroyed || c.embodied || !c.id.startsWith(p) || !c.attachedTo) continue;
     const r = s.regiments[c.attachedTo];
     if (r && (r.location === 'table' || r.location === 'arriving')) cards.push({ id: `card-${c.id}`, kind: 'character', name: c.name, refId: c.id });
   }
@@ -168,7 +175,7 @@ export function supremacyRollOff(ctx: Ctx): PlayerId {
 export function cardTargets(s: GameState, p: PlayerId, card: CommandCard): string[] {
   if (card.kind === 'character') {
     const c = s.characters[card.refId];
-    if (!c || c.destroyed || c.activatedThisRound || !c.attachedTo) return [];
+    if (!c || c.destroyed || c.embodied || c.activatedThisRound || !c.attachedTo) return [];
     const r = s.regiments[c.attachedTo];
     return r && (r.location === 'table' || r.location === 'arriving') ? [c.id] : [];
   }
@@ -224,6 +231,7 @@ export function beginRound(s: GameState): void {
     if (r.broken) r.standsWhenBroken = r.stands.length;
   }
   for (const c of Object.values(s.characters)) c.activatedThisRound = false;
+  beginRoundOd(s);
   for (const p of ['P1', 'P2'] as const) {
     s.players[p].stack = [];
     s.players[p].stackSet = false;

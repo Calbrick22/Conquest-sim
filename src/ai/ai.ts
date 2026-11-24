@@ -14,6 +14,9 @@ import { dist, normalizeAngle, type Vec } from '../engine/geometry/vec';
 import { applyPath, type MoveSeg } from '../engine/movement';
 import { markerAttackProblems, markerInContact } from '../engine/markers';
 import { baseName, CHARACTER_ABILITIES_AUTOMATED, characterAbilityProblems, drawEventProblems } from '../engine/activation';
+import { castableSpells, casterOf, scalingExtra, spellDef } from '../engine/spells';
+import { fallenDivinity, hasMemories, pantheonTier } from '../engine/factions/oldDominion';
+import { isOdDrawEvent, odSpendProblems, tokensAvailable } from '../engine/factions/oldDominionActions';
 import type { CommandCard, GameState, PlayerId, RegimentState } from '../engine/model/types';
 import {
   attachedCharacter,
@@ -28,7 +31,7 @@ import {
   other,
   regimentDistance,
 } from '../engine/queries';
-import { buildCards, cardTargets, flankChoices, reinforcementChoices, reinforcementNeed } from '../engine/round';
+import { buildCards, cardTargets, flankChoices, reinforcementChoices, reinforcementClass, reinforcementNeed } from '../engine/round';
 import { legalFiles } from '../engine/formation';
 import { hasRule, manualRules, ruleX } from '../engine/rules/special/rules';
 import { zoneResults } from '../engine/scoring/victory';
@@ -205,7 +208,7 @@ function marchToward(s: GameState, r: RegimentState, target: Vec, stopShort: num
 
 function decideReinforcements(s: GameState, p: PlayerId): AiDecision {
   // Bring the most valuable Regiment that is allowed to arrive this Round (Mediums and Heavies first).
-  const choices = reinforcementChoices(s, p).filter((r) => reinforcementNeed(s.round, r.cls) !== 'auto');
+  const choices = reinforcementChoices(s, p).filter((r) => reinforcementNeed(s.round, reinforcementClass(r)) !== 'auto');
   const rank = (r: RegimentState) => (r.cls === 'Heavy' ? 3 : r.cls === 'Medium' ? 2 : 1) * 10 + regimentValue(r);
   const best = choices.sort((a, b) => rank(b) - rank(a))[0];
   // Flank Regiments arrive as soon as they may (core p.98).
@@ -364,11 +367,73 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
   return out;
 }
 
+/**
+ * The best Spell for a caster (core p.80–81; Old Dominion Spells od p.22–23): Hit Spells on the
+ * enemy taking most Wounds, Heals on wounded friends, buffs on friends about to fight.
+ */
+function bestSpell(s: GameState, casterId: string): Scored | null {
+  const c = casterOf(s, casterId);
+  if (!c || c.dice <= 0) return null;
+  let best: Scored | null = null;
+  const pSucc = (need: number, att: number) => {
+    // Probability of at least `need` successes on c.dice dice at Attunement `att` (1 always passes).
+    const p = Math.min(5, Math.max(1, att)) / 6;
+    let prob = 0;
+    const n = c.dice;
+    const choose = (a: number, b: number) => { let r = 1; for (let i = 1; i <= b; i++) r = (r * (a - b + i)) / i; return r; };
+    for (let k = need; k <= n; k++) prob += choose(n, k) * p ** k * (1 - p) ** (n - k);
+    return prob;
+  };
+  for (const { spell, targets } of castableSpells(s, casterId)) {
+    const def = spellDef(spell);
+    if (!def) continue;
+    for (const id of targets) {
+      const t = s.regiments[id]!;
+      const need = 2 + (def.scaling ? scalingExtra(s, t) : 0);
+      const p = pSucc(need, def.attunement);
+      if (p < 0.25) continue;
+      const engaged = isEngaged(s, t);
+      const wounded = t.stands.length < t.startingStands || t.stands.some((x) => x.wounds > 0);
+      const value = def.hits
+        ? expectedWounds(Math.round(c.dice * (def.attunement / 6)) * (spell === 'Insanity' ? 2 : 1), 6, t, { reduceD: spell === 'Unholy Baptism' ? 1 : 0 })
+        : spell === "Hazlia's Touch"
+          ? wounded ? 2 : 0
+          : spell === 'Dark Supplication'
+            ? 0.8
+            : spell === 'Translocation'
+              ? 0
+              : t.owner === c.owner
+                ? engaged ? 1.5 : enemiesNear(s, t, 8) ? 1 : 0.2
+                : engaged ? 1 : 0.5;
+      const score = 1 + p * value * 1.5;
+      if (value > 0 && (!best || score > best.score)) best = { action: { type: 'spell', casterId, spell, targetId: id }, score, reason: `casts ${spell} on ${t.name} (${Math.round(p * 100)}% to cast)` };
+    }
+  }
+  return best;
+}
+
+function enemiesNear(s: GameState, r: RegimentState, d: number): boolean {
+  return onTableRegiments(s).some((e) => e.owner !== r.owner && regimentDistance(s, r, e) <= d);
+}
+
+/** Old Dominion: Power Tokens to the Fallen Pantheon Pool while the Fallen Divinity is climbing Tiers (od p.7). */
+function decidePowerPref(s: GameState, p: PlayerId): AiDecision | null {
+  const o = s.players[p].od;
+  if (!o || !fallenDivinity(s, p)) return null;
+  const want = pantheonTier(s, p) < 3 ? 'pantheon' : 'dark';
+  if (o.pref === want) return null;
+  return { action: { type: 'powerPref', player: p, pool: want }, reason: `puts new Power Tokens in the ${want === 'dark' ? 'Dark Power' : 'Fallen Pantheon'} Pool` };
+}
+
 function decideActivation(s: GameState): AiDecision {
   const act = s.activation!;
   const r = s.regiments[act.regimentId]!;
   if (act.characterId) {
     const c = s.characters[act.characterId]!;
+    const ode = chooseOdDrawEvent(s, r, c.drawEvents);
+    if (ode) return ode;
+    const sp = bestSpell(s, c.id);
+    if (sp && validate(s, sp.action as Action).ok) return { action: { ...sp.action, why: `${c.name} ${sp.reason}` }, reason: sp.reason };
     if (act.actions.length === 0) {
       // Automated Character abilities (Snapshot, Mighty Swing) on the weakest target they can reach.
       for (const ab of c.actions.filter((x) => CHARACTER_ABILITIES_AUTOMATED.includes(x.name))) {
@@ -379,10 +444,27 @@ function decideActivation(s: GameState): AiDecision {
     }
     return { action: { type: 'endActivation', entourage: true }, reason: `ends ${c.name}'s Activation and calls its Regiment (Entourage)` };
   }
-  if (act.ended || act.actions.length >= 2) return finish(s, r);
+  if (act.ended) return finish(s, r);
+  // A free Spellcasting Action (Theokrator, Memories of Old) is used even after both Actions.
+  if (act.actions.length >= 2) {
+    const sp = bestSpell(s, r.id);
+    if (sp && validate(s, sp.action as Action).ok) return { action: { ...sp.action, why: `${r.name} ${sp.reason}` }, reason: sp.reason };
+    return finish(s, r);
+  }
+  const spend = chooseOdSpend(s, r);
+  if (spend) return spend;
+  const ode = chooseOdDrawEvent(s, r, r.drawEvents);
+  if (ode) return ode;
   const de = chooseDrawEvent(s, r);
   if (de) return de;
   const cands = regimentCandidates(s, r);
+  const sp = bestSpell(s, r.id);
+  if (sp) cands.push(sp);
+  // Memories of Old (od p.5) before a fight.
+  if (act.actions.length === 0 && hasMemories(r) && (isEngaged(s, r) || enemiesNear(s, r, marchValue(s, r) + 8))) {
+    const a: ActionBody = { type: 'memories', regimentId: r.id };
+    if (validate(s, a as Action).ok) cands.push({ action: a, score: 3.2, reason: 'uses Memories of Old before the fight' });
+  }
   const best = cands.sort((a, b) => b.score - a.score)[0];
   if (!best || best.score < 0.4) return finish(s, r);
   const manual = manualRules(r.rules).map((x) => x.raw);
@@ -429,6 +511,41 @@ function chooseDrawEvent(s: GameState, r: RegimentState): AiDecision | null {
     if (d) return d;
   }
   return null;
+}
+
+/** Old Dominion Draw Events (od p.7–30), before the first Action. */
+function chooseOdDrawEvent(s: GameState, r: RegimentState, names: string[]): AiDecision | null {
+  const act = s.activation!;
+  if (act.actions.length || r.location !== 'table') return null;
+  const done = act.drawEvents ?? [];
+  const engaged = isEngaged(s, r);
+  const near = engaged || enemiesNear(s, r, marchValue(s, r) + 8);
+  const tokens = tokensAvailable(s, r.owner);
+  const dark = s.players[r.owner].od?.dark ?? 0;
+  const tryDe = (name: string, extra: { option?: string; options?: string[]; targetId?: string }, why: string): AiDecision | null => {
+    const a: Action = { type: 'drawEvent', name, ...extra };
+    if (!validate(s, a).ok) return null;
+    return { action: { ...a, why: `${r.name} uses ${name}: ${why}` }, reason: `uses ${name}` };
+  };
+  for (const n of names) {
+    const b = baseName(n).replace(/[’]/g, "'");
+    if (done.includes(b) || !isOdDrawEvent(b)) continue;
+    let d: AiDecision | null = null;
+    if (b === 'Memories of Old' && near) d = tryDe(n, {}, 'free Memories of Old (Dark Power Tier II)');
+    else if (b === 'Dark Awakening' && near && tokens >= 4) d = tryDe(n, { options: ['C', 'Cleave'] }, 'spends 4 Power Tokens for +2 Clash and Cleave (2)');
+    else if (b === "Heaven's Descent" && engaged && tokens >= 2) d = tryDe(n, { targetId: enemiesInContact(s, r)[0]!.id }, 'Impact Attacks in the fight');
+    else if (b === 'Exploitation of Divine Vanity' && engaged && r.stands[0] && (r.profile.W ?? 0) - r.stands[0].wounds > 8) d = tryDe(n, { option: 'aod' }, 'Aura of Death (+10)');
+    else if (b === 'Exhortation of Eternal Faith' && (r.profile.W ?? 0) - (r.stands[0]?.wounds ?? 0) > 8) d = tryDe(n, { option: 'seize' }, '+6 Stands for Seizing');
+    else if ((b === 'Blasphemous Mesa' || b === 'Unholy Sacrament') && dark >= 3) d = tryDe(n, {}, 'more magic this Activation');
+    if (d) return d;
+  }
+  return null;
+}
+
+/** Blasphemous Mesa (Archimandrite Warlord, od p.8): Aura of Death (+1) for a Regiment about to fight. */
+function chooseOdSpend(s: GameState, r: RegimentState): AiDecision | null {
+  if ((s.players[r.owner].od?.dark ?? 0) < 3 || !isEngaged(s, r) || odSpendProblems(s, r).length) return null;
+  return { action: { type: 'odSpend', regimentId: r.id, option: 'aod', why: `${r.name} spends a Dark Power Token for Aura of Death (+1)` }, reason: 'spends a Dark Power Token' };
 }
 
 function finish(s: GameState, r: RegimentState): AiDecision {
@@ -484,6 +601,8 @@ function decideInner(s: GameState, p: PlayerId): AiDecision {
       return { action: { type: 'endRound' }, reason: 'ends the Round' };
     case 'action': {
       if (s.pendingCharge) return { action: { type: 'failCharge' }, reason: 'cannot place its Charge: treats it as failed' };
+      const pref = !s.activation && !s.drawn ? decidePowerPref(s, p) : null;
+      if (pref) return pref;
       if (s.activation) return decideActivation(s);
       if (s.drawn) {
         const ids = cardTargets(s, p, s.drawn.card);

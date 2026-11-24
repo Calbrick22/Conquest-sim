@@ -12,11 +12,12 @@ export type Validation = { ok: true } | { ok: false; reasons: string[] };
 export const other = (p: PlayerId): PlayerId => (p === 'P1' ? 'P2' : 'P1');
 
 export function attachedCharacter(s: GameState, regimentId: string): CharacterState | undefined {
-  return Object.values(s.characters).find((c) => c.attachedTo === regimentId && !c.destroyed);
+  // An embodied Character (a Regiment by itself, od p.8) is not an attached Character Stand.
+  return Object.values(s.characters).find((c) => c.attachedTo === regimentId && !c.destroyed && !c.embodied);
 }
 
 export function regimentStandCount(s: Pick<GameState, 'characters'>, r: RegimentState): number {
-  return r.stands.length + (Object.values(s.characters).some((c) => c.attachedTo === r.id && !c.destroyed) ? 1 : 0);
+  return r.stands.length + (Object.values(s.characters).some((c) => c.attachedTo === r.id && !c.destroyed && !c.embodied) ? 1 : 0);
 }
 
 export function formationInput(s: GameState, r: RegimentState, override?: Partial<Pick<RegimentState, 'pose' | 'files'>>): FormationInput {
@@ -212,12 +213,14 @@ export function canTakeAction(s: GameState, regimentId: string, kind: ActionKind
   if (!a || a.regimentId !== regimentId) return ['That Regiment is not active.'];
   if (s.pendingCharge) return ['Finish placing the Charge first.'];
   if (a.ended) return ['The Activation has ended (core p.36).'];
+  const freeSpell = kind === 'spell' && a.extra?.some((e) => !e.used && e.kind === 'spell');
   if (a.characterId) {
-    if (kind !== 'duel' && kind !== 'ability' && kind !== 'pass') return ["During a Character's own Activation it can only use its own Actions (core p.74)."];
-    if (a.actions.length >= 1) return ['A Character performs a single Action each Round (core p.74).'];
+    if (kind !== 'duel' && kind !== 'ability' && kind !== 'pass' && kind !== 'spell') return ["During a Character's own Activation it can only use its own Actions (core p.74)."];
+    if (a.actions.length >= 1 && !freeSpell) return ['A Character performs a single Action each Round (core p.74).'];
     return [];
   }
   if (kind === 'duel' || kind === 'ability') return ["Characters use their own Actions when their own Command Card is drawn (core p.74)."];
+  if (freeSpell) return [];
   const extraUsed = a.extra?.filter((e) => e.used).length ?? 0;
   if (a.actions.length + extraUsed >= 3) return ['A Regiment never performs more than 3 Actions in an Activation (core p.25).'];
   const extra = a.extra?.find((e) => !e.used && e.kind === kind);
@@ -233,7 +236,8 @@ export function marchAllowance(s: GameState, r: RegimentState): number {
   let m = marchValue(s, r);
   // Standard Bearer: +1″ on the second March of the Activation (core p.69).
   const sb = r.commandModels.includes('Standard Bearer') && r.stands.some((x) => x.isCommand);
-  if (sb && s.activation?.actions.filter((k) => k === 'march').length === 1) m += 1;
+  // Forced March (od p.24): the Standard Bearer adds +2″ instead.
+  if (sb && s.activation?.actions.filter((k) => k === 'march').length === 1) m += r.rules.some((x) => x.name === 'Forced March') ? 2 : 1;
   // Vanguard (X): +X to the first March when entering from Reinforcements (core p.101).
   if (s.activation?.regimentId === r.id && s.activation.entering && !s.activation.actions.includes('march')) m += vanguardX(r);
   return m;

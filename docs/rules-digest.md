@@ -308,6 +308,10 @@ Only front-rank Stands shoot, unless a rule says otherwise.
 - **Scaling** spells need extra successes for larger targets: +1 for 4–6 Stands, +2 for 7–9, +3 for 10 or more, and +1 against a Monster.
 - An enemy caster within 10″ gives −1 Attunement.
 - Hits from spells use Defense and Morale, but not the flank and rear bonuses.
+- Spells that cause Hits need Line of Sight. An engaged caster may only target the enemy it is in contact with.
+- A unit can't be the target of the same Spell twice in a Round (Hit Spells excepted), and a caster can't cast the same Spell twice in one Activation (core p.76).
+- **Devout** (core p.97): one failed die becomes a success when a friendly Priest targets the Regiment.
+- **Automated** (`src/engine/spells.ts`): the Spellcasting Action for a Character in its own Activation, or for a Regiment that can cast. The Old Dominion Spells have their effects automated (section 22). Any other Spell can be cast by entering its Attunement; the engine rolls the dice and the effect is applied with the manual tools.
 
 Spires use "Practitioner" Actions instead. They are faction-specific and listed on the army list.
 
@@ -397,3 +401,115 @@ The registry in `src/engine/rules/special/rules.ts` lists each rule with its pag
   - 2 for each enemy Character Stand destroyed that Round.
 - **Length:** 10 Rounds.
 - **Hand check:** seizing 3 zones scores 2×3 + 3 = 9 VP, and seizing 4 zones scores 2×4 + 3 = 11 VP.
+
+## 22. Old Dominion (Old Dominion army list, 2026 "Tainted Earth" update; cited as od p.N)
+
+Mechanics only, in my own words. Names and values come from the uploaded list, and the code is in `src/engine/factions/`.
+
+### Animate Vessel (od p.5)
+
+- Gains Terrifying (1) and Brittle.
+- Cannot perform the Inspire Action.
+- Has no Resolve: Morale Tests, Fearsome, Withdraw and Combat Reform tests pass automatically.
+- A Character with it lends no Resolve to its Regiment.
+
+### Memories of Old (od p.5)
+
+- A Combat and Out-of-Combat Action giving the listed rules until the end of the Round. It doesn't stack.
+- Text effects that are automated: a Command Stand counting +1 for Seizing (od p.24), and the free Spellcasting with Priest (2 per Stand, at most 12) (od p.23).
+- Bastion +1 becomes +1 Defense.
+
+### Empowerment (od p.6)
+
+- Each Stand lost by an Animate Vessel Regiment gives 1 Power Token, added at the end of the Action, after Morale.
+- Tokens go to the Dark Power Pool or the Fallen Pantheon Pool. The player sets the default pool; the Fallen Pantheon Pool only exists with a Fallen Divinity Warlord (AMB-49).
+- **Tiers** at 2,000 points:
+  - Tier II from 9 Tokens;
+  - Tier III from 18;
+  - Tier IV from 23, with the Xhiliarch, Strategos or Mounted Strategos only (AMB-45).
+  - Each threshold moves by 2 for every full 250 points above or below 2,000.
+- **Blasphemous Soma** (od p.6): +1 Token each Round, before the Supremacy Phase.
+
+### Dark Power Pool (od p.7)
+
+It affects Animate Vessel Regiments only, not the Fallen Divinity.
+
+- **Tier II:** Memories of Old can also be used as a Draw Event, in addition to another one, and both Actions remain.
+- **Tier III:** Inspired (AMB-46).
+- **Tier IV:** enemies engaged with them re-roll successful Morale Tests.
+- Effects that "count as Tier +1" stack up to the highest Tier allowed.
+
+### Fallen Pantheon (od p.7, p.13)
+
+- **Font of Dark Power:** Tokens from friendly Stands lost within 12″ of the Fallen Divinity go to this pool.
+- **Divine Shard** (od p.27): one extra Token when that happens.
+- **Tiers II and III:**
+  - the Fallen Divinity uses that Tier's profile (typed on the list review screen; AMB-47) and Heals 4 or 6 the first time;
+  - other [The Fallen Pantheon] Animate Vessels within 12″ get +1 or +2 Attacks and Memories of Old as a Draw Event;
+  - at Tier III, Animate Vessels within 12″ are also Inspired.
+- When the Fallen Divinity is destroyed, its Tokens move to the Dark Power Pool.
+
+### Unit rules
+
+- **Acolytes** (od p.22): +2 Tokens when the Command Stand is lost.
+- **Forced March** (od p.24): the Standard Bearer gives +2″.
+- **Unhallowed Ground** (od p.15, p.30): counts as 6 Stands toward the total in a zone, 0 toward Seizing, and cannot be Healed.
+- **Wedge! / Sundering Charge** (od p.28–29): Cleave (+1) after a successful Charge.
+- **Tenacious (1) against Volleys:** for entries whose text says so (od p.13, p.25).
+- **Officers** (od p.31):
+  - Profane Reliquary: Aura of Death (1);
+  - Optio: Vanguard (4);
+  - Dark Cenotaph: +1 Token when Memories of Old is used as a Draw Event;
+  - Hetairos: re-roll failed Impact Hit Rolls of 6 (AMB-50).
+- **Characters that are Regiments** (Fallen Divinity, Theokrator; od p.8, p.15): own one-Stand Monster Regiment and card. The Fallen Divinity rolls for Reinforcements as Light (AMB-48).
+
+### Draw Events
+
+- **Dark Shepherd** (od p.11): Wounds equal to what is left on the most wounded Stand, with no Morale. A Hierodeacon Warlord doubles the Tokens.
+- **Dark Awakening** (od p.28): 2 Tokens per effect (AMB-43). The effects are +2 Clash, Cleave (2), Brutal Impact (2) and Impact (+2).
+- **Heaven's Descent** (od p.28): 2 Tokens while Engaged. Impact Attacks, plus Inspired and Cleave (+1).
+- **Exhortation of Eternal Faith** (od p.30): 3 Wounds and +1 Token. Then either +6 for Seizing, −1 Resolve for enemies within 12″ (AMB-44), or the Command Stand aura (manual).
+- **Exploitation of Divine Vanity** (od p.16): 3 Wounds and +1 Token. Then either Aura of Death (+10), 1 Token per 2 enemy Stands destroyed, or a target that re-rolls successful Morale Tests.
+- **Unholy Sacrament** (od p.19): 1 Token for Priest (+3) on the first Spell.
+- **Blasphemous Mesa** (od p.8): 1 Token for a free extra Spell.
+
+### Spells (od p.22–23)
+
+- **Dark Supplication:** +1 Token.
+- **Blackflame Coruscation:** Hits equal to the successes plus the highest Tier.
+- **Benediction of the Black Sun:** Blessed for a Brute Regiment.
+- **Undying Devotion:** [The Fallen Pantheon], and +1 Token per Stand lost.
+- **Unholy Baptism:** Hits with AP (1).
+- **Blasphemous Power:** [The Creed], and Tier +1. At the top Tier it gives Flurry and Decay instead.
+- **Hazlia's Touch:** Heals 1+X for [The Creed] or [The Legion], otherwise X.
+- **Dark Immolation:** [The Creed] and Aura of Death (+1).
+- **Insanity:** 2 Hits per success against Resolve, with no Morale (AMB-42).
+- **Drain Will:** −1 Defense, to a maximum of −2.
+- **Immolation:** Aura of Death (+1).
+- **Translocation:** the move is manual.
+
+### Supremacy Abilities (od p.8–10)
+
+- **Archimandrite:** Aura of Death (+1) for the army. A [The Creed] or [The Legion] Regiment can spend 1 Token as it Activates for Aura of Death (+1), to lose Brittle, or for Terrifying (+1).
+- **Fallen Divinity:** [Activated] sacrifice up to 3 Stands of a [The Fallen Pantheon] Regiment for Tokens.
+- **Hierodeacon:**
+  - a free extra Spell;
+  - no Brittle in the army;
+  - Cultists and Hashashin gain [The Fallen Pantheon];
+  - [Activated] [The Fallen Pantheon] Regiments gain Blessed.
+- **Strategos:** Tier IV; [Activated] every Supremacy Phase, two [The Legion] Regiments each pick one of Tier +1, Memories of Old, a 2D6 Charge or losing Brittle.
+- **Mounted Strategos:** Tier IV; Glimmers converts 1+X failed Hits (AMB-41); [Activated] it counts as Tier IV.
+- **Theokrator:** Terrifying (+1) at Tier III; [Activated] Trial of Will (its use in a Clash is manual).
+- **Xhiliarch:** Tier IV; Vanguard 2 for Medium [The Legion] Regiments and 4 for Heavy ones; +X Charge distance once per Round (AMB-41).
+
+### Treasures and Dark Blessings (od p.17–21)
+
+- **Automated:**
+  - Vexilla of the Lost, Legio I 'Primigenia', Caelestine Banner;
+  - Armor of the Living Saint, Imperial Oplon, Aventine Armor;
+  - Unholy Sacrament, Consecrated Mitre, The Reaping Crook, Grave Step;
+  - Calamitas, Harvest of the Fallen, Skofnung, Eleutherea (+1 Clash);
+  - Aura of Malice, Eternal Discipline, Kentarch, Strength and Honor (Brittle only), Gladiator;
+  - Unholy Mastery, Schemophore, Devoted to Hazlia, Viaticum.
+- **Manual:** Cuirass of Hazlia's Shadow, Hierotekton, Anastegma, Soul Reaper, Implacable, What We Did in Life, Eleutherea's Duel rules, Sanctified Labaron (list building only), and Trial of Will.
+

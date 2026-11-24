@@ -9,8 +9,8 @@ import { aiDecide, chargeChance, decisionMaker, pTest } from './ai';
 
 const fx = (n: string) => parseArmyList(fs.readFileSync(path.join(__dirname, '../import/__fixtures__', n), 'utf8'));
 
-function playAiGame(seed: number, scenario = 'forlorn-hope') {
-  const g = createGame({ seed, scenario: getScenario(scenario)!, lists: { P1: fx('synthetic-list.txt'), P2: fx('synthetic-list-2.txt') } });
+function playAiGame(seed: number, scenario = 'forlorn-hope', p1 = 'synthetic-list.txt') {
+  const g = createGame({ seed, scenario: getScenario(scenario)!, lists: { P1: fx(p1), P2: fx('synthetic-list-2.txt') } });
   let s: GameState = apply(g.state, { type: 'startBattle' }, g.rng).state;
   let rng = g.rng;
   const events: GameEvent[] = [];
@@ -56,6 +56,19 @@ describe('computer opponent', () => {
       expect(events.filter((e) => e.type === 'ai').every((e) => e.text.length > 4)).toBe(true);
     },
     120_000,
+  );
+  it(
+    'plays a full game with a synthetic Old Dominion army: Power Tokens, Memories of Old and Spells (od p.5–7)',
+    () => {
+      const { s, events } = playAiGame(31, 'melee', 'synthetic-od-list.txt');
+      expect(s.phase).toBe('ended');
+      expect(s.players.P1.od).toBeDefined();
+      expect(events.some((e) => e.type === 'power')).toBe(true);
+      expect(events.some((e) => /Memories of Old/.test(e.text))).toBe(true);
+      expect(events.some((e) => / casts /.test(e.text))).toBe(true);
+      expect(events.filter((e) => e.override).map((e) => e.text)).toEqual([]);
+    },
+    240_000,
   );
   it(
     'is deterministic for a seed',

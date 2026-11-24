@@ -3,6 +3,7 @@ import { isImplemented } from '../engine/rules/special/registry';
 import { allEntries } from '../import/parseList';
 import { CHARACTERISTIC_KEYS, type ArmyList, type ListEntry, type RuleRef } from '../import/types';
 import { parseStrainText } from '../import/strains';
+import { parseRuleList } from '../import/ruleTokens';
 
 /** Review and correct a parsed list before saving or playing with it. */
 export function ListReview({ list, onChange }: { list: ArmyList; onChange: (l: ArmyList) => void }) {
@@ -63,6 +64,12 @@ export function ListReview({ list, onChange }: { list: ArmyList; onChange: (l: A
                 })
               }
               glossary={list.glossary}
+              tiers={list.tierProfiles?.[e.name] ?? {}}
+              onTiers={(t) =>
+                update((l) => {
+                  l.tierProfiles = { ...(l.tierProfiles ?? {}), [e.name]: t };
+                })
+              }
               onChange={(ne) =>
                 update((l) => {
                   const wb = l.warbands[wi]!;
@@ -100,7 +107,77 @@ function RuleChip({ r, glossary }: { r: RuleRef; glossary: Record<string, string
   );
 }
 
-function EntryEditor({ entry, glossary, onChange, strain, onStrain }: { entry: ListEntry; glossary: Record<string, string>; onChange: (e: ListEntry) => void; strain: string; onStrain: (t: string) => void }) {
+type Tiers = NonNullable<ArmyList['tierProfiles']>[string];
+
+/**
+ * Profiles for Fallen Pantheon Tiers II and III (Old Dominion Fallen Divinity, od p.7, p.12).
+ * The export holds only one profile, so the owner types the others from their faction book;
+ * they stay on this device with the list.
+ */
+function TierEditor({ entry, tiers, onTiers }: { entry: ListEntry; tiers: Tiers; onTiers: (t: Tiers) => void }) {
+  const set = (tier: string, mut: (d: { stats: Record<string, number>; rules: string[] }) => void) => {
+    const next = structuredClone(tiers);
+    const d = next[tier] ?? { stats: {}, rules: [] };
+    mut(d);
+    next[tier] = d;
+    onTiers(next);
+  };
+  return (
+    <div className="tiers" data-testid={`tiers-${entry.name}`}>
+      <p className="meta">Fallen Pantheon Tier profiles (not in the export: type them from your faction book). Blank values keep the Tier I profile.</p>
+      {['2', '3'].map((t) => (
+        <div key={t}>
+          <strong>Tier {t === '2' ? 'II' : 'III'}</strong>
+          <table className="stats">
+            <thead><tr>{CHARACTERISTIC_KEYS.map((k) => <th key={k}>{k}</th>)}</tr></thead>
+            <tbody>
+              <tr>
+                {CHARACTERISTIC_KEYS.map((k) => (
+                  <td key={k}>
+                    <input
+                      inputMode="numeric"
+                      aria-label={`Tier ${t} ${k}`}
+                      value={tiers[t]?.stats[k] ?? ''}
+                      placeholder={String(entry.stats[k] ?? '-')}
+                      onChange={(e) =>
+                        set(t, (d) => {
+                          if (e.target.value === '' || Number.isNaN(Number(e.target.value))) delete d.stats[k];
+                          else d.stats[k] = Number(e.target.value);
+                        })
+                      }
+                    />
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+          <label className="field">
+            Rules that change{' '}
+            <input className="grow" defaultValue={(tiers[t]?.rules ?? []).join(', ')} placeholder="Cleave (2), Brutal Impact (2)" onBlur={(e) => set(t, (d) => (d.rules = parseRuleList(e.target.value).map((r) => r.raw)))} />
+          </label>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EntryEditor({
+  entry,
+  glossary,
+  onChange,
+  strain,
+  onStrain,
+  tiers,
+  onTiers,
+}: {
+  entry: ListEntry;
+  glossary: Record<string, string>;
+  onChange: (e: ListEntry) => void;
+  strain: string;
+  onStrain: (t: string) => void;
+  tiers: Tiers;
+  onTiers: (t: Tiers) => void;
+}) {
   const [open, setOpen] = useState(entry.warnings.length > 0);
   const set = (mut: (e: ListEntry) => void) => {
     const c = structuredClone(entry);
@@ -158,6 +235,10 @@ function EntryEditor({ entry, glossary, onChange, strain, onStrain }: { entry: L
             )}
           </label>
         )}
+        {entry.specialRules.some((r) => r.name === 'Font of Dark Power') && <TierEditor entry={entry} tiers={tiers} onTiers={onTiers} />}
+        {entry.memories && entry.memories.length > 0 && <div className="rules"><span className="meta">Memories of Old:</span>{entry.memories.map((r, i) => <RuleChip key={i} r={r} glossary={glossary} />)}</div>}
+        {entry.memoriesText && <p><span className="meta">Memories of Old:</span> {entry.memoriesText}</p>}
+        {named('Spells', entry.spells ?? [])}
         {named('Supremacy', entry.supremacyAbilities)}
         {named('Draw Events', entry.drawEvents)}
         {named('Command Models', entry.commandModels)}

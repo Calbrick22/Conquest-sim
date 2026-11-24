@@ -16,17 +16,21 @@ export interface StandInRange {
   bonus?: number;
   /** "Always Seizes" effects (core p.106). */
   alwaysSeizes?: boolean;
+  /** Counts as this many Stands toward the total in range (Unhallowed Ground: 6, od p.15). */
+  totalCount?: number;
+  /** The Stand itself counts 0 for Seizing; only bonuses count (Unhallowed Ground, od p.15). */
+  noBaseSeize?: boolean;
 }
 
 export function seizingWeight(s: StandInRange): number {
   if (!s.canSeize) return 0;
-  const base = s.isMonster ? 3 : s.cls === 'Light' ? 0 : 1;
+  const base = s.noBaseSeize ? 0 : s.isMonster ? 3 : s.cls === 'Light' ? 0 : 1;
   return base + (s.bonus ?? 0);
 }
 
 /** Total Stand count toward the "more Stands in total" condition. Monsters count 1 here. */
-export function totalWeight(_s: StandInRange): number {
-  return 1;
+export function totalWeight(s: StandInRange): number {
+  return s.totalCount ?? 1;
 }
 
 export interface ZoneSeizeInput {

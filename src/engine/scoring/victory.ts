@@ -3,7 +3,8 @@ import { layout } from '../formation';
 import { rectPoly } from '../geometry/polygon';
 import { standOverlapsZone } from '../geometry/zones';
 import type { GameState, PlayerId, RoundScore } from '../model/types';
-import { formationInput, markerPolys, onTableRegiments } from '../queries';
+import { attachedCharacter, formationInput, markerPolys, onTableRegiments } from '../queries';
+import { seizeBonusFor, unhallowed } from '../factions/oldDominion';
 import { scoreRound, type RoundFacts } from './scoreRound';
 import { hasRule } from '../rules/special/rules';
 import { resolveZone, type StandInRange, type ZoneSeizeResult } from './seizing';
@@ -19,15 +20,29 @@ export type ZoneResults = Record<string, ZoneSeizeResult & { contestedBy: Player
 export function zoneResults(s: GameState): ZoneResults {
   const out: ZoneResults = {};
   const regs = onTableRegiments(s);
-  const slotsByReg = regs.map((r) => ({ r, polys: layout(formationInput(s, r)).map((sl) => rectPoly(sl.rect)) }));
+  const slotsByReg = regs.map((r) => {
+    const slots = layout(formationInput(s, r));
+    return { r, slots, polys: slots.map((sl) => rectPoly(sl.rect)) };
+  });
   const mPolys = markerPolys(s);
   for (const z of s.scenario.zones) {
     const centre = { x: z.x, y: z.y };
     const stands: StandInRange[] = [];
-    for (const { r, polys } of slotsByReg)
-      for (const p of polys)
-        if (standOverlapsZone(p, centre, z.diameter))
-          stands.push({ owner: r.owner, cls: r.cls, isMonster: r.type === 'Monster', canSeize: !r.broken && !r.flags.declinedDuel });
+    for (const { r, slots, polys } of slotsByReg) {
+      let regBonus = r.flags.seizeBonus ?? 0; // Exhortation of Eternal Faith (od p.30): once per Regiment
+      polys.forEach((p, i) => {
+        if (!standOverlapsZone(p, centre, z.diameter)) return;
+        const sl = slots[i]!;
+        const c = sl.isCharacter ? attachedCharacter(s, r.id) : undefined;
+        // Imperial Oplon (od p.18): the Character counts as two more Stands for Seizing.
+        const charBonus = c && c.options.some((o) => o.toLowerCase() === 'imperial oplon') ? 2 : 0;
+        const bonus = seizeBonusFor(r, sl.isCommand) + charBonus + regBonus;
+        regBonus = 0;
+        // Unhallowed Ground (od p.15, p.30): six Stands toward the total, none toward Seizing.
+        const uh = unhallowed(r);
+        stands.push({ owner: r.owner, cls: r.cls, isMonster: r.type === 'Monster', canSeize: !r.broken && !r.flags.declinedDuel, ...(bonus ? { bonus } : {}), ...(uh ? { totalCount: 6, noBaseSeize: true } : {}) });
+      });
+    }
     const contestedBy: PlayerId[] = [];
     s.scenario.markers.forEach((m, i) => {
       if (m.friendlyTo && !s.markers[m.id]?.destroyed && standOverlapsZone(mPolys[i]!, centre, z.diameter)) contestedBy.push(m.friendlyTo);

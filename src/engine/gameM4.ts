@@ -1,5 +1,8 @@
 import { applyCharacterAbility, applyDrawEvent, characterAbilityProblems, drawEventProblems, onActivationEnd, onActivationStart, recordAction } from './activation';
 import { sectOf } from './rules/special/grants';
+import { activateMemories, blasphemousSoma, warlordHas } from './factions/oldDominion';
+import { applyOdSpend, applyOdSupremacy, isOdSupremacy, memoriesProblems, odActivationStartSpells, odSpendProblems, odSupremacyProblems } from './factions/oldDominionActions';
+import { castSpell, casterOf, spellProblems } from './spells';
 import { hasRule } from './rules/special/rules';
 import {
   applyCharge,
@@ -96,9 +99,15 @@ export function validateM4(s: GameState, a: Action): Validation {
       return s.step === 'supremacy' && s.supremacyWinner ? ok() : fail('Roll off for Supremacy first.');
     case 'useSupremacy': {
       if (s.step !== 'supremacy') return fail('[Activated] Supremacy Abilities are used in the Supremacy Phase (core p.22).');
-      if (s.players[a.player].supremacyUsed) return fail('Already used this battle (core p.22).');
+      // Master of the Legions (Strategos, od p.9): may be used at the end of each Supremacy Phase.
+      const everyRound = warlordHas(s, a.player, 'Master of the Legions');
+      if (s.players[a.player].supremacyUsed && !everyRound) return fail('Already used this battle (core p.22).');
       const w = Object.values(s.characters).find((c) => c.isWarlord && c.id.startsWith(a.player));
       if (!w || w.destroyed || !w.attachedTo || s.regiments[w.attachedTo]?.location !== 'table') return fail('The Warlord must be on the Battlefield (core p.22).');
+      if (isOdSupremacy(s, a.player)) {
+        const p = odSupremacyProblems(s, a.player, a.targets ?? []);
+        if (p.length) return fail(...p);
+      }
       return ok();
     }
     case 'pickZone': {
@@ -131,7 +140,23 @@ export function validateM4(s: GameState, a: Action): Validation {
       return ok();
     }
     case 'drawEvent': {
-      const p = drawEventProblems(s, a.name, { ...(a.option ? { option: a.option } : {}), ...(a.targetId ? { targetId: a.targetId } : {}) });
+      const p = drawEventProblems(s, a.name, { ...(a.option ? { option: a.option } : {}), ...(a.options ? { options: a.options } : {}), ...(a.targetId ? { targetId: a.targetId } : {}) });
+      return p.length ? fail(...p) : ok();
+    }
+    case 'spell': {
+      const r = casterOf(s, a.casterId)?.regiment;
+      if (!r) return fail('Unknown spellcaster.');
+      const p = [...canTakeAction(s, r.id, 'spell'), ...spellProblems(s, a.casterId, a.spell, a.targetId, a.attunement)];
+      return p.length ? fail(...p) : ok();
+    }
+    case 'memories':
+      return act(s, a.regimentId, 'memories', () => memoriesProblems(s.regiments[a.regimentId]!));
+    case 'powerPref':
+      return s.players[a.player].od ? ok() : fail('Only an Old Dominion army has Power Tokens.');
+    case 'odSpend': {
+      const r = s.regiments[a.regimentId];
+      if (!r) return fail('Unknown Regiment.');
+      const p = odSpendProblems(s, r);
       return p.length ? fail(...p) : ok();
     }
     case 'lobotomy': {
@@ -186,6 +211,7 @@ export function validateM4(s: GameState, a: Action): Validation {
       return act(s, a.regimentId, 'inspire', () => {
         const r = s.regiments[a.regimentId]!;
         if (hasRule(r.rules, 'Phalanx')) return ['A Phalanx Regiment cannot perform the Inspire Action (core p.100).'];
+        if (hasRule(r.rules, 'Animate Vessel')) return ['A Regiment with Animate Vessel cannot perform the Inspire Action (od p.5).'];
         if (!isEngaged(s, r)) return ['Inspire is a combat Action (core p.50).'];
         return r.broken ? ['A Broken Regiment cannot benefit from Inspired (core p.60).'] : [];
       });
@@ -322,6 +348,8 @@ export function applyM4(ctx: Ctx, a: Action): void {
       s.players[a.player].stackSet = true;
       ev(ctx, { type: 'stack', text: `${a.player} sets a Command Stack of ${a.order.length} cards.`, player: a.player });
       if (s.players.P1.stackSet && s.players.P2.stackSet) {
+        // Blasphemous Soma (od p.6): +1 Power Token before the Supremacy Phase.
+        blasphemousSoma(ctx);
         s.step = 'supremacy';
         ev(ctx, { type: 'phase', text: 'Supremacy Phase (core p.21).' });
       }
@@ -350,7 +378,8 @@ export function applyM4(ctx: Ctx, a: Action): void {
     case 'useSupremacy': {
       s.players[a.player].supremacyUsed = true;
       const w = Object.values(s.characters).find((c) => c.isWarlord && c.id.startsWith(a.player))!;
-      if (w.supremacyAbilities.some((x) => x.toLowerCase() === 'remorseless hunter')) {
+      if (isOdSupremacy(s, a.player)) applyOdSupremacy(ctx, a.player, a.targets ?? []);
+      else if (w.supremacyAbilities.some((x) => x.toLowerCase() === 'remorseless hunter')) {
         // Remorseless Hunter [Activated]: all friendly Regiments gain Sureshot and Longshot until the end of the Round.
         for (const r of Object.values(s.regiments).filter((x) => x.owner === a.player)) r.roundRules.push({ name: 'Sureshot', raw: 'Sureshot' }, { name: 'Longshot', raw: 'Longshot' });
         ev(ctx, { type: 'supremacy', text: `${a.player} activates Remorseless Hunter: every friendly Regiment gains Sureshot and Longshot until the end of the Round.`, player: a.player });
@@ -369,10 +398,31 @@ export function applyM4(ctx: Ctx, a: Action): void {
       s.drawn = null;
       startActivation(ctx, r, { characterId: c.id });
       ev(ctx, { type: 'activate', text: `${r.owner} activates the Character ${c.name}${r.location !== 'table' ? ' (not on the Battlefield yet: no Draw Event, core p.23)' : ''}.`, player: r.owner });
+      odActivationStartSpells(ctx);
       break;
     }
     case 'drawEvent':
-      applyDrawEvent(ctx, a.name, { ...(a.option ? { option: a.option } : {}), ...(a.targetId ? { targetId: a.targetId } : {}) });
+      applyDrawEvent(ctx, a.name, { ...(a.option ? { option: a.option } : {}), ...(a.options ? { options: a.options } : {}), ...(a.targetId ? { targetId: a.targetId } : {}) });
+      break;
+    case 'spell': {
+      const c = casterOf(s, a.casterId)!;
+      recordAction(s.activation!, 'spell');
+      castSpell(ctx, a.casterId, a.spell, a.targetId, { ...(a.attunement ? { attunement: a.attunement } : {}), ...(a.pool ? { pool: a.pool } : {}) });
+      void c;
+      break;
+    }
+    case 'memories': {
+      const r = s.regiments[a.regimentId]!;
+      recordAction(s.activation!, 'memories');
+      activateMemories(ctx, r, 'as an Action');
+      break;
+    }
+    case 'powerPref':
+      s.players[a.player].od!.pref = a.pool;
+      ev(ctx, { type: 'power', text: `${a.player} will put new Power Tokens in the ${a.pool === 'dark' ? 'Dark Power' : 'Fallen Pantheon'} Pool.`, player: a.player });
+      break;
+    case 'odSpend':
+      applyOdSpend(ctx, s.regiments[a.regimentId]!, a.option);
       break;
     case 'lobotomy': {
       const first = s.drawn!.card;

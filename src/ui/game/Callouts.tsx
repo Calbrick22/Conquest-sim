@@ -3,6 +3,7 @@ import type { Action, GameEvent } from '../../engine/game';
 import type { GameState, Profile, RegimentState } from '../../engine/model/types';
 import { attachedCharacter, hasFlank, marchValue } from '../../engine/queries';
 import { isImplemented } from '../../engine/rules/special/registry';
+import { isAnimateVessel, regimentDarkTier } from '../../engine/factions/oldDominion';
 import { OWNER_COLOR } from './TableView';
 
 const KEYS: (keyof Profile)[] = ['M', 'V', 'C', 'A', 'W', 'R', 'D', 'E'];
@@ -54,6 +55,13 @@ export function UnitCallout({ s, r, onClose }: { s: GameState; r: RegimentState;
       {c && <RuleLine label={`${c.name}${c.isWarlord ? ' (Warlord)' : ''}`} names={[...c.rules.map((x) => x.raw), ...c.options]} />}
       {r.drawEvents.length > 0 && <div className="rules-line">Draw Events: {r.drawEvents.join(', ')}</div>}
       {r.commandModels.length > 0 && <div className="rules-line">Command: {r.commandModels.join(', ')}</div>}
+      {(r.memories?.length || r.memoriesText) && (
+        <div className="rules-line">
+          Memories of Old{r.flags.memories ? ' (active)' : ''}: {r.memories?.map((x) => x.raw).join(', ') || r.memoriesText}
+        </div>
+      )}
+      {(r.spells?.length || c?.spells?.length) && <div className="rules-line">Spells: {[...(r.spells ?? []), ...(c?.spells ?? [])].join(', ')}</div>}
+      {s.players[r.owner].od && isAnimateVessel(r) && <div className="rules-line">Dark Power Tier {regimentDarkTier(s, r) || '—'}</div>}
     </div>
   );
 }

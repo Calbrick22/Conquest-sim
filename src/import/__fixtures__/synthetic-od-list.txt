@@ -1,0 +1,48 @@
+Gravemoor 2000 / 2000
+The Old Dominion
+Warband 1
+Ashen Godling 1 300
+M V C A W R D E Type Monster
+6 2 2 8 16 - 3 2 Class Heavy
+Supremacy Abilities Surrounded by Fear and Dead Men
+Special Rules Animate Vessel, Blessed, Cleave (1), Font of Dark Power, Impact (5), Unstoppable
+Battlefield Role Character, The Fallen Pantheon
+This Regiment counts its Class as Light for the purposes of its Reinforcement Roll.
+Marble Wardens Mainstay 3 200
+M V C A W R D E Type Brute
+6 2 2 4 5 - 3 1 Class Medium
+Memories of Old Acute Senses, Barrage (+1)
+Special Rules Animate Vessel, Divine Shard, Barrage (3) [18", Armor Piercing (2)]
+Command Models Leader
+Battlefield Role The Fallen Pantheon
+Warband 2
+Cinder Abbot 1 110
+M V C A W R D E Type Infantry
+- 1 1 3 4 - 1 2 Class -
+Special Rules Devout, Animate Vessel, Priest (7)
+Spells Unholy Baptism, Dark Immolation, Hazlia's Touch, Blasphemous Power
+Battlefield Role Character, The Creed
+Rattle Legion Mainstay 4 150
+M V C A W R D E Type Infantry
+5 0 2 4 4 - 1 1 Class Medium
+Memories of Old Linebreaker, Cleave (+1)
+Special Rules Forced March, Shield, Support (2), Animate Vessel
+Command Models Leader, Standard Bearer
+Battlefield Role The Legion
+Ember Cult Mainstay 3 90
+M V C A W R D E Type Infantry
+6 2 1 4 4 3 1 1 Class Light
+Special Rules Acolytes, Barrage (4) [12"], Loose Formation
+Command Models Leader
+Battlefield Role The Creed
+Rules
+Animate Vessel
+Synthetic placeholder: this unit is undead.
+Acolytes
+Synthetic placeholder: losing the leader grants power.
+Divine Shard
+Synthetic placeholder: extra power when feeding the pantheon.
+Font of Dark Power
+Synthetic placeholder: nearby losses feed the pantheon.
+Forced March
+Synthetic placeholder: a faster second march.

@@ -32,6 +32,8 @@ import { ManualTools } from './ManualTools';
 import { PhasePanel } from './PhasePanel';
 import { ActionCallout, UnitCallout } from './Callouts';
 import { DrawDeck, StackBuilder } from './CommandDeck';
+import { OdActivation, PowerBar } from './OldDominionPanel';
+import { isOdDrawEvent } from '../../engine/factions/oldDominionActions';
 import { volleyLines } from '../../engine/actions';
 import { decisionMaker } from '../../ai/ai';
 
@@ -313,7 +315,9 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
     const drawEventButtons = (names: string[]) => {
       if (used !== 0 || !names.length || s.regiments[act.regimentId]!.location !== 'table') return null;
       const done = act.drawEvents ?? [];
-      const avail = names.filter((n) => !done.includes(baseName(n)) && (baseName(n) === 'Strain Expression' || !done.some((d) => d !== 'Strain Expression')));
+      // Strain Expression and Memories of Old may be used in addition to another Draw Event.
+      const extraDe = (d: string) => d === 'Strain Expression' || d === 'Memories of Old';
+      const avail = names.filter((n) => !isOdDrawEvent(baseName(n)) && !done.includes(baseName(n)) && (extraDe(baseName(n)) || !done.some((d) => !extraDe(d))));
       if (!avail.length) return null;
       const friendsNear = Object.values(s.regiments).filter((x) => x.owner === r.owner && x.location === 'table' && distancePolys(regimentPolys(s, r), regimentPolys(s, x)) <= 12);
       return (
@@ -359,6 +363,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
         <div>
           <p><strong>{c.name}</strong> is active: one Character Action (core p.74). {status}</p>
           {drawEventButtons(c.drawEvents)}
+          <OdActivation key={`od-${c.id}`} s={s} run={run} />
           <div className="actions wrap">
             {used === 0 && targets.map((t) => (
               <span key={t.id} className="actions">
@@ -396,6 +401,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
       <div>
         <p className="meta">Actions used {used}/2{status ? ` · ${status}` : ''}{act.entourage ? ' · Entourage Activation' : ''}</p>
         {drawEventButtons(r.drawEvents)}
+        <OdActivation key={`od-${r.id}`} s={s} run={run} />
         <div className="actions wrap">
           {!act.ended && r.location === 'arriving' && <button type="button" onClick={() => beginEnter(r)} data-testid="march-on">March on</button>}
           {!act.ended && r.location === 'table' && !engaged && (
@@ -552,6 +558,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
           {aiError} <button type="button" className="secondary small" onClick={() => { clearAiError(); setPaused(true); }}>OK</button>
         </div>
       )}
+      <PowerBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
       <PhasePanel s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
 
       {s.phase === 'setup' && (

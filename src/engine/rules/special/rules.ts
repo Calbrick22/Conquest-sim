@@ -75,6 +75,29 @@ const IMPLEMENTED: [string, string][] = [
   ['Unyielding', 'core p.101'],
   ['Weapon Platform', 'core p.101'],
   ['Murderous Volley', 'core p.95'],
+  // Spellcasting (core p.80–81, p.97)
+  ['Priest', 'core p.80, p.100'],
+  ['Wizard', 'core p.80, p.101'],
+  ['Devout', 'core p.97'],
+  // Old Dominion (od = Old Dominion army list, 2026 Tainted Earth update)
+  ['Animate Vessel', 'od p.5'],
+  ['Memories of Old', 'od p.5'],
+  ['Acolytes', 'od p.22'],
+  ['Divine Shard', 'od p.27'],
+  ['Forced March', 'od p.24'],
+  ['Unhallowed Ground', 'od p.15, p.30 (Size (4) is not used by the engine)'],
+  ['Wedge!', 'od p.29'],
+  ['Wedge', 'od p.29'],
+  ['Sundering Charge', 'od p.28 (the same as Wedge!)'],
+  ['Font of Dark Power', 'od p.7, p.13'],
+  ['Dark Shepherd', 'od p.11'],
+  ['Dark Awakening', 'od p.28'],
+  ["Heaven's Descent", 'od p.28'],
+  ['Exhortation of Eternal Faith', 'od p.30 (the Command Stand aura is manual)'],
+  ['Exploitation of Divine Vanity', 'od p.16'],
+  ['Unholy Sacrament', 'od p.19'],
+  ['Blasphemous Mesa', 'od p.8'],
+  ['Harvest of Vanity', 'od p.16'],
   // Spires rules (mechanics from the rule text in the imported list)
   ['Superior Creations', 'Spires'],
   ['Just Desserts', 'Spires'],
@@ -137,8 +160,10 @@ export function barrageOf(rules: readonly RuleRef[]): { shots: number; range: nu
   const b = rules.filter((r) => r.name.toLowerCase() === 'barrage' && (r.x ?? 0) > 0);
   if (!b.length) return null;
   // "If a Stand has multiple Barrage (X) profiles, you must choose one": the engine uses the first (manual to change).
-  const r = b[0]!;
-  return { shots: r.x ?? 0, range: r.range ?? 0, sub: r.sub ?? [] };
+  const r = b.find((x) => !x.plus) ?? b[0]!;
+  // Barrage (+X) adds shots to the profile (e.g. from Memories of Old, od p.27).
+  const plus = b.filter((x) => x !== r && x.plus).reduce((a, x) => a + (x.x ?? 0), 0);
+  return { shots: (r.x ?? 0) + plus, range: r.range ?? 0, sub: r.sub ?? [] };
 }
 
 /** Rules not automated by the engine. */

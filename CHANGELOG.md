@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.3.0] - 2026-11-24 (Old Dominion, 2026 Tainted Earth update)
+
+### Added
+- **Spellcasting** (core p.80–81): Priest/Wizard dice, Attunement, Scaling, enemy interference, Devout, Line of Sight and the once-per-Round rules.
+  - Old Dominion Spells are automated.
+  - Any other Spell can be cast by entering its Attunement; the effect is manual.
+- **Old Dominion faction rules:**
+  - Animate Vessel: no Resolve, Brittle, Terrifying, no Inspire.
+  - Memories of Old, as an Action and as a Draw Event.
+  - Power Tokens with the Dark Power and Fallen Pantheon Pools, Tiers I–IV scaled by points, and Blasphemous Soma.
+  - Font of Dark Power, Divine Shard, Acolytes, Forced March, Unhallowed Ground, Wedge!/Sundering Charge, and the Officers.
+- **Old Dominion Draw Events:** Dark Shepherd, Dark Awakening, Heaven's Descent, Exhortation of Eternal Faith, Exploitation of Divine Vanity, Unholy Sacrament and Blasphemous Mesa.
+- **Old Dominion Supremacy Abilities:** all seven Warlords, including Master of the Legions every Supremacy Phase.
+- **Treasures and Dark Blessings** that change rules or characteristics.
+- **Fallen Divinity and Theokrator** are Monster Regiments by themselves. The Fallen Divinity's Tier II and III profiles are typed on the list review screen and applied automatically, with its Heals.
+- **On the table:**
+  - a Power bar showing each pool, its Tier and where new Tokens go;
+  - Spell, Memories of Old and Draw Event buttons with their choices;
+  - Supremacy choices for Old Dominion Warlords;
+  - the unit card shows Memories of Old, Spells and the Dark Power Tier.
+- **Computer opponent:** it casts Spells, uses Memories of Old and the Old Dominion Draw Events, spends Tokens, and feeds the Fallen Pantheon Pool while its Fallen Divinity climbs Tiers.
+- **List import:** "Spells" and "Memories of Old" blocks, and rule values written without brackets (for example "Cleave +1").
+- **Tests:** a synthetic Old Dominion-style fixture with an AI-vs-AI game, and 24 rule tests with page references.
+
+### Still manual
+- Duels involving the Fallen Divinity or Theokrator.
+- Trial of Will, Translocation's move and the Exhortation Command Stand aura.
+- Cuirass of Hazlia's Shadow, Hierotekton, Anastegma, Soul Reaper, Implacable and What We Did in Life.
+
 ## [1.2.0] - 2026-11-24 (roadmap 1.1–1.3)
 
 ### Added

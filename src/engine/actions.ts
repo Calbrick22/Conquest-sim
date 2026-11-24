@@ -25,6 +25,7 @@ import {
 } from './queries';
 import { barrageOf, flatRules, hasRule, ruleX } from './rules/special/rules';
 import { magnanimity, poolMods } from './rules/special/effects';
+import { autoPassesResolve, markOnce, takeGlimmers, xhiliarchChargeBonus } from './factions/oldDominion';
 
 // ---------------------------------------------------------------- shared geometry helpers
 
@@ -295,7 +296,11 @@ export function resolveImpact(ctx: Ctx, r: RegimentState, t: RegimentState, faci
   const glorious = hasRule(r.rules, 'Glorious Charge') ? 1 : 0;
   if (impact > 0) {
     const skill = stat(r, 'C') + glorious;
-    pools.push({ label: `${r.name} Impact (${impact}) × ${r.stands.length}`, dice: impact * r.stands.length, skill, ...poolMods(r.rules, t, 'impact', facing, skill, { blessed }), extraWoundOnSix: !!opts.resounding });
+    // Hetairos (Officer, od p.31): re-roll failed Hit Rolls of 6 on Impact Attacks.
+    // RULE-AMBIGUITY: AMB-50 — read literally: only natural 6s are re-rolled.
+    const hetairos = [...r.commandModels, ...(r.options ?? [])].includes('Hetairos') && r.stands.some((x) => x.isCommand);
+    const glim = takeGlimmers(s, r);
+    pools.push({ label: `${r.name} Impact (${impact}) × ${r.stands.length}`, dice: impact * r.stands.length, skill, ...poolMods(r.rules, t, 'impact', facing, skill, { blessed }), extraWoundOnSix: !!opts.resounding, ...(hetairos ? { rerollSixes: true } : {}), ...(glim ? { convertFails: glim } : {}) });
   }
   const c = attachedCharacter(s, r.id);
   const ci = c ? ruleX(c.rules, 'Impact') : 0;
@@ -322,7 +327,7 @@ export function takeBlessed(r: RegimentState): boolean {
 export function chargeDistanceRule(s: GameState, r: RegimentState, t: RegimentState | null): { fixed: number | null; bonus: number } {
   const M = marchValue(s, r);
   if (hasRule(r.rules, 'Juggernaut')) return { fixed: M + 5, bonus: 0 };
-  const bonus = t?.flags.marked ? 2 : 0;
+  const bonus = (t?.flags.marked ? 2 : 0) + xhiliarchChargeBonus(s, r);
   if (hasRule(r.rules, 'Phalanx')) return { fixed: M + 3 + bonus, bonus };
   return { fixed: null, bonus };
 }
@@ -357,8 +362,15 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
     total = rule.fixed;
     notes.push(hasRule(r.rules, 'Juggernaut') ? 'Juggernaut: March + 5″ (core p.99)' : 'Phalanx: March + 3″ (core p.100)');
   } else {
-    [die] = rollN(ctx, 1) as [number];
-    notes.push(`Charge Distance = die + March ${M}${rule.bonus ? ` + ${rule.bonus} (Marked)` : ''}; need ${d.toFixed(2)}″`);
+    if (r.flags.charge2d6) {
+      // Master of the Legions (Strategos, od p.9): 2D6, keep the highest.
+      const [a, b] = rollN(ctx, 2) as [number, number];
+      die = Math.max(a, b);
+      notes.push(`2D6 keep highest: ${a}, ${b} (Master of the Legions)`);
+    } else [die] = rollN(ctx, 1) as [number];
+    const xb = xhiliarchChargeBonus(s, r);
+    if (xb) markOnce(s, r.owner, 'obdurate');
+    notes.push(`Charge Distance = die + March ${M}${rule.bonus ? ` + ${rule.bonus} (${[t.flags.marked ? 'Marked' : '', xb ? 'Obdurate Bone and Stone' : ''].filter(Boolean).join(', ')})` : ''}; need ${d.toFixed(2)}″`);
     total = die + M + rule.bonus;
     const unstoppable = hasRule(r.rules, 'Unstoppable') || (r.commandModels.includes('Standard Bearer') && r.stands.some((x) => x.isCommand));
     if (total < d - TOL && unstoppable) {
@@ -412,6 +424,9 @@ export function completeCharge(ctx: Ctx, r: RegimentState, t: RegimentState, fac
   if (hasRule(r.rules, 'Fury')) r.roundMods.push({ stat: 'A', delta: 1, source: 'Fury' });
   if (hasRule(r.rules, 'Shock')) r.roundMods.push({ stat: 'C', delta: 1, source: 'Shock' });
   if (hasRule(r.rules, 'Glorious Charge') && !r.roundRules.some((x) => x.name === 'Terrifying')) r.roundRules.push({ name: 'Terrifying', x: 1, raw: 'Terrifying (1)' });
+  // Wedge! / Sundering Charge (od p.28, p.31): Cleave (+1) until the end of the Round after a successful Charge.
+  if ((hasRule(r.rules, 'Wedge!') || hasRule(r.rules, 'Wedge') || hasRule(r.rules, 'Sundering Charge')) && !r.roundRules.some((x) => x.raw === 'Cleave (+1) [Wedge]'))
+    r.roundRules.push({ name: 'Cleave', x: 1, plus: true, raw: 'Cleave (+1) [Wedge]' });
   const engagedWith = [t.id];
   resolveImpact(ctx, r, t, facing, opts);
   pressTheAttack(ctx, r, engagedWith);
@@ -477,6 +492,8 @@ export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
         ...poolMods(r.rules, target, 'clash', arc, ins.skill, { blessed }),
       },
     ];
+    const glim = takeGlimmers(s, r);
+    if (glim) pools[0]!.convertFails = glim;
     if (c && b.charAttacks) {
       const cins = inspiredSkill(charStat(c, 'C'), inspired);
       pools.push({ label: `${c.name} (${b.charEngaged ? 'engaged' : 'support'})`, dice: b.charAttacks, skill: cins.skill, rerollSixes: cins.rerollSixes, ...poolMods(c.rules, target, 'clash', arc, cins.skill) });
@@ -644,6 +661,7 @@ export function applyVolley(ctx: Ctx, r: RegimentState, t: RegimentState): void 
 /** Fearsome (core p.98): enemies in contact must pass a test before Combat Rally / Combat Reform. */
 export function fearsomeCheck(ctx: Ctx, r: RegimentState, what: string): boolean {
   if (hasRule(r.rules, 'Fearless')) return true;
+  if (autoPassesResolve(r)) return true; // Animate Vessel (od p.5)
   const scary = enemiesInContact(ctx.s, r).filter((e) => hasRule(e.rules, 'Fearsome'));
   if (!scary.length) return true;
   const R = highestR(ctx, r);
@@ -675,7 +693,9 @@ export function applyWithdraw(ctx: Ctx, r: RegimentState, moves: MoveSeg[], turn
   const turn = turnIn || !hasRule(r.rules, 'Swift Retreat');
   const s = ctx.s;
   const R = highestR(ctx, r);
-  const t = rollTest(ctx, 1, { target: R }, `${r.name}: Withdraw`);
+  // Animate Vessel (od p.5) always passes; no die is rolled.
+  const auto = autoPassesResolve(r);
+  const t = auto ? { passes: 1, values: ['auto'] } : rollTest(ctx, 1, { target: R }, `${r.name}: Withdraw`);
   // Swift Retreat (Spires): always a Clean Withdrawal.
   const clean = t.passes === 1 || hasRule(r.rules, 'Swift Retreat');
   const contacts = layout(formationInput(s, r)).filter((sl) => !sl.isCharacter && enemiesInContact(s, r).some((e) => distancePolys([rectPoly(sl.rect)], regimentPolys(s, e)) <= TOL)).length;
@@ -684,7 +704,7 @@ export function applyWithdraw(ctx: Ctx, r: RegimentState, moves: MoveSeg[], turn
   const wounds = clean ? d : d * contacts;
   ev(ctx, {
     type: 'dice',
-    text: `${r.name} Withdraws: rolled ${t.values[0]} against ${R} — ${clean ? `Clean Withdrawal, suffers D6 = ${d} Wounds` : `Fighting Withdrawal, suffers ${d} × ${contacts} Stands in contact = ${wounds} Wounds`} (core p.51).`,
+    text: `${r.name} Withdraws: ${auto ? 'Animate Vessel passes automatically' : `rolled ${t.values[0]} against ${R}`} — ${clean ? `Clean Withdrawal, suffers D6 = ${d} Wounds` : `Fighting Withdrawal, suffers ${d} × ${contacts} Stands in contact = ${wounds} Wounds`} (core p.51).`,
     dice: { purpose: `${r.name}: Withdraw Wounds`, seed: ctx.rng.seed, index: idx, values: [d], notes: [] },
     player: r.owner,
     regimentId: r.id,
@@ -715,17 +735,19 @@ export function applyCombatReform(ctx: Ctx, r: RegimentState, files: number): vo
   const s = ctx.s;
   if (!fearsomeCheck(ctx, r, 'Combat Reform')) return;
   const R = highestR(ctx, r);
-  const t = rollTest(ctx, 1, { target: R }, `${r.name}: Combat Reform`);
-  const clean = t.passes === 1;
+  const auto = autoPassesResolve(r); // Animate Vessel (od p.5)
+  const t = auto ? null : rollTest(ctx, 1, { target: R }, `${r.name}: Combat Reform`);
+  const clean = !t || t.passes === 1;
   const before = countInContact(s, r);
   if (!clean) {
     const enemy = enemiesInContact(s, r)[0];
     const by: PlayerId = enemy?.owner ?? other(r.owner);
-    ev(ctx, { type: 'dice', text: `${r.name} makes a Fighting Reform (rolled ${t.values[0]} against ${R}): 1 Wound per Stand in contact = ${before} (core p.48).`, dice: t.record, player: r.owner });
+    ev(ctx, { type: 'dice', text: `${r.name} makes a Fighting Reform (rolled ${t!.values[0]} against ${R}): 1 Wound per Stand in contact = ${before} (core p.48).`, dice: t!.record, player: r.owner });
     allocateWounds(ctx, r, before, by);
     if (r.location !== 'destroyed') moraleTest(ctx, r, before, { arc: 'front', terrifying: 0, attackerOwner: by });
     if (r.location === 'destroyed') return;
-  } else ev(ctx, { type: 'dice', text: `${r.name} makes a Clean Reform (rolled ${t.values[0]} against ${R}, core p.48).`, dice: t.record, player: r.owner });
+  } else if (!t) ev(ctx, { type: 'note', text: `${r.name} makes a Clean Reform (Animate Vessel always passes, od p.5).`, player: r.owner });
+  else ev(ctx, { type: 'dice', text: `${r.name} makes a Clean Reform (rolled ${t.values[0]} against ${R}, core p.48).`, dice: t.record, player: r.owner });
   const oldFiles = r.files;
   const oldContact = countInContact(s, r);
   r.files = files;

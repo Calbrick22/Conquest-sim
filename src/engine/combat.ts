@@ -7,16 +7,23 @@ import type { CharacterState, PlayerId, Profile, RegimentState } from './model/t
 import { attachedCharacter, formationInput, onTableRegiments, regimentPolys, regimentStandCount } from './queries';
 import { hasRole, sectOf } from './rules/special/grants';
 import { hasRule, ruleX } from './rules/special/rules';
+import { autoPassesResolve, onRegimentDestroyed, onStandLost, rerollsMoraleSuccesses } from './factions/oldDominion';
 
 /** A characteristic including Round modifiers (manual tool, Draw Events), never below 0 (core p.15). */
 export function stat(r: RegimentState, k: keyof Profile): number {
   const base = r.profile[k] ?? 0;
-  const mod = r.roundMods.filter((m) => m.stat === k).reduce((a, m) => a + m.delta, 0);
+  const mod = [...r.roundMods, ...(r.grantMods ?? [])].filter((m) => m.stat === k).reduce((a, m) => a + m.delta, 0);
   return Math.max(0, base + mod);
 }
 
 export function charStat(c: CharacterState, k: keyof Profile): number {
-  return Math.max(0, c.profile[k] ?? 0);
+  const mod = (c.grantMods ?? []).filter((m) => m.stat === k).reduce((a, m) => a + m.delta, 0);
+  return Math.max(0, (c.profile[k] ?? 0) + mod);
+}
+
+/** A Character lends its Resolve to its Regiment unless it has none (Animate Vessel, od p.5). */
+function lendsResolve(c: CharacterState | undefined): c is CharacterState {
+  return !!c && c.profile.R !== null && !hasRule(c.baseRules, 'Animate Vessel');
 }
 
 /** Resolve size bonus (core p.59): +1 for 4–6 Stands, +2 for 7–9, +3 for 10+. */
@@ -32,7 +39,7 @@ export function sizeBonus(ctx: Ctx, r: RegimentState): number {
  */
 export function resolveValue(ctx: Ctx, r: RegimentState): number {
   const c = attachedCharacter(ctx.s, r.id);
-  const rs = [stat(r, 'R'), ...(c ? [charStat(c, 'R')] : [])];
+  const rs = [stat(r, 'R'), ...(lendsResolve(c) ? [charStat(c, 'R')] : [])];
   const base = r.broken || r.flags.declinedDuel ? Math.min(...rs) : Math.max(...rs);
   return base + sizeBonus(ctx, r);
 }
@@ -40,7 +47,7 @@ export function resolveValue(ctx: Ctx, r: RegimentState): number {
 /** Highest Resolve Characteristic of any Stand (Combat Reform, Withdraw; core p.48, p.51). */
 export function highestR(ctx: Ctx, r: RegimentState): number {
   const c = attachedCharacter(ctx.s, r.id);
-  return Math.max(stat(r, 'R'), c ? charStat(c, 'R') : 0);
+  return Math.max(stat(r, 'R'), lendsResolve(c) ? charStat(c, 'R') : 0);
 }
 
 export type AttackKind = 'clash' | 'impact' | 'volley' | 'duel' | 'special';
@@ -69,6 +76,10 @@ export interface AttackPool {
   smite?: boolean;
   /** Torrential Fire: every two Hits (rounding up) add an automatic Hit (core p.101). */
   torrential?: boolean;
+  /** Convert up to this many failed Hit Rolls into Hits (Glimmers of a Golden Age, od p.10). */
+  convertFails?: number;
+  /** Defense Rolls use this value instead of Defense (Insanity, od p.23). */
+  defenseOverride?: number;
 }
 
 export interface AttackSpec {
@@ -122,6 +133,13 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
       if (pool.dice <= 0) continue;
       const hit = rollTest(ctx, pool.dice, { target: pool.skill, rerollFailed: !!pool.rerollFailed, rerollSixes: !!pool.rerollSixes }, `${spec.what}: ${pool.label} to hit`);
       hits = hit.passes;
+      if (pool.convertFails) {
+        const conv = Math.min(pool.convertFails, pool.dice - hit.passes);
+        if (conv > 0) {
+          hits += conv;
+          hit.record.notes?.push(`${conv} failed Hit${conv > 1 ? 's' : ''} converted (Glimmers of a Golden Age)`);
+        }
+      }
       const ones = hit.values.filter((v) => v === 1).length;
       naturalOnes += ones;
       onesHits = pool.noDefenseOnOnes ? ones : 0;
@@ -150,7 +168,7 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
     const d = stat(target, 'D') - (pool.ignoreShield ? bastion : 0) + frontBonus;
     const dEff = pool.smite ? 0 : Math.max(0, d - reduce);
     const E = stat(target, 'E');
-    const save = Math.max(dEff, E);
+    const save = pool.defenseOverride !== undefined ? pool.defenseOverride : Math.max(dEff, E);
     let w = 0;
     let saved = 0;
     const rollDef = (n: number, t: number, label: string) => {
@@ -177,7 +195,9 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
           flipped++;
         }
       // Tenacious (X): X failed Defense rolls count as successes (core p.101).
-      const ten = ruleX(target.rules, 'Tenacious');
+      // Some entries gain Tenacious (1) when targeted by a Volley (Athanatoi, Fallen Divinity; od p.13, p.25).
+      const volleyTen = kind === 'volley' && (target.notes ?? []).some((n) => /target of a Volley Action.*Tenacious\s*\(?1/i.test(n)) ? 1 : 0;
+      const ten = ruleX(target.rules, 'Tenacious') + volleyTen;
       let saves = 0;
       for (let i = 0; i < passed.length && saves < ten; i++)
         if (!passed[i]) {
@@ -257,6 +277,11 @@ export function isDestroyed(r: RegimentState): boolean {
  * a declined Duel re-rolls successful tests of 1 (core p.76).
  */
 export function moraleTest(ctx: Ctx, r: RegimentState, wounds: number, spec: Pick<AttackSpec, 'arc' | 'terrifying' | 'attackerOwner'>): number {
+  // Animate Vessel (od p.5): no Resolve, always passes Morale Tests.
+  if (autoPassesResolve(r)) {
+    ev(ctx, { type: 'note', text: `${r.name} has Animate Vessel: it passes its Morale Tests automatically (od p.5).`, player: r.owner });
+    return 0;
+  }
   const ignoresFear = hasRule(r.rules, 'Fearless') || hasRule(r.rules, 'Bravery');
   const phalanx = spec.arc === 'front' && hasRule(r.rules, 'Phalanx') ? 1 : 0;
   const R = Math.max(0, resolveValue(ctx, r) - (ignoresFear ? 0 : spec.terrifying) + phalanx);
@@ -264,7 +289,8 @@ export function moraleTest(ctx: Ctx, r: RegimentState, wounds: number, spec: Pic
   const t = rollTest(
     ctx,
     wounds,
-    { target: R, rerollSuccesses: !iron && (spec.arc === 'left' || spec.arc === 'right'), autoFail: !iron && spec.arc === 'rear' },
+    // Dark Power Tier IV and similar effects (od p.7): re-roll successful Morale Tests.
+    { target: R, rerollSuccesses: (!iron && (spec.arc === 'left' || spec.arc === 'right')) || rerollsMoraleSuccesses(ctx.s, r), autoFail: !iron && spec.arc === 'rear' },
     `${r.name}: Morale`,
   );
   let failed = wounds - t.passes;
@@ -325,6 +351,7 @@ export function allocateWounds(ctx: Ctx, r: RegimentState, n: number, byPlayer: 
       if (r.stands.length === 1) dieFightingCheck(ctx, r, byPlayer);
       r.stands = r.stands.filter((x) => x.id !== st.id);
       ev(ctx, { type: 'casualty', text: `${r.name} loses a Stand${st.isCommand ? ' (the Command Stand)' : ''}; ${r.stands.length} left.`, player: r.owner, regimentId: r.id });
+      onStandLost(ctx, r, st);
       // Lethal Demise (X): the enemy in contact that destroyed the Stand suffers X Hits (core p.99).
       if (ld && byInContact) (ctx.pending ??= []).push({ kind: 'Lethal Demise', fromId: r.id, toId: by!.id, hits: ld });
       if (st.isCommand && r.stands.length > 0) {
@@ -412,6 +439,7 @@ export function destroyRegiment(ctx: Ctx, r: RegimentState, byPlayer: PlayerId |
   const scorer = byPlayer ?? enemy;
   ctx.s.tally.regimentsDestroyed[scorer] += 1;
   ev(ctx, { type: 'destroyed', text: `${r.name} is destroyed.`, player: r.owner, regimentId: r.id });
+  onRegimentDestroyed(ctx, r);
   const c = Object.values(ctx.s.characters).find((x) => x.attachedTo === r.id && !x.destroyed);
   if (c) killCharacter(ctx, c, scorer, 'its Regiment was destroyed');
 }

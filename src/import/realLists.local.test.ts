@@ -10,7 +10,7 @@ import { linesFromItems, type PdfTextItem } from './pdfLines';
 import { allEntries, parseArmyList } from './parseList';
 
 const REF = path.resolve(__dirname, '../../reference');
-const pdfs = fs.existsSync(REF) ? fs.readdirSync(REF).filter((f) => /\.pdf$/i.test(f) && !/RULES|SCENARIO|PACK/i.test(f)) : [];
+const pdfs = fs.existsSync(REF) ? fs.readdirSync(REF).filter((f) => /\.pdf$/i.test(f) && !/RULES|SCENARIO|PACK|TLAOK-2026|UPDATE/i.test(f)) : [];
 const txts = fs.existsSync(REF) ? fs.readdirSync(REF).filter((f) => /\.txt$/i.test(f)) : [];
 
 async function pdfText(file: string): Promise<string> {

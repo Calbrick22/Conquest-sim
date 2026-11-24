@@ -54,6 +54,11 @@ export interface ListEntry {
   options: Record<string, string[]>;
   /** Free-text notes attached to the entry (e.g. per-entry restrictions). */
   notes: string[];
+  /** Spells known (core p.80). */
+  spells?: string[];
+  /** Memories of Old (Old Dominion): rules gained, or a text-only effect. */
+  memories?: RuleRef[];
+  memoriesText?: string;
   warnings: string[];
 }
 
@@ -83,4 +88,9 @@ export interface ArmyList {
   warnings: string[];
   /** Strain abilities entered by the owner on the review screen, by Regiment name (AMB-18). */
   strains?: Record<string, { stats: Record<string, number>; rules: string[]; text: string }>;
+  /**
+   * Profiles by Tier entered by the owner for a Character whose profile changes with the Fallen
+   * Pantheon Tier (Old Dominion Fallen Divinity), by entry name then Tier ("2", "3").
+   */
+  tierProfiles?: Record<string, Record<string, { stats: Record<string, number>; rules: string[] }>>;
 }

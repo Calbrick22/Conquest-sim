@@ -1,5 +1,6 @@
 import type { DiceRecord, GameEvent } from './model/events';
 import type { GameState } from './model/types';
+import type { PendingPower } from './factions/oldDominion';
 import { rollD6, type RngState } from './rng';
 
 /** Mutable context while applying one Action to a cloned state. */
@@ -9,6 +10,10 @@ export interface Ctx {
   events: GameEvent[];
   /** Hits triggered during an attack and resolved after it (Lethal Demise, Counter-Attack). */
   pending?: { kind: 'Lethal Demise' | 'Counter-Attack'; fromId: string; toId: string; hits: number }[];
+  /** Old Dominion Power Tokens earned during this Action, added at its end (od p.6). */
+  power?: PendingPower[];
+  /** Hierodeacon's Dark Shepherd: Stands destroyed generate double the Power Tokens (od p.9). */
+  doublePower?: boolean;
 }
 
 export function ev(ctx: Ctx, e: Omit<GameEvent, 'round'>): void {

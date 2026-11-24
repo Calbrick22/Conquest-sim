@@ -1,6 +1,7 @@
 import type { RuleRef } from '../../../import/types';
 import { parseRuleRef } from '../../../import/ruleTokens';
-import type { CharacterState, GameState, PlayerId, RegimentState } from '../../model/types';
+import type { CharacterState, GameState, PlayerId, RegimentState, StatMod } from '../../model/types';
+import { odCharacterGrants, odRegimentGrants } from '../../factions/oldDominion';
 
 /**
  * Effective special rules and Draw Events (recomputed after every Action):
@@ -24,7 +25,7 @@ export function sectOf(s: GameState, p: PlayerId): 'directorate' | 'underspires'
 }
 
 export function hasRole(r: RegimentState, role: string): boolean {
-  return r.roles.some((x) => x.replace(/[[\]]/g, '').toLowerCase() === role.toLowerCase());
+  return [...r.roles, ...(r.roundRoles ?? []), ...(r.grantRoles ?? [])].some((x) => x.replace(/[[\]]/g, '').toLowerCase() === role.toLowerCase());
 }
 
 function warlordAbilities(s: GameState, p: PlayerId): string[] {
@@ -78,10 +79,24 @@ export function refreshRules(s: GameState): void {
     }
     // Violent Delirium (Underspires): [Drone] and [Clone] Regiments gain Regeneration (+2).
     if (sect === 'underspires' && (hasRole(r, 'Drone') || hasRole(r, 'Clone'))) drawEvents.push('Regeneration (+2)');
+    // Old Dominion faction rules (od p.5–21).
     r.rules = dedupe(rules);
+    const og = odRegimentGrants(s, r);
+    r.grantRoles = og.roles;
+    rules.push(...og.rules);
+    drawEvents.push(...og.drawEvents);
+    let eff = dedupe(rules);
+    if (og.removeBrittle) eff = eff.filter((x) => x.name !== 'Brittle');
+    r.rules = eff;
+    r.grantMods = og.mods;
     r.drawEvents = [...new Set(drawEvents)];
   }
-  for (const c of Object.values(s.characters)) c.rules = dedupe([...c.baseRules, ...(charRuleAdds.get(c.id) ?? [])]);
+  for (const c of Object.values(s.characters)) {
+    const og = odCharacterGrants(s, c);
+    c.rules = dedupe([...c.baseRules, ...(charRuleAdds.get(c.id) ?? []), ...og.rules]);
+    c.drawEvents = [...new Set([...(c.baseDrawEvents ?? c.drawEvents), ...og.drawEvents])];
+    c.grantMods = og.mods as StatMod[];
+  }
 }
 
 /**

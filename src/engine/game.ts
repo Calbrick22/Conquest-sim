@@ -5,7 +5,7 @@ import type { StandType } from './geometry/bases';
 import { rotateAbout, sub, TOL } from './geometry/vec';
 import { clampFiles, footprint, layout } from './formation';
 import { applyPath, marchShapeProblems, samplePath, type MoveSeg } from './movement';
-import type { CharacterState, GameState, PlayerId, Pose, Profile, RegimentState, StrainDef, UnitClass } from './model/types';
+import type { CharacterState, GameState, PlayerId, Pose, PowerPool, Profile, RegimentState, StrainDef, TierProfileDef, UnitClass } from './model/types';
 import { createRng, rollD6, type RngState } from './rng';
 import type { Ctx } from './dice';
 import { applyM4, endActivation, logManualRules, validateM4 } from './gameM4';
@@ -13,6 +13,8 @@ import { beginRound, cardTargets, type ReinforcementChoice } from './round';
 import { victoryPhase } from './scoring/victory';
 import './rules/special/rules';
 import { applyCharacterOptions, refreshRules, sectOf } from './rules/special/grants';
+import { flushPower, initOldDominion } from './factions/oldDominion';
+import { odActivationStartSpells } from './factions/oldDominionActions';
 import { parseRuleRef } from '../import/ruleTokens';
 import {
   canTakeAction,
@@ -54,11 +56,11 @@ export type ActionBody =
   | { type: 'setStack'; player: PlayerId; order: string[] }
   | { type: 'supremacyRollOff' }
   | { type: 'chooseFirst'; first: PlayerId }
-  | { type: 'useSupremacy'; player: PlayerId }
+  | { type: 'useSupremacy'; player: PlayerId; targets?: { id: string; option?: string }[] }
   | { type: 'pickZone'; player: PlayerId; zoneId: string }
   | { type: 'drawCard'; player: PlayerId }
   | { type: 'activateCharacter'; characterId: string }
-  | { type: 'drawEvent'; name: string; option?: 'C' | 'A'; targetId?: string }
+  | { type: 'drawEvent'; name: string; option?: string; options?: string[]; targetId?: string }
   | { type: 'lobotomy'; player: PlayerId; place: 'top' | 'bottom' }
   // Combat and other Actions (core p.31–51, p.74–76)
   | { type: 'charge'; regimentId: string; targetId: string }
@@ -74,6 +76,11 @@ export type ActionBody =
   | { type: 'withdraw'; regimentId: string; moves: MoveSeg[]; turn?: boolean }
   | { type: 'duel'; characterId: string; targetCharacterId: string; accept: boolean }
   | { type: 'characterAbility'; characterId: string; name: string; targetId?: string }
+  // Spellcasting (core p.80–81) and Old Dominion faction Actions (od p.5–8)
+  | { type: 'spell'; casterId: string; spell: string; targetId: string; attunement?: number; pool?: PowerPool }
+  | { type: 'memories'; regimentId: string }
+  | { type: 'powerPref'; player: PlayerId; pool: PowerPool }
+  | { type: 'odSpend'; regimentId: string; option: 'aod' | 'noBrittle' | 'terrifying' }
   // Manual tools (always logged as overrides)
   | { type: 'override.move'; regimentId: string; pose: Pose; files?: number; reason?: string }
   | { type: 'override.wounds'; regimentId?: string; characterId?: string; delta: number }
@@ -174,6 +181,11 @@ export function createGame(input: SetupInput): SetupResult {
           baseDrawEvents: e.drawEvents,
           commandModels: e.commandModels,
           roles: e.battlefieldRoles,
+          options: Object.values(e.options).flat(),
+          notes: e.notes,
+          ...(e.memories?.length ? { memories: e.memories } : {}),
+          ...(e.memoriesText ? { memoriesText: e.memoriesText } : {}),
+          ...(e.spells?.length ? { spells: e.spells } : {}),
           warband: wi,
           stands: Array.from({ length: n }, (_, k) => ({ id: `${id}-s${k}`, wounds: 0, isCommand: hasCommand && k === 0 })),
           startingStands: n,
@@ -193,7 +205,51 @@ export function createGame(input: SetupInput): SetupResult {
       if (c) {
         const id = `${pid}-w${wi}-c`;
         const type = toStandType(c.type) ?? 'Infantry';
-        const target = wb.regiments.findIndex((e) => toStandType(e.type) === type);
+        // A Monster Character that is a Regiment by itself (Old Dominion Fallen Divinity and
+        // Theokrator, od p.8, p.15): it gets its own one-Stand Monster Regiment.
+        // RULE-AMBIGUITY: AMB-48 — Duels with these Characters are manual.
+        const embodied = type === 'Monster' && list.faction && (/old dominion/i.test(list.faction) || c.specialRules.some((x) => x.name === 'Animate Vessel'));
+        let target = embodied ? -1 : wb.regiments.findIndex((e) => toStandType(e.type) === type);
+        let attachId: string | null = target >= 0 ? `${pid}-w${wi}-r${target}` : null;
+        if (embodied) {
+          const rid = `${pid}-w${wi}-cr`;
+          const cls = (['Light', 'Medium', 'Heavy'] as const).find((k) => k === c.cls) ?? 'Heavy';
+          regiments[rid] = {
+            id: rid,
+            owner: pid,
+            name: c.name,
+            type: 'Monster',
+            cls,
+            profile: toProfile(c),
+            rules: c.specialRules,
+            baseRules: [...c.specialRules],
+            roundRules: [],
+            drawEvents: c.drawEvents,
+            baseDrawEvents: c.drawEvents,
+            commandModels: [],
+            roles: c.battlefieldRoles,
+            options: Object.values(c.options).flat(),
+            notes: c.notes,
+            ...(c.spells?.length ? { spells: c.spells } : {}),
+            embodies: id,
+            tierBase: { profile: toProfile(c), rules: [...c.specialRules] },
+            warband: wi,
+            stands: [{ id: `${rid}-s0`, wounds: 0, isCommand: false }],
+            startingStands: 1,
+            files: 1,
+            pose: { x: 0, y: 0, angle: pid === 'P1' ? Math.PI / 2 : -Math.PI / 2 },
+            location: 'reserve',
+            broken: false,
+            activatedThisRound: false,
+            arrivedRound: null,
+            standsAtRoundStart: 1,
+            standsWhenBroken: null,
+            roundMods: [],
+            flags: {},
+          };
+          attachId = rid;
+          target = 0;
+        }
         if (target < 0) warnings.push(`${pid} ${c.name}: no Regiment of the same Type in its Warband (core p.72)`);
         characters[id] = {
           id,
@@ -203,13 +259,16 @@ export function createGame(input: SetupInput): SetupResult {
           rules: c.specialRules,
           baseRules: [...c.specialRules],
           actions: c.actions,
-          drawEvents: c.drawEvents,
+          drawEvents: embodied ? [] : c.drawEvents,
+          baseDrawEvents: embodied ? [] : c.drawEvents,
           supremacyAbilities: c.supremacyAbilities,
           options: Object.values(c.options).flat(),
+          ...(c.spells?.length && !embodied ? { spells: c.spells } : {}),
+          ...(embodied ? { embodied: true } : {}),
           wounds: 0,
           isWarlord: c.supremacyAbilities.length > 0,
           warband: wi,
-          attachedTo: target >= 0 ? `${pid}-w${wi}-r${target}` : null,
+          attachedTo: attachId,
           destroyed: false,
           activatedThisRound: false,
         };
@@ -218,6 +277,7 @@ export function createGame(input: SetupInput): SetupResult {
   }
   // List-building options that change a Character (e.g. Avatar Projection makes it a Brute).
   for (const c of Object.values(characters)) {
+    if (c.embodied) continue;
     const before = c.type;
     applyCharacterOptions(c);
     if (c.type !== before) {
@@ -258,6 +318,14 @@ export function createGame(input: SetupInput): SetupResult {
   // Just Desserts, The Directorate: +2 March (a permanent bonus from the army's Sect).
   for (const r of Object.values(regiments))
     if (r.baseRules.some((x) => x.name === 'Just Desserts') && sectOf(state, r.owner) === 'directorate' && r.profile.M !== null) r.profile.M += 2;
+  for (const pid of ['P1', 'P2'] as const) {
+    const tp = input.lists[pid].tierProfiles;
+    if (tp)
+      state.players[pid].tierProfiles = Object.fromEntries(
+        Object.entries(tp).map(([name, tiers]) => [name, Object.fromEntries(Object.entries(tiers).map(([t, d]) => [t, { stats: d.stats as TierProfileDef["stats"], rules: d.rules.map((x) => parseRuleRef(x)) }]))]),
+      );
+  }
+  initOldDominion(state);
   refreshRules(state);
   const events: GameEvent[] = [{ type: 'setup', text: `Game created on ${input.scenario.name} (seed ${input.seed}).`, round: 1 }];
   for (const w of warnings) events.push({ type: 'warning', text: w, round: 1 });
@@ -504,7 +572,10 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
       s.drawn = null;
       s.activation = { regimentId: r.id, actions: [], entering: r.location === 'arriving', startPose: r.pose, drawEventDone: false, aimed: false, inspired: false, ended: false };
       ev({ type: 'activate', text: `${r.owner} activates ${r.name}.`, player: r.owner, regimentId: r.id });
-      if (onActivationStart(ctx, r, card)) logManualRules(ctx, r);
+      if (onActivationStart(ctx, r, card)) {
+        odActivationStartSpells(ctx);
+        logManualRules(ctx, r);
+      }
       break;
     }
     case 'enter': {
@@ -574,6 +645,11 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
   }
   if (ctx.s.activation) grantExtras(ctx, ctx.s.activation);
   refreshRules(ctx.s);
+  // Power Tokens earned during the Action are added at its end (od p.6).
+  if (ctx.power?.length) {
+    flushPower(ctx);
+    refreshRules(ctx.s);
+  }
   if (a.why) ctx.events.push({ type: 'ai', round: state.round, text: `AI: ${a.why}` });
   return { state: ctx.s, events: ctx.events, rng: ctx.rng };
 }
