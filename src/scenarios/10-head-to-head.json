@@ -1,0 +1,90 @@
+{
+  "id": "head-to-head",
+  "name": "Head-to-Head",
+  "page": 20,
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "zones": [
+    {
+      "id": "centre",
+      "x": 54,
+      "y": 24,
+      "diameter": 9
+    },
+    {
+      "id": "A",
+      "x": 18,
+      "y": 12,
+      "diameter": 6,
+      "label": "A",
+      "friendlyTo": "P1"
+    },
+    {
+      "id": "B",
+      "x": 18,
+      "y": 36,
+      "diameter": 6,
+      "label": "B",
+      "friendlyTo": "P2"
+    }
+  ],
+  "markers": [],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "scoring": [
+    {
+      "kind": "perZoneSeized",
+      "vp": 3,
+      "zoneIds": [
+        "centre"
+      ]
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 4,
+      "zoneIds": [
+        "B"
+      ],
+      "players": [
+        "P1"
+      ]
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 4,
+      "zoneIds": [
+        "A"
+      ],
+      "players": [
+        "P2"
+      ]
+    },
+    {
+      "kind": "warlordSlain",
+      "vp": 2,
+      "oncePerGame": true
+    },
+    {
+      "kind": "characterKilled",
+      "vp": 2
+    },
+    {
+      "kind": "regimentDestroyed",
+      "vp": 2
+    }
+  ],
+  "summary": [
+    "3 VP for Seizing the 9\u2033 zone",
+    "4 VP for Seizing the enemy's lettered zone (P1 scores B, P2 scores A)",
+    "2 VP for slaying the enemy Warlord (once per game)",
+    "2 VP per enemy Character Stand destroyed",
+    "2 VP per enemy Regiment destroyed"
+  ]
+}

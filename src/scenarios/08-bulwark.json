@@ -1,0 +1,129 @@
+{
+  "id": "bulwark",
+  "name": "Bulwark",
+  "page": 18,
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "zones": [
+    {
+      "id": "left",
+      "x": 18,
+      "y": 24,
+      "diameter": 9,
+      "label": "Left"
+    },
+    {
+      "id": "right",
+      "x": 54,
+      "y": 24,
+      "diameter": 9,
+      "label": "Right"
+    }
+  ],
+  "markers": [
+    {
+      "id": "A",
+      "x": 18,
+      "y": 24,
+      "wounds": 3,
+      "defense": 3,
+      "label": "A",
+      "friendlyTo": "P1"
+    },
+    {
+      "id": "B",
+      "x": 54,
+      "y": 24,
+      "wounds": 3,
+      "defense": 3,
+      "label": "B",
+      "friendlyTo": "P2"
+    },
+    {
+      "id": "centre",
+      "x": 36,
+      "y": 24,
+      "wounds": 3,
+      "defense": 3,
+      "label": "C"
+    }
+  ],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "scoring": [
+    {
+      "kind": "markerDestroyed",
+      "vp": 3,
+      "markerIds": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "kind": "markerDestroyed",
+      "vp": 3,
+      "markerIds": [
+        "centre"
+      ]
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 2,
+      "vp": 1
+    },
+    {
+      "kind": "warlordSlain",
+      "vp": 2,
+      "oncePerGame": true
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 2,
+      "zoneIds": [
+        "left"
+      ],
+      "rounds": [
+        3,
+        5,
+        7,
+        9
+      ]
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 2,
+      "zoneIds": [
+        "right"
+      ],
+      "rounds": [
+        2,
+        4,
+        6,
+        8
+      ]
+    }
+  ],
+  "summary": [
+    "3 VP per enemy Objective Marker destroyed",
+    "3 VP for destroying the centre Marker",
+    "2 VP per zone Seized",
+    "+1 VP when Seizing two zones",
+    "2 VP for slaying the enemy Warlord (once per game)",
+    "Rounds 3, 5, 7, 9: +2 VP for Seizing the left zone; Rounds 2, 4, 6, 8: +2 VP for the right zone",
+    "Each side Marker sits in a zone, which makes that zone Contested for the enemy"
+  ],
+  "ambiguities": [
+    "AMB-23"
+  ]
+}

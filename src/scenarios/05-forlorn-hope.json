@@ -1,0 +1,101 @@
+{
+  "id": "forlorn-hope",
+  "name": "Forlorn Hope",
+  "page": 15,
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [
+    {
+      "edge": "left",
+      "from": 12,
+      "to": 36
+    },
+    {
+      "edge": "right",
+      "from": 12,
+      "to": 36
+    }
+  ],
+  "zones": [
+    {
+      "id": "nw6",
+      "x": 24,
+      "y": 30,
+      "diameter": 6
+    },
+    {
+      "id": "ne9",
+      "x": 48,
+      "y": 30,
+      "diameter": 9
+    },
+    {
+      "id": "sw9",
+      "x": 24,
+      "y": 18,
+      "diameter": 9
+    },
+    {
+      "id": "se6",
+      "x": 48,
+      "y": 18,
+      "diameter": 6
+    }
+  ],
+  "markers": [
+    {
+      "id": "P1marker",
+      "x": 36,
+      "y": 18,
+      "wounds": 3,
+      "defense": 3,
+      "friendlyTo": "P1"
+    },
+    {
+      "id": "P2marker",
+      "x": 36,
+      "y": 30,
+      "wounds": 3,
+      "defense": 3,
+      "friendlyTo": "P2"
+    }
+  ],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "scoring": [
+    {
+      "kind": "markerDestroyed",
+      "vp": 3
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 3,
+      "vp": 3
+    },
+    {
+      "kind": "characterKilled",
+      "vp": 2
+    }
+  ],
+  "summary": [
+    "3 VP per enemy Objective Marker destroyed (each Marker belongs to the player whose edge it is nearer)",
+    "2 VP per zone Seized",
+    "+3 VP when Seizing three or more zones",
+    "2 VP per enemy Character Stand destroyed",
+    "No Reinforcements from the side edges between 12\u2033 and 36\u2033"
+  ],
+  "ambiguities": [
+    "AMB-14",
+    "AMB-15"
+  ]
+}

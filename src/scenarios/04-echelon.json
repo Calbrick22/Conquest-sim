@@ -1,0 +1,94 @@
+{
+  "id": "echelon",
+  "name": "Echelon",
+  "page": 14,
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "zones": [
+    {
+      "id": "z1",
+      "x": 24,
+      "y": 30,
+      "diameter": 9
+    },
+    {
+      "id": "z2",
+      "x": 48,
+      "y": 18,
+      "diameter": 9
+    }
+  ],
+  "markers": [
+    {
+      "id": "A",
+      "x": 12,
+      "y": 6,
+      "wounds": 3,
+      "defense": 3,
+      "label": "A",
+      "friendlyTo": "P1"
+    },
+    {
+      "id": "B",
+      "x": 60,
+      "y": 42,
+      "wounds": 3,
+      "defense": 3,
+      "label": "B",
+      "friendlyTo": "P2"
+    },
+    {
+      "id": "m1",
+      "x": 24,
+      "y": 18,
+      "wounds": 3,
+      "defense": 3
+    },
+    {
+      "id": "m2",
+      "x": 48,
+      "y": 30,
+      "wounds": 3,
+      "defense": 3
+    }
+  ],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "scoring": [
+    {
+      "kind": "markerDestroyed",
+      "vp": 3
+    },
+    {
+      "kind": "markersDestroyedCountBonus",
+      "min": 2,
+      "vp": 2
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 2,
+      "vp": 2
+    }
+  ],
+  "summary": [
+    "3 VP per Objective Marker destroyed",
+    "+2 VP when destroying two or more Markers in the same Round",
+    "2 VP per zone Seized",
+    "+2 VP when Seizing both zones",
+    "Marker A is friendly to Player 1, Marker B to Player 2; the two unlabelled Markers are neutral"
+  ],
+  "ambiguities": [
+    "AMB-23"
+  ]
+}

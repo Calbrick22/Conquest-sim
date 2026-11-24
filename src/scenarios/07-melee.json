@@ -1,0 +1,86 @@
+{
+  "id": "melee",
+  "name": "Melee",
+  "page": 17,
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "zones": [
+    {
+      "id": "w9",
+      "x": 12,
+      "y": 24,
+      "diameter": 9
+    },
+    {
+      "id": "e9",
+      "x": 60,
+      "y": 24,
+      "diameter": 9
+    },
+    {
+      "id": "s6",
+      "x": 30,
+      "y": 18,
+      "diameter": 6
+    },
+    {
+      "id": "n6",
+      "x": 42,
+      "y": 30,
+      "diameter": 6
+    }
+  ],
+  "markers": [],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "scoring": [
+    {
+      "kind": "perZoneSeized",
+      "vp": 2,
+      "zoneIds": [
+        "s6",
+        "n6"
+      ]
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 3,
+      "zoneIds": [
+        "w9",
+        "e9"
+      ]
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 2,
+      "vp": 2
+    },
+    {
+      "kind": "warlordSlain",
+      "vp": 2,
+      "oncePerGame": false
+    },
+    {
+      "kind": "characterKilled",
+      "vp": 2
+    },
+    {
+      "kind": "regimentDestroyed",
+      "vp": 2
+    }
+  ],
+  "summary": [
+    "2 VP per 6\u2033 zone and 3 VP per 9\u2033 zone Seized",
+    "+2 VP when Seizing two or more zones",
+    "2 VP for slaying the enemy Warlord",
+    "2 VP per enemy Character Stand destroyed",
+    "2 VP per enemy Regiment destroyed"
+  ]
+}

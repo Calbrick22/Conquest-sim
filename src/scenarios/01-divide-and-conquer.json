@@ -1,0 +1,110 @@
+{
+  "id": "divide-and-conquer",
+  "name": "Divide and Conquer",
+  "page": 11,
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "zones": [
+    {
+      "id": "z1",
+      "x": 12,
+      "y": 12,
+      "diameter": 6,
+      "friendlyTo": "P1"
+    },
+    {
+      "id": "z2",
+      "x": 60,
+      "y": 12,
+      "diameter": 6,
+      "friendlyTo": "P1"
+    },
+    {
+      "id": "z3",
+      "x": 24,
+      "y": 24,
+      "diameter": 6
+    },
+    {
+      "id": "z4",
+      "x": 48,
+      "y": 24,
+      "diameter": 6
+    },
+    {
+      "id": "z5",
+      "x": 12,
+      "y": 36,
+      "diameter": 6,
+      "friendlyTo": "P2"
+    },
+    {
+      "id": "z6",
+      "x": 60,
+      "y": 36,
+      "diameter": 6,
+      "friendlyTo": "P2"
+    }
+  ],
+  "markers": [
+    {
+      "id": "A",
+      "x": 36,
+      "y": 12,
+      "wounds": 3,
+      "defense": 3,
+      "label": "A",
+      "friendlyTo": "P1"
+    },
+    {
+      "id": "B",
+      "x": 36,
+      "y": 36,
+      "wounds": 3,
+      "defense": 3,
+      "label": "B",
+      "friendlyTo": "P2"
+    }
+  ],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "scoring": [
+    {
+      "kind": "markerDestroyed",
+      "vp": 3
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 3,
+      "vp": 2
+    },
+    {
+      "kind": "seizingMoreZonesThanOpponent",
+      "vp": 1
+    },
+    {
+      "kind": "warlordSlain",
+      "vp": 2,
+      "oncePerGame": true
+    }
+  ],
+  "summary": [
+    "3 VP for destroying the enemy Objective Marker",
+    "2 VP per zone Seized",
+    "+2 VP when Seizing 3 or more zones",
+    "+1 VP when Seizing more zones than the opponent",
+    "2 VP for slaying the enemy Warlord (once per game)",
+    "Red zones and Marker A are friendly to Player 1; blue zones and Marker B to Player 2"
+  ]
+}

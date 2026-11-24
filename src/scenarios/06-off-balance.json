@@ -1,0 +1,94 @@
+{
+  "id": "off-balance",
+  "name": "Off-Balance",
+  "page": 16,
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "zones": [
+    {
+      "id": "z1",
+      "x": 12,
+      "y": 24,
+      "diameter": 9
+    },
+    {
+      "id": "z2",
+      "x": 48,
+      "y": 24,
+      "diameter": 9
+    }
+  ],
+  "markers": [
+    {
+      "id": "A1",
+      "x": 30,
+      "y": 18,
+      "wounds": 3,
+      "defense": 3,
+      "label": "A",
+      "friendlyTo": "P1"
+    },
+    {
+      "id": "A2",
+      "x": 60,
+      "y": 12,
+      "wounds": 3,
+      "defense": 3,
+      "label": "A",
+      "friendlyTo": "P1"
+    },
+    {
+      "id": "B1",
+      "x": 30,
+      "y": 30,
+      "wounds": 3,
+      "defense": 3,
+      "label": "B",
+      "friendlyTo": "P2"
+    },
+    {
+      "id": "B2",
+      "x": 60,
+      "y": 36,
+      "wounds": 3,
+      "defense": 3,
+      "label": "B",
+      "friendlyTo": "P2"
+    }
+  ],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "scoring": [
+    {
+      "kind": "markerDestroyed",
+      "vp": 4
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 2,
+      "vp": 1
+    },
+    {
+      "kind": "warlordSlain",
+      "vp": 2,
+      "oncePerGame": true
+    }
+  ],
+  "summary": [
+    "4 VP per enemy Objective Marker destroyed",
+    "2 VP per zone Seized",
+    "+1 VP when Seizing both zones",
+    "2 VP for slaying the enemy Warlord (once per game)"
+  ]
+}

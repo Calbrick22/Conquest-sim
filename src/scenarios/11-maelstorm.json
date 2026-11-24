@@ -1,0 +1,102 @@
+{
+  "id": "maelstorm",
+  "name": "Maelstorm",
+  "page": 21,
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "zones": [
+    {
+      "id": "w9",
+      "x": 12,
+      "y": 24,
+      "diameter": 9
+    },
+    {
+      "id": "centre",
+      "x": 36,
+      "y": 24,
+      "diameter": 6
+    },
+    {
+      "id": "e9",
+      "x": 60,
+      "y": 24,
+      "diameter": 9
+    }
+  ],
+  "markers": [],
+  "rounds": 10,
+  "objectivesFromRound": 1,
+  "scoring": [
+    {
+      "kind": "perZoneSeized",
+      "vp": 2,
+      "zoneIds": [
+        "centre"
+      ],
+      "rounds": [
+        1,
+        2,
+        3,
+        4,
+        9,
+        10
+      ]
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 1,
+      "zoneIds": [
+        "w9",
+        "e9"
+      ],
+      "rounds": [
+        1,
+        2,
+        3,
+        4,
+        9,
+        10
+      ]
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 1,
+      "zoneIds": [
+        "centre"
+      ],
+      "rounds": [
+        5,
+        6,
+        7,
+        8
+      ]
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 2,
+      "zoneIds": [
+        "w9",
+        "e9"
+      ],
+      "rounds": [
+        5,
+        6,
+        7,
+        8
+      ]
+    }
+  ],
+  "summary": [
+    "Zones can be Seized and scored from Round 1",
+    "Rounds 1\u20134 and 9\u201310: 2 VP for the 6\u2033 zone, 1 VP per 9\u2033 zone",
+    "Rounds 5\u20138: 1 VP for the 6\u2033 zone, 2 VP per 9\u2033 zone"
+  ]
+}

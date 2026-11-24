@@ -1,0 +1,120 @@
+{
+  "id": "breakout",
+  "name": "Breakout",
+  "page": 13,
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "zones": [
+    {
+      "id": "left",
+      "x": 12,
+      "y": 24,
+      "diameter": 9,
+      "label": "Left"
+    },
+    {
+      "id": "centre",
+      "x": 36,
+      "y": 24,
+      "diameter": 9,
+      "label": "Centre"
+    },
+    {
+      "id": "right",
+      "x": 60,
+      "y": 24,
+      "diameter": 9,
+      "label": "Right"
+    }
+  ],
+  "markers": [
+    {
+      "id": "A",
+      "x": 31.5,
+      "y": 24,
+      "wounds": 3,
+      "defense": 3,
+      "label": "A",
+      "friendlyTo": "P1"
+    },
+    {
+      "id": "B",
+      "x": 40.5,
+      "y": 24,
+      "wounds": 3,
+      "defense": 3,
+      "label": "B",
+      "friendlyTo": "P2"
+    }
+  ],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "scoring": [
+    {
+      "kind": "markerDestroyed",
+      "vp": 3
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 2,
+      "vp": 1
+    },
+    {
+      "kind": "warlordSlain",
+      "vp": 2,
+      "oncePerGame": true
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 1,
+      "zoneIds": [
+        "left",
+        "right"
+      ],
+      "rounds": [
+        1,
+        2,
+        3,
+        4,
+        9,
+        10
+      ]
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 2,
+      "zoneIds": [
+        "centre"
+      ],
+      "rounds": [
+        5,
+        6,
+        7,
+        8
+      ]
+    }
+  ],
+  "summary": [
+    "3 VP for destroying the enemy Objective Marker",
+    "2 VP per zone Seized",
+    "+1 VP when Seizing two zones",
+    "2 VP for slaying the enemy Warlord (once per game)",
+    "Rounds 1\u20134 and 9\u201310: +1 VP per side zone Seized",
+    "Rounds 5\u20138: +2 VP for Seizing the centre zone"
+  ],
+  "ambiguities": [
+    "AMB-24",
+    "AMB-25"
+  ]
+}

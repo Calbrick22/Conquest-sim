@@ -1,0 +1,79 @@
+{
+  "id": "grind-them-down",
+  "name": "Grind Them Down",
+  "page": 22,
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "zones": [
+    {
+      "id": "centre",
+      "x": 36,
+      "y": 24,
+      "diameter": 9
+    },
+    {
+      "id": "nw",
+      "x": 18,
+      "y": 30,
+      "diameter": 6
+    },
+    {
+      "id": "sw",
+      "x": 18,
+      "y": 18,
+      "diameter": 6
+    },
+    {
+      "id": "ne",
+      "x": 54,
+      "y": 30,
+      "diameter": 6
+    },
+    {
+      "id": "se",
+      "x": 54,
+      "y": 18,
+      "diameter": 6
+    }
+  ],
+  "markers": [],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "scoring": [
+    {
+      "kind": "perZoneSeized",
+      "vp": 1
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 2,
+      "vp": 2
+    },
+    {
+      "kind": "pickedZoneSeized",
+      "vp": 3
+    }
+  ],
+  "zonePick": {
+    "mode": "bonusPick",
+    "eligibleZoneIds": [
+      "nw",
+      "sw",
+      "ne",
+      "se"
+    ]
+  },
+  "summary": [
+    "After each Supremacy Phase, First then Second Player pick a 6\u2033 zone with no friendly Regiment in range (both may pick the same)",
+    "1 VP per zone Seized",
+    "+2 VP when Seizing two or more zones",
+    "+3 VP for Seizing your picked zone"
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "id": "declined-flank",
+  "name": "Declined Flank",
+  "page": 12,
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "zones": [
+    {
+      "id": "z1",
+      "x": 6,
+      "y": 30,
+      "diameter": 6
+    },
+    {
+      "id": "z2",
+      "x": 18,
+      "y": 18,
+      "diameter": 6
+    },
+    {
+      "id": "z3",
+      "x": 30,
+      "y": 30,
+      "diameter": 6
+    },
+    {
+      "id": "z4",
+      "x": 42,
+      "y": 18,
+      "diameter": 6
+    },
+    {
+      "id": "z5",
+      "x": 54,
+      "y": 30,
+      "diameter": 6
+    },
+    {
+      "id": "z6",
+      "x": 66,
+      "y": 18,
+      "diameter": 6
+    }
+  ],
+  "markers": [],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "scoring": [
+    {
+      "kind": "perZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 3,
+      "vp": 2
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 6,
+      "vp": 1
+    }
+  ],
+  "zonePick": {
+    "mode": "vetoDistinct"
+  },
+  "summary": [
+    "After each Supremacy Phase, First then Second Player each pick a different zone: no VP for Seizing those zones this Round",
+    "2 VP per zone Seized",
+    "+2 VP when Seizing three zones",
+    "+1 VP when Seizing all zones"
+  ],
+  "ambiguities": [
+    "AMB-24"
+  ]
+}

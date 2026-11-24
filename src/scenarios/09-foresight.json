@@ -1,0 +1,97 @@
+{
+  "id": "foresight",
+  "name": "Foresight",
+  "page": 19,
+  "table": {
+    "width": 72,
+    "height": 48
+  },
+  "reinforcementZones": {
+    "P1": "bottom",
+    "P2": "top"
+  },
+  "noReinforcement": [],
+  "zones": [
+    {
+      "id": "z1",
+      "x": 6,
+      "y": 18,
+      "diameter": 6,
+      "label": "1"
+    },
+    {
+      "id": "z2",
+      "x": 18,
+      "y": 30,
+      "diameter": 6,
+      "label": "2"
+    },
+    {
+      "id": "centre",
+      "x": 36,
+      "y": 24,
+      "diameter": 6,
+      "label": "Centre"
+    },
+    {
+      "id": "z3",
+      "x": 54,
+      "y": 18,
+      "diameter": 6,
+      "label": "3"
+    },
+    {
+      "id": "z4",
+      "x": 66,
+      "y": 30,
+      "diameter": 6,
+      "label": "4"
+    }
+  ],
+  "markers": [],
+  "rounds": 10,
+  "objectivesFromRound": 2,
+  "scoring": [
+    {
+      "kind": "perZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "seizedCountBonus",
+      "min": 2,
+      "vp": 2,
+      "zoneIds": [
+        "z1",
+        "z2",
+        "z3",
+        "z4"
+      ]
+    },
+    {
+      "kind": "perZoneSeized",
+      "vp": 1,
+      "zoneIds": [
+        "centre"
+      ]
+    }
+  ],
+  "zonePick": {
+    "mode": "vetoSecret",
+    "eligibleZoneIds": [
+      "z1",
+      "z2",
+      "z3",
+      "z4"
+    ]
+  },
+  "summary": [
+    "After each Supremacy Phase both players secretly pick a non-central zone; picks are revealed in the Victory Phase and give no VP this Round",
+    "2 VP per zone Seized",
+    "+2 VP when Seizing two non-central zones",
+    "+1 VP when Seizing the central zone"
+  ],
+  "ambiguities": [
+    "AMB-24",
+    "AMB-26"
+  ]
+}
