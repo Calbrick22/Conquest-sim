@@ -23,8 +23,24 @@ export function formationInput(s: GameState, r: RegimentState, override?: Partia
   return { regiment: { ...r, ...override }, characterId: attachedCharacter(s, r.id)?.id ?? null };
 }
 
+/**
+ * Stand polygons for a Regiment. Results for the current position are cached per Regiment object,
+ * keyed by everything the layout depends on, so repeated geometry queries (legality checks along
+ * a path, the AI's candidate moves) stay fast. The cache is checked on every call, so mutating a
+ * Regiment's pose or Stands invalidates it.
+ */
+const polyCache = new WeakMap<RegimentState, { key: string; polys: Poly[] }>();
+
 export function regimentPolys(s: GameState, r: RegimentState, override?: Partial<Pick<RegimentState, 'pose' | 'files'>>): Poly[] {
-  return standPolys(formationInput(s, r, override));
+  const input = formationInput(s, r, override);
+  if (override) return standPolys(input);
+  const p = r.pose;
+  const key = `${p.x},${p.y},${p.angle},${r.files},${r.type},${input.characterId ?? ''},${r.stands.map((x) => `${x.id}:${x.wounds > 0 ? 1 : 0}:${x.isCommand ? 1 : 0}`).join('|')}`;
+  const hit = polyCache.get(r);
+  if (hit && hit.key === key) return hit.polys;
+  const polys = standPolys(input);
+  polyCache.set(r, { key, polys });
+  return polys;
 }
 
 /** Lowest March Characteristic in the Regiment; Characters with "-" are ignored (core p.28; AMB-21). */
@@ -169,7 +185,9 @@ export function positionProblems(s: GameState, r: RegimentState, polys: Poly[], 
 }
 
 /** Swept checks along a March path: cannot pass through enemies or engaged friends (core p.29–30). */
-export function pathProblems(s: GameState, r: RegimentState, poses: Pose[], allowOffTable: boolean): string[] {
+export function pathProblems(s: GameState, r: RegimentState, posesIn: Pose[], allowOffTable: boolean): string[] {
+  // Check every other sampled pose (samples are 0.25″ apart) plus the end: enough for Stands ≥ 2.5″ wide.
+  const poses = posesIn.filter((_, i) => i % 2 === 0 || i === posesIn.length - 1);
   const enemies = onTableRegiments(s).filter((o) => o.owner !== r.owner);
   const engagedFriends = onTableRegiments(s).filter((o) => o.owner === r.owner && o.id !== r.id && isEngaged(s, o));
   const flies = r.rules.some((x) => x.name === 'Fly') && !attachedCharacter(s, r.id); // core p.98: all Stands must have Fly

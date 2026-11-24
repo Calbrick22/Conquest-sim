@@ -30,6 +30,7 @@ import type { NewGame } from './SetupScreen';
 import { ManualTools } from './ManualTools';
 import { PhasePanel } from './PhasePanel';
 import { TableView, type Ghost, type Ruler } from './TableView';
+import { useAi } from './useAi';
 import { useGame, type GameSession } from './useGame';
 
 export type { GameSession };
@@ -41,7 +42,9 @@ const deg = (d: number) => (d * Math.PI) / 180;
 const fmt = (n: number) => `${(Math.round(n * 100) / 100).toFixed(2)}″`;
 
 export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => void }) {
-  const { session, dispatch, undo, error, setError } = useGame(game.session);
+  const { session, dispatch, undo, undoHuman, error, setError } = useGame(game.session);
+  const aiPlayer = game.mode === 'ai' ? (game.you === 'P1' ? 'P2' : 'P1') : null;
+  const [paused, setPaused] = useState(false);
   const s = session.state;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('select');
@@ -58,6 +61,8 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
   // With nothing selected, the active Regiment is shown (e.g. after an Entourage Activation).
   const sel: RegimentState | null = selectedId ? (s.regiments[selectedId] ?? null) : s.activation ? (s.regiments[s.activation.regimentId] ?? null) : null;
   const active = s.activation ? s.regiments[s.activation.regimentId]! : null;
+  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused, dispatch, false);
+  const aiActing = !!aiPlayer && (active?.owner === aiPlayer || (s.step === 'action' && !active && (s.drawn?.player ?? s.turn) === aiPlayer));
 
   // Autosave on this device after every action (replayable from seed + actions).
   useEffect(() => {
@@ -69,6 +74,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
       savedAt: new Date().toISOString(),
       createdAt: game.createdAt,
       you: game.you,
+      mode: game.mode,
       initial: session.initial,
       initialRng: session.initialRng,
       initialEvents: session.initialEvents,
@@ -382,7 +388,12 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
           <button type="button" className={`secondary small ${mode === 'ruler' ? 'on' : ''}`} onClick={() => { resetModes(); setRuler(null); setMode(mode === 'ruler' ? 'select' : 'ruler'); }} data-testid="ruler">
             Ruler
           </button>
-          <button type="button" className="secondary small" onClick={() => { resetModes(); undo(); }} disabled={session.actions.length === 0} data-testid="undo">
+          {aiPlayer && (
+            <button type="button" className={`secondary small ${paused ? 'on' : ''}`} onClick={() => setPaused(!paused)} data-testid="pause-ai">
+              {paused ? 'Resume computer' : 'Pause computer'}
+            </button>
+          )}
+          <button type="button" className="secondary small" onClick={() => { resetModes(); if (aiPlayer) { setPaused(true); undoHuman(); } else undo(); }} disabled={session.actions.length === 0} data-testid="undo">
             Undo
           </button>
           <button type="button" className="secondary small" onClick={onQuit}>
@@ -428,7 +439,13 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
           </div>
         </div>
       )}
-      <PhasePanel s={s} dispatch={dispatch} onSelect={setSelectedId} />
+      {aiPlayer && (thinking || aiActing) && !paused && <p className="meta" data-testid="ai-thinking">The computer ({aiPlayer}) is playing…</p>}
+      {aiError && (
+        <div className="card warn" role="alert">
+          {aiError} <button type="button" className="secondary small" onClick={() => { clearAiError(); setPaused(true); }}>OK</button>
+        </div>
+      )}
+      <PhasePanel s={s} dispatch={dispatch} onSelect={setSelectedId} aiPlayer={paused ? null : aiPlayer} />
 
       {s.phase === 'setup' && (
         <div className="card">
@@ -462,7 +479,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
             {sel.stands.some((x) => x.wounds > 0) ? ` · wounds on a Stand: ${sel.stands.filter((x) => x.wounds > 0).map((x) => x.wounds).join(', ')}` : ''}
           </p>
 
-          {mode === 'select' && s.phase === 'play' && s.activation?.regimentId === sel.id && (
+          {mode === 'select' && s.phase === 'play' && s.activation?.regimentId === sel.id && (!aiActing || paused) && (
             renderActivationButtons()
           )}
           {s.phase === 'play' && <ManualTools s={s} r={sel} dispatch={dispatch} onMoveByHand={() => { setOverridePose(sel.pose); setMode('override'); }} />}

@@ -11,6 +11,17 @@ To install it:
 - **iPhone (Safari):** Share → *Add to Home Screen*.
 - **Desktop:** use the install icon in the address bar.
 
+## Playing
+
+1. **Lists:** import your Army Builder PDF and your opponent's, then check the review screen.
+2. **Play:** choose both lists and a scenario, and choose **Computer** or **Hotseat** as the opponent. Roll off, attach Characters, and start.
+3. **Each Round:**
+   - Reinforcements, then the Command Stack, then Supremacy.
+   - Draw cards and activate.
+   - Choose Actions from the Regiment panel, and tap enemies or Objective Markers as targets.
+4. **Manual tools** (Wounds, characteristics, Broken, set dice, move by hand) resolve anything the engine marks "manual". Every use is logged as an override.
+5. **The game log** exports as Markdown (score table by Round) or JSON (an exact replay). Games also save on the device after every action.
+
 ## Run locally
 
 You need Node 22 or later.

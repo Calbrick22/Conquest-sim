@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.0.0] - 2026-11-24 (M6: computer opponent; MVP complete)
+
+### Added
+- Computer opponent (`src/ai/`):
+  - It makes every decision: Reinforcements, Command Stack order (ranged and fast first, chargers later), First Player, zone picks, card draws and each Action.
+  - It uses a legal-action generator that samples moves toward each objective and enemy, plus Charges, Volleys, Clashes, Take Aim, Inspire, Rally, Withdraw and Marker attacks.
+  - Every candidate is checked with the engine's own `validate`, the same as a human move.
+  - Candidates are scored on expected Wounds dealt and taken, objective progress, and exposure to enemy charges, with a little deterministic randomness.
+  - Light Regiments hold back as screens.
+- Every AI Action carries a one-line reason in the log, for example "Charges X: 72% charge chance, favourable trade". It notes the manual rules it ignored.
+- The AI runs in a Web Worker. A full 10-Round AI-vs-AI game takes about 1.5 s in Node.
+- Play screen:
+  - "Computer" is the default opponent, with hotseat still available.
+  - Pause or resume the computer, to fix something by hand.
+  - In games against the computer, Undo goes back to your own last action.
+- Tests: a full 10-Round AI-vs-AI game with a fixed seed, using only legal actions, and a determinism check. An end-to-end test plays a Round against the computer in the browser.
+- `ROADMAP.md`.
+
+### Changed
+- Regiment geometry is cached per position, which makes every legality check much faster.
+
 ## [0.5.0] - 2026-11-24 (M5: scoring, save and log)
 
 ### Added

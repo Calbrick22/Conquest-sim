@@ -20,6 +20,7 @@ export interface SavedGame {
   savedAt: string;
   createdAt: string;
   you: PlayerId;
+  mode?: 'hotseat' | 'ai';
   initial: GameState;
   initialRng: RngState;
   initialEvents: GameEvent[];

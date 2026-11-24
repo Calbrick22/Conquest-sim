@@ -57,5 +57,18 @@ export function useGame(start: GameSession) {
     setError(null);
   }, []);
 
-  return { session, dispatch, undo, error, setError };
+  /** Undo back to before the last action taken by a human (skipping the computer's actions). */
+  const undoHuman = useCallback(() => {
+    const cur = ref.current;
+    let n = cur.actions.length;
+    while (n > 0 && cur.actions[n - 1]!.why) n--;
+    if (n > 0) n--;
+    if (n === cur.actions.length) return;
+    const next = replay(cur.initial, cur.initialRng, cur.initialEvents, cur.actions.slice(0, n));
+    ref.current = next;
+    setSession(next);
+    setError(null);
+  }, []);
+
+  return { session, dispatch, undo, undoHuman, error, setError };
 }

@@ -3,16 +3,19 @@ import type { Action } from '../../engine/game';
 import type { CommandCard, GameState, PlayerId } from '../../engine/model/types';
 import { cardTargets, defaultStackOrder, reinforcementChoices, reinforcementNeed, reserveRegiments } from '../../engine/round';
 import { zoneResults } from '../../engine/scoring/victory';
+import { decisionMaker } from '../../ai/ai';
 
 const PLAYERS: PlayerId[] = ['P1', 'P2'];
 
 /** Round sequence controls: Reinforcements, Command Stacks, Supremacy, card draws, Victory Phase. */
-export function PhasePanel({ s, dispatch, onSelect }: { s: GameState; dispatch: (a: Action) => boolean; onSelect: (id: string) => void }) {
+export function PhasePanel({ s, dispatch, onSelect, aiPlayer }: { s: GameState; dispatch: (a: Action) => boolean; onSelect: (id: string) => void; aiPlayer?: PlayerId | null }) {
   if (s.phase !== 'play') return null;
+  const who = decisionMaker(s);
+  if (aiPlayer && who === aiPlayer) return <div className="card phase-panel meta" data-testid="phase-panel">Waiting for the computer ({aiPlayer})…</div>;
   return (
     <div className="card phase-panel" data-testid="phase-panel">
-      {s.step === 'reinforcement' && <Reinforcements s={s} dispatch={dispatch} />}
-      {s.step === 'command' && <Stacks s={s} dispatch={dispatch} />}
+      {s.step === 'reinforcement' && <Reinforcements s={s} dispatch={dispatch} ai={aiPlayer ?? null} />}
+      {s.step === 'command' && <Stacks s={s} dispatch={dispatch} ai={aiPlayer ?? null} />}
       {s.step === 'supremacy' && <Supremacy s={s} dispatch={dispatch} />}
       {s.step === 'action' && <Draw s={s} dispatch={dispatch} onSelect={onSelect} />}
       {s.step === 'victory' && (
@@ -29,7 +32,7 @@ export function PhasePanel({ s, dispatch, onSelect }: { s: GameState; dispatch: 
   );
 }
 
-function Reinforcements({ s, dispatch }: { s: GameState; dispatch: (a: Action) => boolean }) {
+function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Action) => boolean; ai: PlayerId | null }) {
   const [choice, setChoice] = useState<Record<PlayerId, string>>({ P1: '', P2: '' });
   return (
     <>
@@ -44,6 +47,8 @@ function Reinforcements({ s, dispatch }: { s: GameState; dispatch: (a: Action) =
             <strong>{p}</strong>{' '}
             {done ? (
               <span className="meta">done</span>
+            ) : p === ai ? (
+              <span className="meta">the computer will choose</span>
             ) : reserve.length === 0 ? (
               <button type="button" className="small" onClick={() => dispatch({ type: 'reinforcements', player: p, choice: null })} data-testid={`reinforce-${p}`}>
                 Nothing in Reinforcements: continue
@@ -80,12 +85,20 @@ function Reinforcements({ s, dispatch }: { s: GameState; dispatch: (a: Action) =
   );
 }
 
-function Stacks({ s, dispatch }: { s: GameState; dispatch: (a: Action) => boolean }) {
+function Stacks({ s, dispatch, ai }: { s: GameState; dispatch: (a: Action) => boolean; ai: PlayerId | null }) {
   return (
     <>
       <h3>Command Phase</h3>
       <p className="meta">Order each Command Stack, top card first (core p.21). Characters sit just above their Regiment by default, so an Entourage Activation is possible.</p>
-      {PLAYERS.map((p) => (s.players[p].stackSet ? <p key={p}><strong>{p}</strong> <span className="meta">stack set ({s.players[p].stack.length} cards, hidden)</span></p> : <StackEditor key={p} s={s} p={p} dispatch={dispatch} />))}
+      {PLAYERS.map((p) =>
+        s.players[p].stackSet || p === ai ? (
+          <p key={p}>
+            <strong>{p}</strong> <span className="meta">{s.players[p].stackSet ? `stack set (${s.players[p].stack.length} cards, hidden)` : 'the computer is ordering its stack'}</span>
+          </p>
+        ) : (
+          <StackEditor key={p} s={s} p={p} dispatch={dispatch} />
+        ),
+      )}
     </>
   );
 }

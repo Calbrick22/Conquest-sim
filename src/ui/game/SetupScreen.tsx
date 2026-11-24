@@ -17,11 +17,11 @@ export interface NewGame {
   session: GameSession;
   /** Which side the human plays ("hotseat" controls both). */
   you: PlayerId;
-  mode: 'hotseat';
+  mode: 'hotseat' | 'ai';
 }
 
 export function resumeGame(g: SavedGame): NewGame {
-  return { id: g.id, createdAt: g.createdAt, you: g.you, mode: 'hotseat', session: replay(g.initial, g.initialRng, g.initialEvents, g.actions) };
+  return { id: g.id, createdAt: g.createdAt, you: g.you, mode: g.mode ?? 'hotseat', session: replay(g.initial, g.initialRng, g.initialEvents, g.actions) };
 }
 
 export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
@@ -29,6 +29,7 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
   const [mine, setMine] = useState(DEMO_ID);
   const [theirs, setTheirs] = useState(DEMO_ID);
   const [scenarioId, setScenarioId] = useState('forlorn-hope');
+  const [mode, setMode] = useState<'ai' | 'hotseat'>('ai');
   const [seed, setSeed] = useState(() => (Date.now() >>> 0) % 1_000_000);
   const [roll, setRoll] = useState<{ winner: 'you' | 'opponent'; rolls: [number, number][] } | null>(null);
   const [games, setGames] = useState<SavedGame[]>([]);
@@ -61,7 +62,7 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
       createdAt: new Date().toISOString(),
       session: { initial: g.state, initialRng: g.rng, initialEvents, state: g.state, rng: g.rng, actions: [], events: initialEvents },
       you: youAre,
-      mode: 'hotseat',
+      mode,
     });
   };
 
@@ -132,7 +133,11 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
           </select>
         </label>
         <label className="field">
-          Opponent <select disabled value="hotseat"><option value="hotseat">Hotseat (you play both sides)</option></select>
+          Opponent{' '}
+          <select value={mode} onChange={(e) => setMode(e.target.value as 'ai' | 'hotseat')} data-testid="mode">
+            <option value="ai">Computer</option>
+            <option value="hotseat">Hotseat (you play both sides)</option>
+          </select>
         </label>
         <label className="field small">
           Seed <input type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value) >>> 0)} />

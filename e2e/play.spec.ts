@@ -4,6 +4,7 @@ import { playActions } from './helpers';
 test('a full Round: reinforcements, stacks, supremacy, draw, march on, end round', async ({ page }) => {
   await page.goto('/#play');
   await page.getByLabel('Seed').fill('777');
+  await page.getByTestId('mode').selectOption('hotseat');
   await page.getByTestId('roll-sides').click();
   await page.getByTestId('choose-p1').click();
   await page.getByTestId('start-battle').click();

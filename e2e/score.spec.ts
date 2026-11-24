@@ -20,6 +20,7 @@ test('import two lists, play Forlorn Hope, move a Regiment onto a zone, end the 
   await page.getByTestId('their-list').selectOption({ label: 'Redfield (The Redfield Union)' });
   await page.getByTestId('game-scenario').selectOption('forlorn-hope');
   await page.getByLabel('Seed').fill('12345');
+  await page.getByTestId('mode').selectOption('hotseat');
   await page.getByTestId('roll-sides').click();
   await page.getByTestId('choose-p1').click();
   await page.getByTestId('start-battle').click();

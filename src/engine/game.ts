@@ -30,7 +30,12 @@ import {
 
 // ---------------------------------------------------------------- actions and events
 
-export type Action =
+export type Action = ActionBody & {
+  /** Reason shown in the log when the computer opponent chose this Action. */
+  why?: string;
+};
+
+export type ActionBody =
   | { type: 'attachCharacter'; characterId: string; regimentId: string }
   | { type: 'startBattle' }
   | { type: 'setArriving'; regimentId: string; arriving: boolean }
@@ -531,6 +536,7 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
       applyM4(ctx, a);
 
   }
+  if (a.why) ctx.events.push({ type: 'ai', round: state.round, text: `AI: ${a.why}` });
   return { state: ctx.s, events: ctx.events, rng: ctx.rng };
 }
 
