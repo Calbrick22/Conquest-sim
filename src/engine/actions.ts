@@ -162,7 +162,16 @@ function facingEdge(tfp: Rect, facing: Arc): { a: Vec; b: Vec; n: Vec } {
  * other enemies. RULE-AMBIGUITY: AMB-11 — this replaces the free Wheel / move / "close the door"
  * sequence with its end result; anything it cannot place is left to the player.
  */
-export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState, facing: Arc): { pose: Pose | null; reason?: string } {
+export interface ChargePlacement {
+  pose: Pose | null;
+  reason?: string;
+  /** An unengaged enemy pushed up to 1″ directly away so contact can be made (core p.32). */
+  push?: { id: string; pose: Pose };
+  /** The target pivots instead of the charger (core p.32). */
+  targetPose?: Pose;
+}
+
+export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState, facing: Arc): ChargePlacement {
   const tfp = footprintOf(s, t);
   const e = facingEdge(tfp, facing);
   const edgeLen = dist(e.a, e.b);
@@ -176,6 +185,17 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
   for (let k = 1; k <= 40; k++) for (const sgn of [-1, 1]) candidates.push(t0 + sgn * k * 0.25);
   const others = onTableRegiments(s).filter((o) => o.id !== r.id && o.id !== t.id);
   let blockedReason = 'no room to place the Regiment in contact';
+  let pushOption: ChargePlacement | null = null;
+  const pathClear = (to: Pose, ignore?: string) => {
+    const da = normalizeAngle(to.angle - r.pose.angle);
+    for (let i = 1; i < 40; i++) {
+      const f = i / 40;
+      const q: Pose = { x: r.pose.x + (to.x - r.pose.x) * f, y: r.pose.y + (to.y - r.pose.y) * f, angle: r.pose.angle + da * f };
+      const qp = regimentPolys(s, r, { pose: q });
+      if (others.some((o) => o.id !== ignore && (o.owner !== r.owner || isEngaged(s, o)) && anyOverlap(qp, regimentPolys(s, o)))) return false;
+    }
+    return true;
+  };
   for (const off of candidates) {
     const P = add(mid, scale(dir, off));
     const pose: Pose = { x: P.x, y: P.y, angle };
@@ -184,32 +204,66 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
     // Must actually engage the target.
     if (distancePolys(polys, regimentPolys(s, t)) > TOL) continue;
     if (anyOverlap(polys, regimentPolys(s, t))) continue;
-    let bad = false;
-    for (const o of others) {
+    if (markerPolys(s).some((m) => polys.some((p) => overlaps(p, m)))) continue;
+    const blockers = others.filter((o) => {
       const op = regimentPolys(s, o);
-      if (anyOverlap(polys, op) || (o.owner !== r.owner && distancePolys(polys, op) <= TOL)) {
-        bad = true;
-        break;
+      return anyOverlap(polys, op) || (o.owner !== r.owner && distancePolys(polys, op) <= TOL);
+    });
+    if (blockers.length === 0) {
+      if (!pathClear(pose)) {
+        blockedReason = 'the path to the target is blocked';
+        continue;
+      }
+      return { pose };
+    }
+    // Push a single unengaged enemy blocker up to 1″ directly away from the charger (core p.32).
+    if (!pushOption && blockers.length === 1 && blockers[0]!.owner !== r.owner && !isEngaged(s, blockers[0]!)) {
+      const bl = blockers[0]!;
+      const bc = footprintOf(s, bl).c;
+      const rc = footprintOf(s, r, { pose }).c;
+      const away = { x: bc.x - rc.x, y: bc.y - rc.y };
+      const len = Math.hypot(away.x, away.y) || 1;
+      const bPose: Pose = { ...bl.pose, x: bl.pose.x + away.x / len, y: bl.pose.y + away.y / len };
+      const bPolys = regimentPolys(s, bl, { pose: bPose });
+      const okBlocker =
+        onTable(s, bPolys) &&
+        !anyOverlap(bPolys, polys) &&
+        distancePolys(bPolys, polys) > TOL &&
+        !onTableRegiments(s).some((o) => o.id !== bl.id && o.id !== r.id && anyOverlap(bPolys, regimentPolys(s, o)));
+      if (okBlocker && pathClear(pose, bl.id)) pushOption = { pose, push: { id: bl.id, pose: bPose } };
+    }
+  }
+  if (pushOption) return pushOption;
+  // The charger cannot pivot flush: move it straight ahead to contact, then the (unengaged) target pivots (core p.32).
+  // RULE-AMBIGUITY: AMB-11 — the target rotates about the contact point until its charged facing is flush.
+  if (!isEngaged(s, t)) {
+    const fwd = { x: Math.cos(r.pose.angle), y: Math.sin(r.pose.angle) };
+    let lo = 0;
+    let hi = distancePolys(regimentPolys(s, r), regimentPolys(s, t)) + 0.5;
+    const atD = (d: number): Pose => ({ ...r.pose, x: r.pose.x + fwd.x * d, y: r.pose.y + fwd.y * d });
+    if (distancePolys(regimentPolys(s, r, { pose: atD(hi) }), regimentPolys(s, t)) <= TOL) {
+      for (let i = 0; i < 30; i++) {
+        const m = (lo + hi) / 2;
+        if (distancePolys(regimentPolys(s, r, { pose: atD(m) }), regimentPolys(s, t)) <= TOL) hi = m;
+        else lo = m;
+      }
+      const pose = atD(hi);
+      const rp = regimentPolys(s, r, { pose });
+      if (!anyOverlap(rp, regimentPolys(s, t)) && pathClear(pose)) {
+        const [, contact] = closestPair(rp, regimentPolys(s, t));
+        // Target forward so its charged edge faces the charger.
+        const want = facing === 'front' ? r.pose.angle + Math.PI : facing === 'rear' ? r.pose.angle : facing === 'left' ? r.pose.angle - Math.PI / 2 : r.pose.angle + Math.PI / 2;
+        const turn = normalizeAngle(want - t.pose.angle);
+        const c = Math.cos(turn);
+        const si = Math.sin(turn);
+        const dx = t.pose.x - contact.x;
+        const dy = t.pose.y - contact.y;
+        const tPose: Pose = { x: contact.x + dx * c - dy * si, y: contact.y + dx * si + dy * c, angle: t.pose.angle + turn };
+        const tp = regimentPolys(s, t, { pose: tPose });
+        const clash = onTableRegiments(s).some((o) => o.id !== t.id && o.id !== r.id && anyOverlap(tp, regimentPolys(s, o)));
+        if (onTable(s, tp) && !clash && !anyOverlap(tp, rp) && distancePolys(tp, rp) <= 0.05) return { pose, targetPose: tPose };
       }
     }
-    if (bad || markerPolys(s).some((m) => polys.some((p) => overlaps(p, m)))) continue;
-    // Swept path: interpolate position and facing; may not pass through other enemies or engaged friends.
-    const da = normalizeAngle(angle - r.pose.angle);
-    let pathBlocked = false;
-    for (let i = 1; i < 40; i++) {
-      const f = i / 40;
-      const q: Pose = { x: r.pose.x + (P.x - r.pose.x) * f, y: r.pose.y + (P.y - r.pose.y) * f, angle: r.pose.angle + da * f };
-      const qp = regimentPolys(s, r, { pose: q });
-      if (others.some((o) => (o.owner !== r.owner || isEngaged(s, o)) && anyOverlap(qp, regimentPolys(s, o)))) {
-        pathBlocked = true;
-        break;
-      }
-    }
-    if (pathBlocked) {
-      blockedReason = 'the path to the target is blocked';
-      continue;
-    }
-    return { pose };
   }
   return { pose: null, reason: blockedReason };
 }
@@ -322,6 +376,15 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
     return;
   }
   r.pose = place.pose;
+  if (place.push) {
+    const bl = s.regiments[place.push.id]!;
+    bl.pose = place.push.pose;
+    ev(ctx, { type: 'charge', text: `${bl.name} is pushed 1″ directly away so ${r.name} can complete its Charge (core p.32).`, regimentId: bl.id });
+  }
+  if (place.targetPose) {
+    t.pose = place.targetPose;
+    ev(ctx, { type: 'charge', text: `${r.name} cannot pivot flush, so ${t.name} pivots to meet the Charge (core p.32).`, regimentId: t.id });
+  }
   completeCharge(ctx, r, t, facing as Arc, { resounding });
 }
 
@@ -575,13 +638,14 @@ export function fearsomeCheck(ctx: Ctx, r: RegimentState, what: string): boolean
   return okRoll;
 }
 
-export function withdrawPose(s: GameState, r: RegimentState, moves: MoveSeg[]): Pose {
+export function withdrawPose(s: GameState, r: RegimentState, moves: MoveSeg[], turn = true): Pose {
   // Reform facing away from the enemy: turn about the centre so the old rear becomes the front
   // (core p.51; RULE-AMBIGUITY: AMB-32 — "away" is taken as directly away from the current facing).
   const fp = footprintOf(s, r);
   const { forward } = poseFrame(r.pose);
   const depth = fp.halfDepth * 2;
-  const front: Pose = { x: r.pose.x - forward.x * depth, y: r.pose.y - forward.y * depth, angle: r.pose.angle + Math.PI };
+  // Swift Retreat (Spires): may choose not to turn away.
+  const front: Pose = turn ? { x: r.pose.x - forward.x * depth, y: r.pose.y - forward.y * depth, angle: r.pose.angle + Math.PI } : r.pose;
   return applyPath(front, moves, fp.halfWidth * 2);
 }
 
@@ -592,11 +656,13 @@ export function withdrawProblems(s: GameState, r: RegimentState, moves: MoveSeg[
   return [];
 }
 
-export function applyWithdraw(ctx: Ctx, r: RegimentState, moves: MoveSeg[]): void {
+export function applyWithdraw(ctx: Ctx, r: RegimentState, moves: MoveSeg[], turnIn = true): void {
+  const turn = turnIn || !hasRule(r.rules, 'Swift Retreat');
   const s = ctx.s;
   const R = highestR(ctx, r);
   const t = rollTest(ctx, 1, { target: R }, `${r.name}: Withdraw`);
-  const clean = t.passes === 1;
+  // Swift Retreat (Spires): always a Clean Withdrawal.
+  const clean = t.passes === 1 || hasRule(r.rules, 'Swift Retreat');
   const contacts = layout(formationInput(s, r)).filter((sl) => !sl.isCharacter && enemiesInContact(s, r).some((e) => distancePolys([rectPoly(sl.rect)], regimentPolys(s, e)) <= TOL)).length;
   const idx = ctx.rng.index;
   const [d] = rollN(ctx, 1) as [number];
@@ -616,9 +682,9 @@ export function applyWithdraw(ctx: Ctx, r: RegimentState, moves: MoveSeg[]): voi
     if (!clean && r.location !== 'destroyed') moraleTest(ctx, r, wounds, { arc: 'front', terrifying: 0, attackerOwner: by });
   }
   if (r.location === 'destroyed') return;
-  const pose = withdrawPose(s, r, moves);
+  const pose = withdrawPose(s, r, moves, turn);
   const width = footprintOf(s, r).halfWidth * 2;
-  const path = samplePath(withdrawPose(s, r, []), moves, width);
+  const path = samplePath(withdrawPose(s, r, [], turn), moves, width);
   const polys = regimentPolys(s, r, { pose });
   const problems = positionProblems(s, r, polys, { allowFriendOverlap: false, allowOffTable: false });
   const through = path.slice(1).some((p) => onTableRegiments(s).some((o) => o.owner !== r.owner && anyOverlap(regimentPolys(s, r, { pose: p }), regimentPolys(s, o))));
@@ -678,28 +744,62 @@ export function duelTargets(s: GameState, c: CharacterState): CharacterState[] {
     .filter((x): x is CharacterState => !!x);
 }
 
-function duelAttack(ctx: Ctx, a: CharacterState, d: CharacterState): number {
-  const shield = hasRule(d.rules, 'Shield') && !hasRule(a.rules, 'Linebreaker') ? 1 : 0;
-  const hit = rollTest(ctx, charStat(a, 'A'), { target: charStat(a, 'C'), rerollFailed: hasRule(a.rules, 'Flurry') }, `${a.name}: Duel to hit`);
+/**
+ * One side of a Duel (core p.76): Attacks at Clash against the other Character's Defense or
+ * Evasion. Characters use their own rules: Flurry (unless the target has Parry), Cleave less
+ * Hardened, Shield in any arc (core p.100), Linebreaker, Smite, Flawless Strikes, Deadly Blades,
+ * Relentless Blows; the defender's Untouchable, Tenacious and Counter-Attack (core p.97, p.101).
+ * RULE-AMBIGUITY: AMB-12 — each Wound then needs a Resolve roll; Oblivious halves those Wounds.
+ * Returns [wounds to the defender, wounds to the attacker from Counter-Attack].
+ */
+function duelAttack(ctx: Ctx, a: CharacterState, d: CharacterState): [number, number] {
+  const C = charStat(a, 'C');
+  const reroll = hasRule(a.rules, 'Flurry') && !hasRule(d.rules, 'Parry');
+  const hit = rollTest(ctx, charStat(a, 'A'), { target: C, rerollFailed: reroll }, `${a.name}: Duel to hit`);
   let hits = hit.passes;
-  if (charStat(a, 'C') >= 6) hits += hit.values.filter((v) => v === 1).length;
+  const ones = hit.values.filter((v) => v === 1).length;
+  if (C >= 6) hits += ones;
+  const counter = hasRule(d.rules, 'Counter-Attack') ? hit.values.filter((v) => v === 6).length : 0;
   ev(ctx, { type: 'dice', text: `${a.name} attacks ${d.name}: ${hits} Hit${hits === 1 ? '' : 's'}.`, dice: hit.record });
-  if (!hits) return 0;
-  const save = Math.max(Math.max(0, charStat(d, 'D') + shield - ruleX(a.rules, 'Cleave')), charStat(d, 'E'));
-  const def = rollTest(ctx, hits, { target: save, defense: true }, `${d.name}: Duel Defense`);
   let w = 0;
-  def.values.forEach((v, i) => {
-    if (!def.passed[i]) w += hasRule(a.rules, 'Deadly Blades') && v === 6 ? 2 : 1;
-  });
-  ev(ctx, { type: 'dice', text: `${d.name} saves on ${save} or less: ${w} Wound${w === 1 ? '' : 's'}.`, dice: def.record });
-  // RULE-AMBIGUITY: AMB-12 — Resolve rolls for each Wound; failures add Wounds to the Character.
+  if (hits) {
+    const shield = hasRule(d.rules, 'Shield') && !hasRule(a.rules, 'Linebreaker') ? 1 : 0;
+    const reduce = Math.max(0, ruleX(a.rules, 'Cleave') - ruleX(d.rules, 'Hardened'));
+    const dEff = hasRule(a.rules, 'Smite') ? 0 : Math.max(0, charStat(d, 'D') + shield - reduce);
+    const E = charStat(d, 'E');
+    const onesHits = hasRule(a.rules, 'Flawless Strikes') ? Math.min(ones, hits) : 0;
+    const roll = (n: number, t: number) => {
+      if (n <= 0) return;
+      const def = rollTest(ctx, n, { target: t, defense: true }, `${d.name}: Duel Defense`);
+      const passed = [...def.passed];
+      if (hasRule(d.rules, 'Untouchable')) {
+        def.values.forEach((v, i) => {
+          if (v === 6 && !passed[i]) passed[i] = rollTest(ctx, 1, { target: t, defense: true }, `${d.name}: Untouchable`).passes === 1;
+        });
+      }
+      let ten = ruleX(d.rules, 'Tenacious');
+      for (let i = 0; i < passed.length && ten > 0; i++)
+        if (!passed[i]) {
+          passed[i] = true;
+          ten--;
+        }
+      passed.forEach((p, i) => {
+        if (!p) w += hasRule(a.rules, 'Deadly Blades') && def.values[i] === 6 ? 2 : 1;
+      });
+      ev(ctx, { type: 'dice', text: `${d.name} saves on ${t} or less.`, dice: def.record });
+    };
+    roll(hits - onesHits, Math.max(dEff, E));
+    roll(onesHits, E);
+  }
   if (w > 0) {
     const m = rollTest(ctx, w, { target: charStat(d, 'R') }, `${d.name}: Duel Resolve`);
-    const extra = w - m.passes;
-    if (extra) ev(ctx, { type: 'dice', text: `${d.name} fails ${extra} Resolve roll${extra > 1 ? 's' : ''}: +${extra} Wound${extra > 1 ? 's' : ''}.`, dice: m.record });
+    let extra = w - m.passes;
+    if (hasRule(d.rules, 'Oblivious')) extra = Math.ceil(extra / 2);
+    if (extra) ev(ctx, { type: 'dice', text: `${d.name} fails Resolve: +${extra} Wound${extra > 1 ? 's' : ''}.`, dice: m.record });
     w += extra;
   }
-  return w;
+  ev(ctx, { type: 'duel', text: `${d.name} suffers ${w} Wound${w === 1 ? '' : 's'} in the Duel.` });
+  return [w, counter];
 }
 
 export function applyDuel(ctx: Ctx, c: CharacterState, target: CharacterState, accept: boolean): void {
@@ -709,26 +809,46 @@ export function applyDuel(ctx: Ctx, c: CharacterState, target: CharacterState, a
     if (tr.broken) {
       ev(ctx, { type: 'duel', text: `${target.name} cannot decline: its Regiment is Broken (core p.60). The Duel is fought.` });
     } else {
+      if (hasRule(tr.rules, 'Bodyguards')) {
+        ev(ctx, { type: 'duel', text: `${target.name} declines the Duel; ${tr.name} has Bodyguards and suffers no penalty (core p.97).` });
+        return;
+      }
       tr.flags.declinedDuel = true;
       ev(ctx, { type: 'duel', text: `${target.name} declines the Duel: until the end of the Round ${tr.name} cannot Seize, uses its lowest Resolve and cannot be Inspired (core p.76).` });
       return;
     }
   }
   ev(ctx, { type: 'duel', text: `${c.name} duels ${target.name} (core p.76).` });
-  const toTarget = duelAttack(ctx, c, target);
-  const toChallenger = duelAttack(ctx, target, c);
-  for (const [ch, w, by] of [
-    [target, toTarget, s.regiments[c.attachedTo!]!.owner],
-    [c, toChallenger, s.regiments[target.attachedTo!]!.owner],
-  ] as const) {
+  const ownerOf = (x: CharacterState) => s.regiments[x.attachedTo!]!.owner;
+  const apply = (ch: CharacterState, w: number, by: CharacterState) => {
+    if (!w || ch.destroyed) return;
     ch.wounds += w;
-    if (ch.wounds >= charStat(ch, 'W') && !ch.destroyed) {
+    if (ch.wounds >= charStat(ch, 'W')) {
       const reg = ch.attachedTo;
-      killCharacter(ctx, ch, by, 'in a Duel');
+      killCharacter(ctx, ch, ownerOf(by), 'in a Duel');
       ch.attachedTo = null;
       if (reg) ev(ctx, { type: 'note', text: `${s.regiments[reg]!.name} closes the gap with a free Combat Reform (core p.76).` });
     }
+  };
+  // Quicksilver Strike: a Character with it strikes first; if both have it, simultaneously (core p.100).
+  const qsC = hasRule(c.rules, 'Quicksilver Strike');
+  const qsT = hasRule(target.rules, 'Quicksilver Strike');
+  if (qsC !== qsT) {
+    const [first, second] = qsC ? [c, target] : [target, c];
+    const [w1, back1] = duelAttack(ctx, first, second);
+    apply(second, w1, first);
+    apply(first, back1, second);
+    if (!second.destroyed && !first.destroyed) {
+      const [w2, back2] = duelAttack(ctx, second, first);
+      apply(first, w2, second);
+      apply(second, back2, first);
+    }
+    return;
   }
+  const [toTarget, backToC] = duelAttack(ctx, c, target);
+  const [toChallenger, backToT] = duelAttack(ctx, target, c);
+  apply(target, toTarget + backToT, c);
+  apply(c, toChallenger + backToC, target);
 }
 
 export interface VolleyLine {

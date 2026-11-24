@@ -71,7 +71,7 @@ export type ActionBody =
   | { type: 'rally'; regimentId: string }
   | { type: 'combatRally'; regimentId: string }
   | { type: 'combatReform'; regimentId: string; files: number }
-  | { type: 'withdraw'; regimentId: string; moves: MoveSeg[] }
+  | { type: 'withdraw'; regimentId: string; moves: MoveSeg[]; turn?: boolean }
   | { type: 'duel'; characterId: string; targetCharacterId: string; accept: boolean }
   | { type: 'characterAbility'; characterId: string; name: string; targetId?: string }
   // Manual tools (always logged as overrides)
@@ -373,7 +373,7 @@ export function validate(s: GameState, a: Action): Validation {
       if (!s.activation) return fail('No Regiment is active.');
       const r = s.regiments[s.activation.regimentId]!;
       if (r.location !== 'table') return ok();
-      const problems = positionProblems(s, r, regimentPolys(s, r), { allowFriendOverlap: false, allowOffTable: false });
+      const problems = positionProblems(s, r, regimentPolys(s, r), { allowFriendOverlap: false, allowOffTable: false, enemyGap: false });
       return problems.length ? fail(...problems, 'Move again, or use the manual override.') : ok();
     }
     case 'endRound':

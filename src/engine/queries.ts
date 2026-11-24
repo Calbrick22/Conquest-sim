@@ -97,12 +97,13 @@ export function computeReinforcementLine(s: GameState, p: PlayerId): number {
   const depths = (r: RegimentState) => footprintCorners(s, r).map((c) => depthFrom(s, p, c.y));
   const friends = onTableRegiments(s)
     .filter((r) => r.owner === p && !r.rules.some((x) => x.name === 'Irregular'))
-    .map((r) => ({ front: Math.max(...depths(r)), rear: Math.min(...depths(r)) }))
+    .map((r) => ({ front: Math.max(...depths(r)), rear: Math.min(...depths(r)), pathfinders: r.rules.some((x) => x.name === 'Pathfinders') }))
     .sort((a, b) => b.front - a.front);
   const enemyMin = onTableRegiments(s)
     .filter((r) => r.owner !== p && !r.rules.some((x) => x.name === 'Irregular'))
     .map((r) => Math.min(...depths(r)));
-  for (const f of friends) if (!enemyMin.some((e) => e <= f.rear + 1e-9)) return Math.max(0, f.rear);
+  // Pathfinders: a Line set by this Regiment cannot be pushed back by enemies (core p.100).
+  for (const f of friends) if (f.pathfinders || !enemyMin.some((e) => e <= f.rear + 1e-9)) return Math.max(0, f.rear);
   return 0;
 }
 
@@ -168,7 +169,12 @@ export function fail(...reasons: string[]): Validation {
 }
 
 /** Checks a final or intermediate position. */
-export function positionProblems(s: GameState, r: RegimentState, polys: Poly[], opts: { allowFriendOverlap: boolean; allowOffTable: boolean }): string[] {
+/**
+ * Legal position checks. `enemyGap` (default on) applies the March rule "not within 1″ of an enemy"
+ * (core p.29); the legal-position test at the end of an Activation (core p.13) only forbids
+ * overlaps and leaving the table, so Regiments in contact are fine there.
+ */
+export function positionProblems(s: GameState, r: RegimentState, polys: Poly[], opts: { allowFriendOverlap: boolean; allowOffTable: boolean; enemyGap?: boolean }): string[] {
   const problems: string[] = [];
   if (!opts.allowOffTable && !onTable(s, polys)) problems.push('Every Stand must stay on the Battlefield (core p.13).');
   for (const o of onTableRegiments(s)) {
@@ -177,7 +183,7 @@ export function positionProblems(s: GameState, r: RegimentState, polys: Poly[], 
     if (o.owner !== r.owner) {
       if (anyOverlap(polys, op)) problems.push(`Overlaps enemy ${o.name}.`);
       // RULE-AMBIGUITY: AMB-28 — judged at the end position.
-      else if (distancePolys(polys, op) < 1 - TOL) problems.push(`Within 1″ of enemy ${o.name} (core p.29).`);
+      else if (opts.enemyGap !== false && distancePolys(polys, op) < 1 - TOL) problems.push(`Within 1″ of enemy ${o.name} (core p.29).`);
     } else if (!opts.allowFriendOverlap && anyOverlap(polys, op)) problems.push(`Overlaps ${o.name} (core p.13).`);
   }
   if (markerPolys(s).some((m) => polys.some((p) => overlaps(p, m)))) problems.push('Cannot end overlapping an Objective Marker (pack p.8).');

@@ -451,7 +451,7 @@ export function applyM4(ctx: Ctx, a: Action): void {
     }
     case 'withdraw':
       recordAction(s.activation!, 'withdraw');
-      applyWithdraw(ctx, s.regiments[a.regimentId]!, a.moves);
+      applyWithdraw(ctx, s.regiments[a.regimentId]!, a.moves, a.turn ?? true);
       break;
     case 'duel': {
       recordAction(s.activation!, 'duel');

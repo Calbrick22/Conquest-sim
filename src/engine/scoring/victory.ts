@@ -5,6 +5,7 @@ import { standOverlapsZone } from '../geometry/zones';
 import type { GameState, PlayerId, RoundScore } from '../model/types';
 import { formationInput, markerPolys, onTableRegiments } from '../queries';
 import { scoreRound, type RoundFacts } from './scoreRound';
+import { hasRule } from '../rules/special/rules';
 import { resolveZone, type StandInRange, type ZoneSeizeResult } from './seizing';
 
 export type ZoneResults = Record<string, ZoneSeizeResult & { contestedBy: PlayerId[] }>;
@@ -31,6 +32,9 @@ export function zoneResults(s: GameState): ZoneResults {
     s.scenario.markers.forEach((m, i) => {
       if (m.friendlyTo && !s.markers[m.id]?.destroyed && standOverlapsZone(mPolys[i]!, centre, z.diameter)) contestedBy.push(m.friendlyTo);
     });
+    // Unyielding (core p.101): enemies cannot Seize a zone this Regiment is in range of (unless it is Broken).
+    for (const { r, polys } of slotsByReg)
+      if (hasRule(r.rules, 'Unyielding') && !r.broken && polys.some((p) => standOverlapsZone(p, centre, z.diameter)) && !contestedBy.includes(r.owner)) contestedBy.push(r.owner);
     const res = resolveZone({ stands, ...(z.friendlyTo ? { friendlyTo: z.friendlyTo } : {}), contestedBy });
     out[z.id] = { ...res, contestedBy };
   }
