@@ -221,7 +221,10 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
   const res: AttackResult = { hits: totalHits, wounds, moraleWounds: 0, standsLost: 0, destroyed: false, naturalOnes };
   if (wounds) {
     // Designate Target (Spires rule text): the Regiment that suffers the Wound is Marked until the end of the Round.
-    if (attacker && hasRule(attacker.rules, 'Designate Target') && (kind === 'clash' || kind === 'impact' || kind === 'volley')) target.flags.marked = true;
+    if (attacker && hasRule(attacker.rules, 'Designate Target') && (kind === 'clash' || kind === 'impact' || kind === 'volley') && !target.flags.marked) {
+      target.flags.marked = true;
+      ev(ctx, { type: 'note', text: `${target.name} is Marked until the end of the Round (Designate Target): friendly Charges against it get +2″ and re-roll failed Hit Rolls.`, regimentId: target.id });
+    }
     const before = target.stands.length;
     allocateWounds(ctx, target, wounds, spec.attackerOwner, spec.noLethalDemise ? undefined : spec.attackerId);
     if (!isDestroyed(target) && spec.morale) res.moraleWounds = moraleTest(ctx, target, wounds, spec);

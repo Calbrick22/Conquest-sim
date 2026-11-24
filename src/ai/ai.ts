@@ -7,7 +7,7 @@
  * It plays its own Regiments as if "manual" special rules were not there (the engine logs those
  * rules on every Activation, so the log shows where the simulation is approximate).
  */
-import { chargeFacing, chargePlacement, chargeProblems, clashTargets, enemiesInContact, footprintOf, planVolley } from '../engine/actions';
+import { chargeFacing, chargePlacement, chargeProblems, clashTargets, enemiesInContact, footprintOf, planVolley, volleyAimed } from '../engine/actions';
 import { charStat, stat } from '../engine/combat';
 import { validate, type Action, type ActionBody } from '../engine/game';
 import { dist, normalizeAngle, type Vec } from '../engine/geometry/vec';
@@ -208,7 +208,7 @@ function marchToward(s: GameState, r: RegimentState, target: Vec, stopShort: num
 
 function decideReinforcements(s: GameState, p: PlayerId): AiDecision {
   // Bring the most valuable Regiment that is allowed to arrive this Round (Mediums and Heavies first).
-  const choices = reinforcementChoices(s, p).filter((r) => reinforcementNeed(s.round, reinforcementClass(r)) !== 'auto');
+  const choices = reinforcementChoices(s, p).filter((r) => reinforcementNeed(s.round, reinforcementClass(s, r)) !== 'auto');
   const rank = (r: RegimentState) => (r.cls === 'Heavy' ? 3 : r.cls === 'Medium' ? 2 : 1) * 10 + regimentValue(r);
   const best = choices.sort((a, b) => rank(b) - rank(a))[0];
   // Flank Regiments arrive as soon as they may (core p.98).
@@ -330,13 +330,13 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
   }
   // Volleys (Take Aim first if there is time).
   for (const t of enemies) {
-    const plan = planVolley(s, r, t, act.aimed);
+    const plan = planVolley(s, r, t, volleyAimed(s, r));
     if (plan.problems.length) continue;
     const ap = plan.plans.reduce((a, x) => Math.max(a, x.ap), 0);
     const shots = plan.plans.reduce((a, x) => a + x.shots, 0);
     const skill = Math.max(0, ...plan.plans.map((x) => x.skill));
     const w = expectedWounds(shots, skill, t, { reduceD: ap });
-    if (used === 0 && !act.aimed) add({ type: 'takeAim', regimentId: r.id }, 2 + w * 0.4, `Takes Aim to Volley ${t.name}`);
+    if (used === 0 && !volleyAimed(s, r)) add({ type: 'takeAim', regimentId: r.id }, 2 + w * 0.4, `Takes Aim to Volley ${t.name}`);
     add({ type: 'volley', regimentId: r.id, targetId: t.id }, 2 + w, `Volleys ${t.name}: ${shots} shots, about ${w.toFixed(1)} expected Wounds`);
   }
   // Objective Markers in reach.

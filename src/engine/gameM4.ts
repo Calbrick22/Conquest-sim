@@ -18,6 +18,7 @@ import {
   enemiesInContact,
   fearsomeCheck,
   planVolley,
+  volleyAimed,
   withdrawPose,
   withdrawProblems,
 } from './actions';
@@ -187,7 +188,7 @@ export function validateM4(s: GameState, a: Action): Validation {
         if (isMarkerTarget(a.targetId)) return markerVolleyPlan(s, r, markerId(a.targetId), !!s.activation?.aimed).problems;
         const t = s.regiments[a.targetId];
         if (!t) return ['Unknown target.'];
-        return planVolley(s, r, t, !!s.activation?.aimed).problems;
+        return planVolley(s, r, t, volleyAimed(s, r)).problems;
       });
     case 'clash':
       return act(s, a.regimentId, 'clash', () => {

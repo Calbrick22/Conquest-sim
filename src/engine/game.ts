@@ -12,7 +12,7 @@ import { applyM4, endActivation, logManualRules, validateM4 } from './gameM4';
 import { beginRound, cardTargets, type ReinforcementChoice } from './round';
 import { victoryPhase } from './scoring/victory';
 import './rules/special/rules';
-import { applyCharacterOptions, refreshRules, sectOf } from './rules/special/grants';
+import { applyCharacterOptions, refreshRules } from './rules/special/grants';
 import { flushPower, initOldDominion } from './factions/oldDominion';
 import { odActivationStartSpells } from './factions/oldDominionActions';
 import { parseRuleRef } from '../import/ruleTokens';
@@ -103,7 +103,7 @@ export interface ApplyResult {
 export function toStrains(list: ArmyList): Record<string, StrainDef> {
   const out: Record<string, StrainDef> = {};
   for (const [name, d] of Object.entries(list.strains ?? {})) {
-    out[name] = { stats: d.stats as StrainDef['stats'], rules: d.rules.map((r) => parseRuleRef(r)), text: d.text };
+    out[name] = { stats: d.stats as StrainDef['stats'], ...(d.enemyStats ? { enemyStats: d.enemyStats as StrainDef['stats'] } : {}), rules: d.rules.map((r) => parseRuleRef(r)), text: d.text };
   }
   return out;
 }
@@ -315,9 +315,8 @@ export function createGame(input: SetupInput): SetupResult {
     scoreHistory: [],
     warlordScored: { P1: false, P2: false },
   };
-  // Just Desserts, The Directorate: +2 March (a permanent bonus from the army's Sect).
-  for (const r of Object.values(regiments))
-    if (r.baseRules.some((x) => x.name === 'Just Desserts') && sectOf(state, r.owner) === 'directorate' && r.profile.M !== null) r.profile.M += 2;
+  // Just Desserts, The Directorate (+2 March) is already included in the exported March value,
+  // so it is not added again.
   for (const pid of ['P1', 'P2'] as const) {
     const tp = input.lists[pid].tierProfiles;
     if (tp)
@@ -325,6 +324,10 @@ export function createGame(input: SetupInput): SetupResult {
         Object.entries(tp).map(([name, tiers]) => [name, Object.fromEntries(Object.entries(tiers).map(([t, d]) => [t, { stats: d.stats as TierProfileDef["stats"], rules: d.rules.map((x) => parseRuleRef(x)) }]))]),
       );
   }
+  // Strain Expression without an entered Strain gives only Decay (AMB-18): say so up front.
+  for (const r of Object.values(regiments))
+    if (r.baseDrawEvents.some((d) => d.startsWith('Strain Expression')) && !state.players[r.owner].strains[r.name])
+      warnings.push(`${r.owner} ${r.name}: no Strain entered on the list review screen, so Strain Expression gives only Decay`);
   initOldDominion(state);
   refreshRules(state);
   const events: GameEvent[] = [{ type: 'setup', text: `Game created on ${input.scenario.name} (seed ${input.seed}).`, round: 1 }];

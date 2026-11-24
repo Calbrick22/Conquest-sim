@@ -51,7 +51,30 @@ export function TableView(props: Props) {
   const W = s.scenario.table.width;
   const H = s.scenario.table.height;
   const fy = (y: number) => H - y;
-  const [view, setView] = useState({ x: -PAD, y: -PAD, w: W + 2 * PAD, h: H + 2 * PAD });
+  // Portrait: the table turned a quarter so its long side runs down the screen (phones).
+  const [rotated, setRotated] = useState(() => {
+    try {
+      return localStorage.getItem('table-rotated') === '1';
+    } catch {
+      return false;
+    }
+  });
+  // Hide callouts and the deck to see the whole table.
+  const [peek, setPeek] = useState(false);
+  const fit = (rot: boolean) => (rot ? { x: -PAD, y: -PAD, w: H + 2 * PAD, h: W + 2 * PAD } : { x: -PAD, y: -PAD, w: W + 2 * PAD, h: H + 2 * PAD });
+  const [view, setView] = useState(() => fit(rotated));
+  const toggleRotate = () => {
+    const next = !rotated;
+    setRotated(next);
+    setView(fit(next));
+    try {
+      localStorage.setItem('table-rotated', next ? '1' : '0');
+    } catch {
+      /* per-device convenience only */
+    }
+  };
+  /** Counter-rotates text so labels stay upright when the table is turned. */
+  const upright = (x: number, y: number) => (rotated ? { transform: `rotate(-90 ${x} ${y})` } : {});
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   useEffect(() => {
@@ -66,7 +89,9 @@ export function TableView(props: Props) {
     const k = Math.min(size.w / view.w, size.h / view.h) || 0;
     const ox = (size.w - view.w * k) / 2;
     const oy = (size.h - view.h * k) / 2;
-    return { x: ox + (p.x - view.x) * k, y: oy + (H - p.y - view.y) * k };
+    const u = rotated ? p.y : p.x;
+    const v = rotated ? p.x : H - p.y;
+    return { x: ox + (u - view.x) * k, y: oy + (v - view.y) * k };
   };
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{ kind: 'pan' | 'pinch' | 'tap'; start: { x: number; y: number }; view: typeof view; dist?: number } | null>(null);
@@ -79,7 +104,8 @@ export function TableView(props: Props) {
     pt.y = clientY;
     const m = svg.getScreenCTM();
     const q = m ? pt.matrixTransform(m.inverse()) : pt;
-    return { x: q.x, y: H - q.y };
+    // Rotated: screen-space (u, v) = (table y, table x).
+    return rotated ? { x: q.y, y: q.x } : { x: q.x, y: H - q.y };
   };
 
   const onDown = (e: RPointerEvent<SVGSVGElement>) => {
@@ -106,9 +132,10 @@ export function TableView(props: Props) {
     if (g.kind === 'pinch' && pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
       const d = Math.hypot(a!.x - b!.x, a!.y - b!.y);
-      const k = Math.max(0.15, Math.min(2, (g.dist! / d) * (g.view.w / (W + 2 * PAD))));
-      const w = (W + 2 * PAD) * k;
-      const h = (H + 2 * PAD) * k;
+      const F = fit(rotated);
+      const k = Math.max(0.15, Math.min(2, (g.dist! / d) * (g.view.w / F.w)));
+      const w = F.w * k;
+      const h = F.h * k;
       setView({ x: g.view.x + (g.view.w - w) / 2, y: g.view.y + (g.view.h - h) / 2, w, h });
       return;
     }
@@ -131,8 +158,9 @@ export function TableView(props: Props) {
 
   const zoom = (k: number) =>
     setView((v) => {
-      const w = Math.max(10, Math.min((W + 2 * PAD) * 2, v.w * k));
-      const h = (w * (H + 2 * PAD)) / (W + 2 * PAD);
+      const F = fit(rotated);
+      const w = Math.max(10, Math.min(F.w * 2, v.w * k));
+      const h = (w * F.h) / F.w;
       return { x: v.x + (v.w - w) / 2, y: v.y + (v.h - h) / 2, w, h };
     });
 
@@ -152,6 +180,7 @@ export function TableView(props: Props) {
         onWheel={(e) => zoom(e.deltaY > 0 ? 1.15 : 1 / 1.15)}
         data-testid="table"
       >
+        <g transform={rotated ? `matrix(0 1 -1 0 ${H} 0)` : undefined}>
         <rect x={0} y={0} width={W} height={H} className="table" />
         <g className="grid">
           {Array.from({ length: W / 12 - 1 }, (_, i) => (
@@ -179,7 +208,7 @@ export function TableView(props: Props) {
             >
               <rect x={m.x - markerSide / 2} y={fy(m.y) - markerSide / 2} width={markerSide} height={markerSide} className="marker" fill={m.friendlyTo ? OWNER_COLOR[m.friendlyTo] : 'var(--zone)'} />
               {st && (st.woundsBy.P1 > 0 || st.woundsBy.P2 > 0) && (
-                <text x={m.x} y={fy(m.y) + 0.5} className="rlabel">{st.woundsBy.P1}/{st.woundsBy.P2}</text>
+                <text x={m.x} y={fy(m.y) + 0.5} className="rlabel" {...upright(m.x, fy(m.y))}>{st.woundsBy.P1}/{st.woundsBy.P2}</text>
               )}
             </g>
           );
@@ -238,7 +267,7 @@ export function TableView(props: Props) {
           <g key={`ln${i}`} className={`mline ${l.cls}`} pointerEvents="none">
             <line x1={l.a.x} y1={fy(l.a.y)} x2={l.b.x} y2={fy(l.b.y)} />
             {l.label && (
-              <text x={(l.a.x + l.b.x) / 2} y={fy((l.a.y + l.b.y) / 2) - 0.4}>
+              <text x={(l.a.x + l.b.x) / 2} y={fy((l.a.y + l.b.y) / 2) - 0.4} {...upright((l.a.x + l.b.x) / 2, fy((l.a.y + l.b.y) / 2))}>
                 {l.label}
               </text>
             )}
@@ -249,7 +278,7 @@ export function TableView(props: Props) {
             <line x1={props.ruler.a.x} y1={fy(props.ruler.a.y)} x2={props.ruler.b.x} y2={fy(props.ruler.b.y)} />
             <circle cx={props.ruler.a.x} cy={fy(props.ruler.a.y)} r={0.35} />
             <circle cx={props.ruler.b.x} cy={fy(props.ruler.b.y)} r={0.35} />
-            <text x={(props.ruler.a.x + props.ruler.b.x) / 2} y={fy((props.ruler.a.y + props.ruler.b.y) / 2) - 0.8}>{props.ruler.label}</text>
+            <text x={(props.ruler.a.x + props.ruler.b.x) / 2} y={fy((props.ruler.a.y + props.ruler.b.y) / 2) - 0.8} {...upright((props.ruler.a.x + props.ruler.b.x) / 2, fy((props.ruler.a.y + props.ruler.b.y) / 2))}>{props.ruler.label}</text>
           </g>
         )}
         {Object.values(s.regiments)
@@ -259,14 +288,17 @@ export function TableView(props: Props) {
             const c = polys.flat().reduce((a, p) => ({ x: a.x + p.x, y: a.y + p.y }), { x: 0, y: 0 });
             const n = polys.flat().length;
             return (
-              <text key={`l${r.id}`} x={c.x / n} y={fy(c.y / n)} className="rlabel" pointerEvents="none">
+              <text key={`l${r.id}`} x={c.x / n} y={fy(c.y / n)} className="rlabel" pointerEvents="none" {...upright(c.x / n, fy(c.y / n))}>
                 {r.name}
                 {r.broken ? ' (Broken)' : ''}
+                {r.flags.marked ? ' ◎Marked' : ''}
+                {r.flags.decay ? ' ☣' : ''}
               </text>
             );
           })}
+        </g>
       </svg>
-      {props.overlays?.map((o) => {
+      {!peek && props.overlays?.map((o) => {
         const pos = o.at ? toPx(o.at) : null;
         // Below the anchor when it is in the top half of the table, above it otherwise.
         const below = !pos || pos.y < size.h / 2;
@@ -283,11 +315,15 @@ export function TableView(props: Props) {
           </div>
         );
       })}
-      {props.children}
+      {!peek && props.children}
       <div className="zoom">
+        <button type="button" className={`small ${peek ? 'on' : ''}`} onClick={() => setPeek(!peek)} aria-label={peek ? 'Show panels' : 'Hide panels to see the table'} title={peek ? 'Show panels' : 'Hide panels to see the table'} data-testid="peek">
+          {peek ? '👁 Panels' : '👁'}
+        </button>
+        <button type="button" className={`small ${rotated ? 'on' : ''}`} onClick={toggleRotate} aria-label="Turn the table" title="Turn the table (portrait)" data-testid="rotate">⟳</button>
         <button type="button" className="small" onClick={() => zoom(1 / 1.3)} aria-label="Zoom in">＋</button>
         <button type="button" className="small" onClick={() => zoom(1.3)} aria-label="Zoom out">－</button>
-        <button type="button" className="small" onClick={() => setView({ x: -PAD, y: -PAD, w: W + 2 * PAD, h: H + 2 * PAD })}>Fit</button>
+        <button type="button" className="small" onClick={() => setView(fit(rotated))}>Fit</button>
       </div>
     </div>
   );

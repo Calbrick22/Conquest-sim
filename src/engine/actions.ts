@@ -552,6 +552,18 @@ export function shootingArcs(r: RegimentState): Arc[] {
 }
 
 /** Works out each front-rank Stand's shots (core p.38–40). */
+/**
+ * Is this Regiment's Volley Aimed (core p.97)? Take Aim this Activation; Deadshots always; and the
+ * Aimed Shot rule on a list entry, for its first Volley each Activation.
+ */
+export function volleyAimed(s: GameState, r: RegimentState, opts: { current?: boolean } = {}): boolean {
+  const act = s.activation?.regimentId === r.id ? s.activation : null;
+  if (act?.aimed || hasRule(r.rules, 'Deadshots')) return true;
+  // `current`: the Volley being resolved has already been recorded as an Action.
+  const earlier = (act?.actions.filter((k) => k === 'volley').length ?? 0) - (opts.current ? 1 : 0);
+  return hasRule(r.rules, 'Aimed Shot') && earlier <= 0;
+}
+
 export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aimed: boolean): { plans: VolleyStandPlan[]; problems: string[] } {
   const problems: string[] = [];
   if (r.location !== 'table' || t.location !== 'table') problems.push('Both Regiments must be on the Battlefield.');
@@ -618,7 +630,7 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
 export function applyVolley(ctx: Ctx, r: RegimentState, t: RegimentState): void {
   const s = ctx.s;
   const act = s.activation;
-  const aimed = !!act?.aimed || hasRule(r.rules, 'Deadshots') || magnanimity(s, r, t);
+  const aimed = volleyAimed(s, r, { current: true }) || magnanimity(s, r, t);
   // Reprocessing Agents: the target suffers −1 Defense as soon as it is targeted.
   if (hasRule(r.rules, 'Reprocessing Agents')) reprocess(ctx, t);
   const { plans } = planVolley(s, r, t, aimed);

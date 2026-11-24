@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.4.0] - 2026-11-24 (rule details and quality of life)
+
+### Fixed
+- **Flank timing:** a Flank Regiment arrives only from the Round its own Class could (AMB-53). The Fallen Divinity's "Light for its Reinforcement Roll" no longer lets it arrive in Round 1.
+- **The Directorate's +2 March was added twice:** the export already includes it (AMB-55). The Abomination is back to M10.
+- **Aimed Shot as a listed rule** (Vanguard Clone Infiltrators): the first Volley each Activation is Aimed, +1 Volley (AMB-54).
+- **Sideways and backward Marches:** up to half the March, in ½″ steps, with a "max" button, or by dragging (core p.28). Before, the buttons were stuck at 1″.
+
+### Added
+- **Effects you can see:** callouts now cover Draw Events (Strain Expression and others), the end of an Activation (Decay, Trample), the start of one (Aura of Death), Spells, Memories of Old and Supremacy. Re-rolls and conversions are shown with the dice (Designate Target, Flurry, Blessed, Devout…).
+- **Status markers:** Marked Regiments say so in the log, on the table (◎) and on the unit card. A Strain in effect shows ☣. The unit card lists every modifier with its source.
+- **Strains that affect enemies:** type "enemy -1 Clash" on the list review screen, and enemies in contact are affected while the Strain is active. The review screen flags Strains not entered yet, and starting a game warns about them.
+- **See the battlefield while deciding:**
+  - the Command Stack is built below the table instead of over it, and tapping a card highlights its Regiment;
+  - 👁 hides all panels over the table;
+  - ⟳ turns the table to portrait on phones (remembered on the device);
+  - on wide screens the table stays on the left with the controls on the right.
+
 ## [1.3.1] - 2026-11-24 (Old Dominion list import)
 
 ### Fixed

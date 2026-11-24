@@ -89,7 +89,7 @@ export interface ArmyList {
   armyRules: string;
   warnings: string[];
   /** Strain abilities entered by the owner on the review screen, by Regiment name (AMB-18). */
-  strains?: Record<string, { stats: Record<string, number>; rules: string[]; text: string }>;
+  strains?: Record<string, { stats: Record<string, number>; enemyStats?: Record<string, number>; rules: string[]; text: string }>;
   /**
    * Profiles by Tier entered by the owner for a Character whose profile changes with the Fallen
    * Pantheon Tier (Old Dominion Fallen Divinity), by entry name then Tier ("2", "3").

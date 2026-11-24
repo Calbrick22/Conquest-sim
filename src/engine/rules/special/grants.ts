@@ -2,6 +2,8 @@ import type { RuleRef } from '../../../import/types';
 import { parseRuleRef } from '../../../import/ruleTokens';
 import type { CharacterState, GameState, PlayerId, RegimentState, StatMod } from '../../model/types';
 import { odCharacterGrants, odRegimentGrants } from '../../factions/oldDominion';
+import { distancePolys, regimentPolys } from '../../queries';
+import { TOL } from '../../geometry/vec';
 
 /**
  * Effective special rules and Draw Events (recomputed after every Action):
@@ -90,6 +92,16 @@ export function refreshRules(s: GameState): void {
     r.rules = eff;
     r.grantMods = og.mods;
     r.drawEvents = [...new Set(drawEvents)];
+  }
+  // Strains that change enemies in contact (e.g. "enemy -1 Clash"), while the Strain is active.
+  for (const src of Object.values(s.regiments)) {
+    const def = src.flags.decay && src.location === 'table' ? s.players[src.owner].strains[src.name] : undefined;
+    if (!def?.enemyStats) continue;
+    const polys = regimentPolys(s, src);
+    for (const e of Object.values(s.regiments)) {
+      if (e.owner === src.owner || e.location !== 'table' || distancePolys(polys, regimentPolys(s, e)) > TOL) continue;
+      for (const [k, d] of Object.entries(def.enemyStats)) if (d) (e.grantMods ??= []).push({ stat: k as keyof typeof def.enemyStats, delta: d, source: `${src.name} Strain` });
+    }
   }
   for (const c of Object.values(s.characters)) {
     const og = odCharacterGrants(s, c);

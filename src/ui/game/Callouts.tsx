@@ -16,7 +16,10 @@ export function UnitCallout({ s, r, onClose }: { s: GameState; r: RegimentState;
     r.broken ? 'Broken' : '',
     r.activatedThisRound ? 'activated' : '',
     hasFlank(s, r) && r.location !== 'table' ? 'Flank' : '',
-    r.roundMods.length ? r.roundMods.map((m) => `${m.stat}${m.delta > 0 ? '+' : ''}${m.delta}`).join(' ') : '',
+    r.flags.marked ? 'Marked' : '',
+    r.flags.decay ? 'Strain active (Decay)' : '',
+    r.flags.memories ? 'Memories of Old' : '',
+    [...r.roundMods, ...(r.grantMods ?? [])].length ? [...r.roundMods, ...(r.grantMods ?? [])].map((m) => `${m.stat}${m.delta > 0 ? '+' : ''}${m.delta} (${m.source})`).join(' ') : '',
   ].filter(Boolean);
   return (
     <div data-testid="unit-callout">
@@ -105,9 +108,22 @@ export function actionTitle(s: GameState, a: Action): string {
       return `${a.player} Reinforcements`;
     case 'supremacyRollOff':
       return 'Supremacy roll-off';
+    case 'drawEvent':
+      return `Draw Event: ${a.name}`;
+    case 'spell':
+      return `Spell: ${a.spell}`;
+    case 'endActivation':
+      return 'End of Activation';
+    case 'memories':
+      return `${name(a.regimentId)}: Memories of Old`;
     default:
       return a.type.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
   }
+}
+
+/** The interesting notes on a dice roll: re-rolls, conversions and extra Hits, not the target or the pass count. */
+function diceNotes(e: GameEvent): string[] {
+  return (e.dice?.notes ?? []).filter((n) => !/^target /.test(n) && !/^\d+ pass/.test(n));
 }
 
 /** Callout for the last Action: what happened, with the dice. */
@@ -134,6 +150,8 @@ export function ActionCallout({ s, action, events, byComputer, onNext, onClose }
               </span>
             )}
             {e.text}
+            {/* Re-rolls and conversions (Flurry, Designate Target, Blessed, Devout…). */}
+            {diceNotes(e).length > 0 && <span className="meta dice-notes"> · {diceNotes(e).join(' · ')}</span>}
           </li>
         ))}
         {lines.length > 12 && <li className="meta">… {lines.length - 12} more in the log</li>}

@@ -8,7 +8,7 @@ import { sectOf } from '../../engine/rules/special/grants';
  * Command Stack as a row of cards on the table: tap a card to pick it up, tap another to put it
  * there (or use the arrows), then confirm. The top of the stack is on the left.
  */
-export function StackBuilder({ s, p, dispatch }: { s: GameState; p: PlayerId; dispatch: (a: Action) => boolean }) {
+export function StackBuilder({ s, p, dispatch, onPreview }: { s: GameState; p: PlayerId; dispatch: (a: Action) => boolean; onPreview?: (regimentId: string | null) => void }) {
   const [order, setOrder] = useState<CommandCard[]>(() => defaultStackOrder(s, p));
   const [picked, setPicked] = useState<number | null>(null);
   const move = (from: number, to: number) => {
@@ -20,10 +20,10 @@ export function StackBuilder({ s, p, dispatch }: { s: GameState; p: PlayerId; di
     setPicked(to);
   };
   return (
-    <div className="deck-panel" data-testid={`deck-${p}`}>
+    <div className="deck-panel stack card" data-testid={`deck-${p}`}>
       <div className="deck-head">
         <strong>{p} Command Stack</strong>
-        <span className="meta">top card first · tap a card, then tap where it goes</span>
+        <span className="meta">top card first · tap a card to see its Regiment on the table, then tap where it goes</span>
       </div>
       <div className="cards">
         {order.map((c, i) => (
@@ -31,7 +31,15 @@ export function StackBuilder({ s, p, dispatch }: { s: GameState; p: PlayerId; di
             key={c.id}
             type="button"
             className={`ccard ${c.kind} ${picked === i ? 'picked' : ''} owner-${p}`}
-            onClick={() => (picked === null ? setPicked(i) : picked === i ? setPicked(null) : move(picked, i))}
+            onClick={() => {
+              // Picking a card highlights its Regiment on the table, so the stack is ordered with the battlefield in view.
+              const target = c.kind === 'character' ? s.characters[c.refId]?.attachedTo ?? null : c.refId;
+              if (picked === null) {
+                setPicked(i);
+                onPreview?.(target && s.regiments[target]?.location === 'table' ? target : null);
+              } else if (picked === i) setPicked(null);
+              else move(picked, i);
+            }}
           >
             <span className="pos">{i + 1}</span>
             <span className="cname">{c.name}</span>

@@ -59,7 +59,7 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
             <strong>{p}</strong>
             <ul className="plain">
               {reserve.map((r) => {
-                const need = reinforcementNeed(s.round, reinforcementClass(r));
+                const need = reinforcementNeed(s.round, reinforcementClass(s, r));
                 const isAuto = auto[p] === r.id;
                 const isFlank = flank.has(r.id);
                 const canPick = eligible.has(r.id) && need !== 'auto' && !r.flags.autoArrive && !isFlank;

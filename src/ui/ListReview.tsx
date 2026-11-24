@@ -224,12 +224,14 @@ function EntryEditor({
         {entry.drawEvents.some((d) => d.startsWith('Strain Expression')) && (
           <label className="field" data-testid={`strain-${entry.name}`}>
             Strain ability{' '}
-            <span className="meta">(not in the export: type it from your faction book, e.g. “+1 Clash, Flurry”)</span>
-            <input className="grow" value={strain} onChange={(e) => onStrain(e.target.value)} placeholder="+1 Clash, Flurry" />
+            <span className="meta">(not in the export: type it from your faction book, e.g. “+1 Clash, Flurry” or “enemy -1 Clash”)</span>
+            {!strain && <span className="badge manual">not entered: Strain Expression gives only Decay</span>}
+            <input className="grow" value={strain} onChange={(e) => onStrain(e.target.value)} placeholder="+1 Clash, Flurry, enemy -1 Clash" />
             {strain && (
               <span className="meta">
                 {' '}
                 → {Object.entries(parseStrainText(strain).stats).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join(', ')} {parseStrainText(strain).rules.join(', ')}
+                {Object.entries(parseStrainText(strain).enemyStats ?? {}).map(([k, v]) => ` · enemies in contact ${k}${v > 0 ? '+' : ''}${v}`).join('')}
               </span>
             )}
           </label>

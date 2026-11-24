@@ -34,14 +34,26 @@ import { ActionCallout, UnitCallout } from './Callouts';
 import { DrawDeck, StackBuilder } from './CommandDeck';
 import { OdActivation, PowerBar } from './OldDominionPanel';
 import { isOdDrawEvent } from '../../engine/factions/oldDominionActions';
-import { volleyLines } from '../../engine/actions';
+import { volleyAimed, volleyLines } from '../../engine/actions';
 import { decisionMaker } from '../../ai/ai';
 
 /** Actions that get an on-table callout (and wait for "Next" when the computer took them). */
 const CALLOUT_ACTIONS = new Set([
   'enter', 'march', 'reform', 'charge', 'volley', 'clash', 'withdraw', 'rally', 'combatRally', 'combatReform', 'takeAim', 'inspire',
   'placeCharge', 'failCharge', 'duel', 'reinforcements', 'supremacyRollOff', 'chooseFirst', 'pickZone', 'endRound', 'override.move',
+  'drawEvent', 'spell', 'memories', 'odSpend', 'characterAbility', 'useSupremacy',
 ]);
+/** Routine events that do not by themselves need a callout. */
+const ROUTINE = new Set(['activate', 'deactivate', 'draw', 'ai', 'phase', 'stack', 'manual', 'attach']);
+/**
+ * Does the last Action get a callout? Always for the Actions above; for activating or ending an
+ * Activation only when something happened (Aura of Death, Decay, Trample, Entourage…).
+ */
+export function showsCallout(type: string, events: { type: string }[]): boolean {
+  if (CALLOUT_ACTIONS.has(type)) return true;
+  if (type === 'activate' || type === 'endActivation' || type === 'activateCharacter' || type === 'setStack') return events.some((e) => !ROUTINE.has(e.type));
+  return false;
+}
 import { TableView, type Ghost, type Ruler } from './TableView';
 import { useAi } from './useAi';
 import { useGame, type GameSession } from './useGame';
@@ -78,7 +90,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
   // The computer waits for "Next" after each Action that gets a callout.
   const [ackedAt, setAckedAt] = useState(0);
   const lastAct = session.last?.action;
-  const needsAck = !!aiPlayer && !!lastAct?.why && CALLOUT_ACTIONS.has(lastAct.type) && ackedAt !== session.actions.length;
+  const needsAck = !!aiPlayer && !!lastAct?.why && showsCallout(lastAct.type, session.last?.events ?? []) && ackedAt !== session.actions.length;
   const [closedCallout, setClosedCallout] = useState(-1);
   const [showUnit, setShowUnit] = useState(true);
   const [rulerMode, setRulerMode] = useState<'point' | 'regiment'>('point');
@@ -199,6 +211,11 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
       return;
     }
     if ((mode === 'march' || mode === 'enter' || mode === 'withdraw') && id === selectedId) {
+      // Dragging a sideways or backward move adjusts it; otherwise drag sets the forward distance.
+      if (moves.length === 1 && (moves[0]!.kind === 'sideways' || moves[0]!.kind === 'backward')) {
+        setDrag({ start: p, base: [] });
+        return;
+      }
       const base = moves.length && moves[moves.length - 1]!.kind === 'forward' ? moves.slice(0, -1) : moves;
       setDrag({ start: p, base });
       return;
@@ -222,6 +239,17 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
       return;
     }
     const base = drag.base as MoveSeg[];
+    const lateral = moves.length === 1 && (moves[0]!.kind === 'sideways' || moves[0]!.kind === 'backward') && base.length === 0 && mode === 'march' ? moves[0]! : null;
+    if (lateral) {
+      const cap = marchAllowance(s, sel) / 2;
+      const v = { x: p.x - drag.start.x, y: p.y - drag.start.y };
+      const fwd = { x: Math.cos(sel.pose.angle), y: Math.sin(sel.pose.angle) };
+      const right = { x: Math.sin(sel.pose.angle), y: -Math.cos(sel.pose.angle) };
+      const d = lateral.kind === 'sideways' ? dot(v, right) : -dot(v, fwd);
+      const amt = Math.max(-cap, Math.min(cap, Math.round(d * 10) / 10));
+      setMoves([lateral.kind === 'sideways' ? { kind: 'sideways', d: amt } : { kind: 'backward', d: Math.max(0, amt) }]);
+      return;
+    }
     const width = footprint(formationInput(s, sel, mode === 'enter' ? { files: entry.files } : {})).halfWidth * 2;
     const from = mode === 'enter' ? entryPose(s, entry.edge, entry.along) : mode === 'withdraw' ? withdrawPose(s, sel, [], withdrawTurn) : sel.pose;
     const pose = applyPath(from, base, width);
@@ -272,6 +300,16 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
     if (last?.kind === 'forward') setMoves([...moves.slice(0, -1), { kind: 'forward', d: Math.max(0, Math.round((last.d + k) * 10) / 10) }]);
     else if (k > 0) setMoves([...moves, { kind: 'forward', d: k }]);
   };
+  /** Sideways (dir −1 left / +1 right) or backward, in steps, capped at half the March (core p.28). */
+  const nudgeLateral = (kind: 'sideways' | 'backward', dir: number, k: number) => {
+    if (!sel) return;
+    const cap = Math.floor((marchAllowance(s, sel) / 2) * 10) / 10;
+    const last = moves.length === 1 ? moves[0]! : null;
+    const cur = last && last.kind === kind ? (kind === 'sideways' ? (last as { d: number }).d : (last as { d: number }).d) : 0;
+    const signed = kind === 'sideways' ? cur * dir : cur;
+    const next = Math.min(cap, Math.max(0, (signed > 0 ? signed : 0) + k));
+    setMoves(next <= 0 ? [] : [{ kind, d: kind === 'sideways' ? dir * next : next } as MoveSeg]);
+  };
   const addWheel = (pivot: 'left' | 'right', degrees: number) => {
     const last = moves[moves.length - 1];
     if (last?.kind === 'wheel' && last.pivot === pivot) {
@@ -311,7 +349,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
     const act = s.activation!;
     const r = s.regiments[act.regimentId]!;
     const used = act.actions.length;
-    const status = [act.inspired ? 'Inspired' : '', act.aimed ? 'Aimed Shot' : '', r.broken ? 'Broken' : '', act.ended ? 'Activation over' : ''].filter(Boolean).join(' · ');
+    const status = [act.inspired ? 'Inspired' : '', volleyAimed(s, r) ? 'Aimed Shot' : '', r.broken ? 'Broken' : '', act.ended ? 'Activation over' : ''].filter(Boolean).join(' · ');
     const drawEventButtons = (names: string[]) => {
       if (used !== 0 || !names.length || s.regiments[act.regimentId]!.location !== 'table') return null;
       const done = act.drawEvents ?? [];
@@ -449,7 +487,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
   };
   const overlays: { id: string; at: Vec | null; node: React.ReactNode }[] = [];
   const last = session.last;
-  const showAction = !!last && CALLOUT_ACTIONS.has(last.action.type) && (needsAck || closedCallout !== session.actions.length);
+  const showAction = !!last && showsCallout(last.action.type, last.events) && (needsAck || closedCallout !== session.actions.length);
   if (showAction && last) {
     overlays.push({
       id: 'action',
@@ -504,6 +542,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
         </div>
       </div>
 
+      <div className="game-table">
       <TableView
         state={s}
         selectedId={selectedId}
@@ -519,9 +558,13 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
         lines={mode === 'target' && targetKind === 'volley' && sel ? volleyLines(s, sel).map((l) => ({ a: l.a, b: l.b, cls: l.kind, ...(l.label ? { label: l.label } : {}) })) : undefined}
         overlays={overlays}
       >
-        {s.phase === 'play' && s.step === 'command' && stackPlayer && !needsAck && <StackBuilder key={`${s.round}-${stackPlayer}`} s={s} p={stackPlayer} dispatch={dispatch} />}
         {s.phase === 'play' && !needsAck && <DrawDeck s={s} dispatch={dispatch} onSelect={setSelectedId} aiPlayer={paused ? null : aiPlayer} />}
       </TableView>
+      </div>
+      <div className="game-side">
+      {s.phase === 'play' && s.step === 'command' && stackPlayer && !needsAck && (
+        <StackBuilder key={`${s.round}-${stackPlayer}`} s={s} p={stackPlayer} dispatch={dispatch} onPreview={(id) => { setSelectedId(id); setShowUnit(true); }} />
+      )}
 
       {error && (
         <div className="warn card" role="alert" data-testid="error">
@@ -630,9 +673,13 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
                 <button type="button" className="secondary small" onClick={() => addWheel('right', -5)}>R −5°</button>
                 {mode === 'march' && (
                   <>
-                    <button type="button" className="secondary small" onClick={() => setMoves([{ kind: 'sideways', d: -1 }])}>← side</button>
-                    <button type="button" className="secondary small" onClick={() => setMoves([{ kind: 'sideways', d: 1 }])}>side →</button>
-                    <button type="button" className="secondary small" onClick={() => setMoves([{ kind: 'backward', d: 1 }])}>back</button>
+                    {/* Sideways or backward: up to half the March, in one direction only (core p.28). */}
+                    <button type="button" className="secondary small" onClick={() => nudgeLateral('sideways', -1, 0.5)}>← side ½″</button>
+                    <button type="button" className="secondary small" onClick={() => nudgeLateral('sideways', 1, 0.5)}>side ½″ →</button>
+                    <button type="button" className="secondary small" onClick={() => nudgeLateral('sideways', -1, Infinity)}>⇤ side max</button>
+                    <button type="button" className="secondary small" onClick={() => nudgeLateral('sideways', 1, Infinity)}>side max ⇥</button>
+                    <button type="button" className="secondary small" onClick={() => nudgeLateral('backward', 1, 0.5)}>back ½″</button>
+                    <button type="button" className="secondary small" onClick={() => nudgeLateral('backward', 1, Infinity)}>back max</button>
                   </>
                 )}
                 <button type="button" className="secondary small" onClick={() => setMoves([])}>Clear</button>
@@ -769,6 +816,7 @@ export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => voi
           ))}
         </ol>
       </details>
+      </div>
     </section>
   );
 }

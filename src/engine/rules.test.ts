@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getScenario } from '../scenarios';
-import { resolveAttack } from './combat';
+import { resolveAttack, stat } from './combat';
 import type { Ctx } from './dice';
 import { apply, createGame, validate, type Action } from './game';
 import type { GameState } from './model/types';
@@ -302,6 +302,13 @@ describe('Spires mechanics (from the imported list rule text)', () => {
     const end = step(u, rng, { type: 'endActivation' });
     expect(end.events.some((e) => /Decay: Attackers suffers 2 Wounds/.test(e.text))).toBe(true);
   });
+  it('a Strain can lower enemies in contact ("enemy -1 Clash") while it is active (core p.97, owner-entered AMB-18)', () => {
+    const { s, rng } = arena({ drawEvents: ['Strain Expression'], stands: 3 }, {}, 0);
+    s.players.P1.strains = { Attackers: { stats: {}, enemyStats: { C: -1 }, rules: [], text: 'enemy -1 Clash' } };
+    let u = activate(s, rng, 'P1-w0-r0');
+    u = step(u, rng, { type: 'drawEvent', name: 'Strain Expression' }).state;
+    expect(stat(u.regiments['P2-w0-r0']!, 'C')).toBe(2);
+  });
   it('Lobotomytic Override (top): Strain Expression without Decay', () => {
     const { s, rng } = arena({ drawEvents: ['Strain Expression'], stands: 3 }, {}, 20);
     let u = activate(s, rng, 'P1-w0-r0', { lobotomy: 'top' });
@@ -325,12 +332,12 @@ describe('Spires mechanics (from the imported list rule text)', () => {
     expect(g.state.regiments['P1-w0-r0']!.rules.some((x) => x.name === 'Parry')).toBe(true);
     expect(c.profile.C).toBe(5);
   });
-  it('Remorseless Hunter gives [Husk] Regiments Designate Target; Just Desserts (Directorate) +2 March', () => {
+  it('Remorseless Hunter gives [Husk] Regiments Designate Target; Just Desserts (Directorate) is already in the exported March', () => {
     const warlord = { ...hero('Hunter', 'Cavalry'), supremacyAbilities: ['Remorseless Hunter'] };
     const A = { ...list('A', [{ character: warlord, regiments: [mk('Husk Riders', { type: 'Cavalry', roles: ['Husk'] }), mk('Abom', { rules: ['Just Desserts'], type: 'Monster', stands: 1 })] }]), sect: 'The Directorate' };
     const g = createGame({ seed: 1, scenario: getScenario('melee')!, lists: { P1: A, P2: list('B', [{ regiments: [mk('X', {})] }]) } });
     expect(g.state.regiments['P1-w0-r0']!.rules.some((x) => x.name === 'Designate Target')).toBe(true);
-    expect(g.state.regiments['P1-w0-r1']!.profile.M).toBe(8);
+    expect(g.state.regiments['P1-w0-r1']!.profile.M).toBe(6);
   });
   it('Snapshot: an enemy in Line of Sight and Barrage range suffers 1 Wound', () => {
     const pher = { ...hero('Hunter', 'Infantry'), specialRules: [R('Barrage (4) [14]')], actions: [rule('Snapshot')] };

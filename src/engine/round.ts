@@ -23,11 +23,16 @@ export function reserveRegiments(s: GameState, p: PlayerId): RegimentState[] {
 
 /** Regiments that may be chosen to arrive automatically or stay back (core p.20–21). */
 export function reinforcementChoices(s: GameState, p: PlayerId): RegimentState[] {
-  return reserveRegiments(s, p).filter((r) => reinforcementNeed(s.round, reinforcementClass(r)) !== null);
+  return reserveRegiments(s, p).filter((r) => reinforcementNeed(s.round, reinforcementClass(s, r)) !== null);
 }
 
-/** The Class used for Reinforcements: the Fallen Divinity counts as Light (od p.13). */
-export function reinforcementClass(r: RegimentState): UnitClass {
+/**
+ * The Class used for Reinforcements. The Fallen Divinity counts as Light for its Reinforcement
+ * Roll (od p.13), but a Flank Regiment makes no roll and cannot enter before its own Class
+ * normally could (core p.97–98). RULE-AMBIGUITY: AMB-53 — so with Flank, its real Class applies.
+ */
+export function reinforcementClass(s: GameState, r: RegimentState): UnitClass {
+  if (hasFlank(s, r)) return r.cls;
   return (r.notes ?? []).some((n) => /class as light for the purposes of its reinforcement/i.test(n)) ? 'Light' : r.cls;
 }
 
@@ -38,19 +43,19 @@ export interface ReinforcementChoice {
 
 /** Flank Regiments that may decide to arrive or stay this Round (core p.98). */
 export function flankChoices(s: GameState, p: PlayerId): RegimentState[] {
-  return reserveRegiments(s, p).filter((r) => hasFlank(s, r) && !r.flags.autoArrive && reinforcementNeed(s.round, reinforcementClass(r)) !== null);
+  return reserveRegiments(s, p).filter((r) => hasFlank(s, r) && !r.flags.autoArrive && reinforcementNeed(s.round, reinforcementClass(s, r)) !== null);
 }
 
 export function reinforcementChoiceProblems(s: GameState, p: PlayerId, c: ReinforcementChoice | null, flank: Record<string, boolean> = {}): string[] {
   for (const [id, arrive] of Object.entries(flank)) {
     const r = s.regiments[id];
     if (!r || r.owner !== p || !flankChoices(s, p).includes(r)) return ['Only your Flank Regiments that can arrive this Round may be declared (core p.98).'];
-    if (!arrive && reinforcementNeed(s.round, reinforcementClass(r)) === 'auto') return [`${r.name} cannot stay past the Round its Class must arrive (core p.98).`];
+    if (!arrive && reinforcementNeed(s.round, reinforcementClass(s, r)) === 'auto') return [`${r.name} cannot stay past the Round its Class must arrive (core p.98).`];
   }
   if (!c) return [];
   const r = s.regiments[c.regimentId];
   if (!r || r.owner !== p || r.location !== 'reserve') return ['Choose one of your Regiments in Reinforcements.'];
-  const need = reinforcementNeed(s.round, reinforcementClass(r));
+  const need = reinforcementNeed(s.round, reinforcementClass(s, r));
   if (need === null) return [`${r.cls} Regiments cannot arrive in Round ${s.round} (core p.21).`];
   if (!c.arrive && need === 'auto') return [`${r.name} must arrive this Round (core p.21).`];
   return [];
@@ -66,7 +71,7 @@ export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementCho
   for (const r of reserveRegiments(s, p)) {
     // Flank (core p.98): no die; the player declares whether it arrives or stays, within its Class's window.
     if (hasFlank(s, r) && !(choice && r.id === choice.regimentId) && !r.flags.autoArrive) {
-      const need = reinforcementNeed(s.round, reinforcementClass(r));
+      const need = reinforcementNeed(s.round, reinforcementClass(s, r));
       if (need === null) continue;
       const arrive = need === 'auto' ? true : flank[r.id] ?? true;
       r.location = arrive ? 'arriving' : 'reserve';
@@ -84,7 +89,7 @@ export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementCho
       ev(ctx, { type: 'reinforcement', text: `${r.name} arrives automatically after failing to enter last Round (core p.31).`, player: p, regimentId: r.id });
       continue;
     }
-    const need = reinforcementNeed(s.round, reinforcementClass(r));
+    const need = reinforcementNeed(s.round, reinforcementClass(s, r));
     if (need === null) continue;
     if (need === 'auto') {
       r.location = 'arriving';

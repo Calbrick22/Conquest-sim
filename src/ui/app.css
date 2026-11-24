@@ -178,3 +178,24 @@ select, input, textarea { max-width: 100%; }
   .ccard { width: 64px; height: 88px; }
 }
 .deck-panel { z-index: 6; }
+
+/* Command Stack below the table (not over it), so the battlefield stays in view. */
+.deck-panel.stack { position: static; margin: 8px 0; background: var(--card); }
+.callout .dice-notes { font-size: 0.72rem; }
+.zoom button.on { background: var(--accent); color: #fff; }
+
+/* Wide screens: table on the left (stays in view), controls on the right. */
+@media (min-width: 1000px) {
+  .app:has(.game-screen) { max-width: 1600px; }
+  .game-screen { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 12px; align-items: start; }
+  .game-screen > .topbar { grid-column: 1 / -1; }
+  .game-table { position: sticky; top: 8px; }
+  .game-table .map.game { max-height: calc(100vh - 80px); }
+  .game-side { min-width: 0; }
+  .game-side > .card:first-child, .game-side > .deck-panel:first-child { margin-top: 0; }
+}
+/* Phones: the table stays pinned at the top while the controls scroll beneath it. */
+@media (max-width: 999px) {
+  .game-table { position: sticky; top: 0; z-index: 3; }
+  .game-table .table-wrap { position: static; }
+}

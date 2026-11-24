@@ -361,6 +361,8 @@ export type { Edge };
 /** A Strain ability as entered by the owner: characteristic changes and gained rules. */
 export interface StrainDef {
   stats: Partial<Record<keyof Profile, number>>;
+  /** Changes to enemy Regiments in contact while the Strain is active. */
+  enemyStats?: Partial<Record<keyof Profile, number>>;
   rules: RuleRef[];
   /** The owner's own description. */
   text: string;
