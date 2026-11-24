@@ -48,6 +48,18 @@ import {
   supremacyRollOff,
 } from './round';
 import { barrageOf, manualRules } from './rules/special/rules';
+import {
+  applyMarkerCharge,
+  applyMarkerClash,
+  attackMarker,
+  isMarkerTarget,
+  markerAttackProblems,
+  markerChargeProblems,
+  markerId,
+  markerInContact,
+  markerVolleyPlan,
+} from './markers';
+import { zoneResults } from './scoring/victory';
 import { TOL } from './geometry/vec';
 
 function reg(s: GameState, id: string): RegimentState | undefined {
@@ -86,6 +98,21 @@ export function validateM4(s: GameState, a: Action): Validation {
       if (!w || w.destroyed || !w.attachedTo || s.regiments[w.attachedTo]?.location !== 'table') return fail('The Warlord must be on the Battlefield (core p.22).');
       return ok();
     }
+    case 'pickZone': {
+      const zp = s.scenario.zonePick;
+      if (!zp || s.step !== 'supremacy' || !s.firstPlayer) return fail('No zone to pick now.');
+      const second = s.firstPlayer === 'P1' ? 'P2' : 'P1';
+      const next = s.zonePicks[s.firstPlayer] === null ? s.firstPlayer : s.zonePicks[second] === null ? second : null;
+      if (next !== a.player) return fail(`It is ${next ?? 'nobody'}'s turn to pick a zone (First Player first).`);
+      if (zp.eligibleZoneIds && !zp.eligibleZoneIds.includes(a.zoneId)) return fail('That zone cannot be picked in this scenario.');
+      if (!s.scenario.zones.some((z) => z.id === a.zoneId)) return fail('Unknown zone.');
+      if (zp.mode === 'vetoDistinct' && a.player === second && s.zonePicks[s.firstPlayer] === a.zoneId) return fail('The Second Player must pick a different zone (pack p.12).');
+      if (zp.mode === 'bonusPick') {
+        const zr = zoneResults(s)[a.zoneId];
+        if (zr && zr.totals[a.player] > 0) return fail('Pick a zone with no friendly Regiment in range (pack p.22).');
+      }
+      return ok();
+    }
     case 'drawCard': {
       if (s.step !== 'action') return fail('Not in the Action Phase.');
       if (s.turn !== a.player) return fail(`It is ${s.turn ?? 'nobody'}'s turn to draw.`);
@@ -105,6 +132,7 @@ export function validateM4(s: GameState, a: Action): Validation {
       if (s.activation.actions.length) return fail('Draw Events are resolved before the first Action (core p.23).');
       return ok();
     case 'charge':
+      if (isMarkerTarget(a.targetId)) return act(s, a.regimentId, 'charge', () => markerChargeProblems(s, s.regiments[a.regimentId]!, markerId(a.targetId)));
       return act(s, a.regimentId, 'charge', () => chargeProblems(s, s.regiments[a.regimentId]!, s.regiments[a.targetId]));
     case 'placeCharge': {
       const pc = s.pendingCharge;
@@ -120,6 +148,7 @@ export function validateM4(s: GameState, a: Action): Validation {
     case 'volley':
       return act(s, a.regimentId, 'volley', () => {
         const r = s.regiments[a.regimentId]!;
+        if (isMarkerTarget(a.targetId)) return markerVolleyPlan(s, r, markerId(a.targetId), !!s.activation?.aimed).problems;
         const t = s.regiments[a.targetId];
         if (!t) return ['Unknown target.'];
         return planVolley(s, r, t, !!s.activation?.aimed).problems;
@@ -127,6 +156,12 @@ export function validateM4(s: GameState, a: Action): Validation {
     case 'clash':
       return act(s, a.regimentId, 'clash', () => {
         const r = s.regiments[a.regimentId]!;
+        if (isMarkerTarget(a.targetId)) {
+          const id = markerId(a.targetId);
+          const p = markerAttackProblems(s, r.owner, id);
+          if (p.length) return p;
+          return markerInContact(s, r, id) ? [] : ['The Regiment must be in contact with the Marker (pack p.9).'];
+        }
         return clashTargets(s, r).some((t) => t.id === a.targetId) ? [] : ['Clash targets an enemy Regiment in contact (core p.44).'];
       });
     case 'takeAim':
@@ -204,6 +239,19 @@ function startActivation(ctx: Ctx, r: RegimentState, extra: Partial<NonNullable<
   ctx.s.activation = { regimentId: r.id, actions: [], entering: r.location === 'arriving', startPose: r.pose, drawEventDone: false, aimed: false, inspired: false, ended: false, ...extra };
 }
 
+function startActionPhase(ctx: Ctx): void {
+  const s = ctx.s;
+  const first = s.firstPlayer!;
+  s.step = 'action';
+  ev(ctx, { type: 'phase', text: `Action Phase: ${first} is the First Player (core p.22).` });
+  if (s.players[first].stack.length) s.turn = first;
+  else passTurn(s, first === 'P1' ? 'P2' : 'P1');
+  if (!s.players.P1.stack.length && !s.players.P2.stack.length) {
+    s.turn = null;
+    s.step = 'victory';
+  }
+}
+
 /** Deactivation, Entourage Activation (core p.23, p.75) and passing play. */
 export function endActivation(ctx: Ctx, entourage: boolean): void {
   const s = ctx.s;
@@ -270,14 +318,18 @@ export function applyM4(ctx: Ctx, a: Action): void {
       break;
     case 'chooseFirst': {
       s.firstPlayer = a.first;
-      s.step = 'action';
-      ev(ctx, { type: 'phase', text: `Action Phase: ${a.first} is the First Player (core p.22).` });
-      if (s.players[a.first].stack.length) s.turn = a.first;
-      else passTurn(s, a.first === 'P1' ? 'P2' : 'P1');
-      if (!s.players.P1.stack.length && !s.players.P2.stack.length) {
-        s.turn = null;
-        s.step = 'victory';
+      if (s.scenario.zonePick) {
+        ev(ctx, { type: 'phase', text: `${a.first} is the First Player. Zone picks: ${a.first} first, then the other player (scenario rules).` });
+        break;
       }
+      startActionPhase(ctx);
+      break;
+    }
+    case 'pickZone': {
+      s.zonePicks[a.player] = a.zoneId;
+      const secret = s.scenario.zonePick!.mode === 'vetoSecret';
+      ev(ctx, { type: 'pick', text: `${a.player} picks ${secret ? 'a zone (secret until the Victory Phase)' : `zone ${a.zoneId}`}.`, player: a.player });
+      if (s.zonePicks.P1 !== null && s.zonePicks.P2 !== null) startActionPhase(ctx);
       break;
     }
     case 'useSupremacy': {
@@ -309,7 +361,8 @@ export function applyM4(ctx: Ctx, a: Action): void {
       break;
     }
     case 'charge':
-      applyCharge(ctx, s.regiments[a.regimentId]!, s.regiments[a.targetId]!);
+      if (isMarkerTarget(a.targetId)) applyMarkerCharge(ctx, s.regiments[a.regimentId]!, markerId(a.targetId));
+      else applyCharge(ctx, s.regiments[a.regimentId]!, s.regiments[a.targetId]!);
       break;
     case 'placeCharge': {
       const pc = s.pendingCharge!;
@@ -327,14 +380,22 @@ export function applyM4(ctx: Ctx, a: Action): void {
       overrideEv(ctx, `${s.regiments[pc.regimentId]!.name}'s Charge is declared failed: its path is blocked (core p.32).`, pc.regimentId);
       break;
     }
-    case 'volley':
+    case 'volley': {
       s.activation!.actions.push('volley');
-      applyVolley(ctx, s.regiments[a.regimentId]!, s.regiments[a.targetId]!);
+      const r = s.regiments[a.regimentId]!;
+      if (isMarkerTarget(a.targetId)) {
+        const id = markerId(a.targetId);
+        attackMarker(ctx, r, id, markerVolleyPlan(s, r, id, s.activation!.aimed).pools, 'volley', `${r.name} Volley at Marker ${id}`);
+      } else applyVolley(ctx, r, s.regiments[a.targetId]!);
       break;
-    case 'clash':
+    }
+    case 'clash': {
       s.activation!.actions.push('clash');
-      applyClash(ctx, s.regiments[a.regimentId]!, s.regiments[a.targetId]!);
+      const r = s.regiments[a.regimentId]!;
+      if (isMarkerTarget(a.targetId)) applyMarkerClash(ctx, r, markerId(a.targetId));
+      else applyClash(ctx, r, s.regiments[a.targetId]!);
       break;
+    }
     case 'takeAim':
       s.activation!.actions.push('takeAim');
       s.activation!.aimed = true;

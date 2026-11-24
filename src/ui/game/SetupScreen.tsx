@@ -6,16 +6,22 @@ import syntheticList from '../../import/__fixtures__/synthetic-list.txt?raw';
 import { parseArmyList } from '../../import/parseList';
 import type { ArmyList } from '../../import/types';
 import { SCENARIOS } from '../../scenarios';
-import { listLists, type SavedList } from '../../storage/db';
-import type { GameSession } from './useGame';
+import { deleteGame, listGames, listLists, newId, type SavedGame, type SavedList } from '../../storage/db';
+import { replay, type GameSession } from './useGame';
 
 const DEMO_ID = 'demo';
 
 export interface NewGame {
+  id: string;
+  createdAt: string;
   session: GameSession;
   /** Which side the human plays ("hotseat" controls both). */
   you: PlayerId;
   mode: 'hotseat';
+}
+
+export function resumeGame(g: SavedGame): NewGame {
+  return { id: g.id, createdAt: g.createdAt, you: g.you, mode: 'hotseat', session: replay(g.initial, g.initialRng, g.initialEvents, g.actions) };
 }
 
 export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
@@ -25,9 +31,12 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
   const [scenarioId, setScenarioId] = useState('forlorn-hope');
   const [seed, setSeed] = useState(() => (Date.now() >>> 0) % 1_000_000);
   const [roll, setRoll] = useState<{ winner: 'you' | 'opponent'; rolls: [number, number][] } | null>(null);
+  const [games, setGames] = useState<SavedGame[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     listLists().then(setSaved).catch(() => setSaved([]));
+    listGames().then(setGames).catch(() => setGames([]));
   }, []);
 
   const getList = (id: string): ArmyList => (id === DEMO_ID ? parseArmyList(syntheticList) : saved.find((s) => s.id === id)!.list);
@@ -48,6 +57,8 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
       { type: 'rolloff', text: `Roll-off for sides (lowest wins): ${rollText}. ${roll!.winner === 'you' ? 'You win' : 'Opponent wins'}; you are ${youAre} (${youAre === 'P1' ? 'bottom' : 'top'} edge).`, round: 1 },
     ];
     onStart({
+      id: newId(),
+      createdAt: new Date().toISOString(),
       session: { initial: g.state, initialRng: g.rng, initialEvents, state: g.state, rng: g.rng, actions: [], events: initialEvents },
       you: youAre,
       mode: 'hotseat',
@@ -65,8 +76,45 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
     </>
   );
 
+  const importFile = async (f: File) => {
+    try {
+      const g = JSON.parse(await f.text()) as SavedGame;
+      if (!g.initial || !g.actions) throw new Error('not a Conquest Sim game file');
+      onStart(resumeGame({ ...g, id: g.id ?? newId() }));
+    } catch (e) {
+      setLoadError(`Could not load ${f.name}: ${String(e)}`);
+    }
+  };
+
   return (
     <section>
+      {(
+        <div className="card">
+          <h3>Saved games</h3>
+          {games.length === 0 && <p className="meta">Games are saved on this device automatically after every action.</p>}
+          <ul className="plain saved">
+            {games.map((g) => (
+              <li key={g.id}>
+                <button type="button" className="link" onClick={() => onStart(resumeGame(g))} data-testid="resume-game">
+                  {g.name}
+                </button>{' '}
+                <span className="meta">
+                  Round {Math.min(g.round, g.initial.scenario.rounds)} · {g.vp.P1}–{g.vp.P2}
+                  {g.ended ? ' · finished' : ''} · {new Date(g.savedAt).toLocaleString()}
+                </span>{' '}
+                <button type="button" className="secondary small" onClick={async () => { if (confirm(`Delete ${g.name}?`)) { await deleteGame(g.id); setGames(await listGames()); } }}>
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+          <label className="file meta">
+            Load a game file (.json){' '}
+            <input type="file" accept=".json,application/json" onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
+          </label>
+          {loadError && <p className="warn">{loadError}</p>}
+        </div>
+      )}
       <h2>New game</h2>
       <div className="card">
         <label className="field">
@@ -84,7 +132,7 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
           </select>
         </label>
         <label className="field">
-          Opponent <select disabled value="hotseat"><option value="hotseat">Hotseat (you play both sides); computer opponent arrives in M6</option></select>
+          Opponent <select disabled value="hotseat"><option value="hotseat">Hotseat (you play both sides)</option></select>
         </label>
         <label className="field small">
           Seed <input type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value) >>> 0)} />

@@ -55,7 +55,7 @@ function obstacles(s: GameState, exclude: string[]): Obstacle[] {
     .flatMap((r) => regimentPolys(s, r).map((poly) => ({ poly, size: sizeOf(r) })));
 }
 
-function closestPointOnPoly(p: Vec, poly: Poly): Vec {
+export function closestPointOnPoly(p: Vec, poly: Poly): Vec {
   let best = poly[0]!;
   let bd = Infinity;
   for (let i = 0; i < poly.length; i++) {
@@ -75,7 +75,7 @@ function closestPointOnPoly(p: Vec, poly: Poly): Vec {
 }
 
 /** Centre of the front edge of a Stand rectangle. */
-function frontCentre(rect: Rect): Vec {
+export function frontCentre(rect: Rect): Vec {
   const [fl, fr] = rectCorners(rect);
   return { x: (fl.x + fr.x) / 2, y: (fl.y + fr.y) / 2 };
 }

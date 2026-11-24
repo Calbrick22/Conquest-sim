@@ -159,6 +159,8 @@ export interface PlayerState {
   id: PlayerId;
   listName: string;
   faction: string;
+  /** Army points (the list's limit, else its total). */
+  points: number | null;
   /** Glossary from the imported list: rule name → text. */
   glossary: Record<string, string>;
   vp: number;
@@ -202,6 +204,33 @@ export interface GameState {
   /** Dice forced by the manual "set next dice" tool; consumed before the RNG. */
   forcedDice: number[];
   tally: RoundTally;
+  /** Objective Markers: Wounds caused by each player, tracked separately (pack p.9). */
+  markers: Record<string, MarkerState>;
+  /** Zone picks for scenarios with a zonePick rule (pack p.12, p.19, p.22), this Round. */
+  zonePicks: Record<PlayerId, string | null>;
+  /** Victory Points scored each Round. */
+  scoreHistory: RoundScore[];
+  /** A once-per-game Warlord bonus has been scored. */
+  warlordScored: Record<PlayerId, boolean>;
+}
+
+export interface MarkerState {
+  id: string;
+  woundsBy: Record<PlayerId, number>;
+  destroyed: boolean;
+}
+
+export interface ScoreLineRecord {
+  rule: string;
+  vp: number;
+  detail: string;
+}
+
+export interface RoundScore {
+  round: number;
+  seized: Record<PlayerId, string[]>;
+  vp: Record<PlayerId, number>;
+  lines: Record<PlayerId, ScoreLineRecord[]>;
 }
 
 export type { Edge };

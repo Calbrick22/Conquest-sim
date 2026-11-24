@@ -1,6 +1,6 @@
 # PLAN: Conquest TLAoK battle simulator (MVP)
 
-The status is: M1 to M4 are done, and M5 (scoring, save and log) is next. Mechanics are summarised in [`docs/rules-digest.md`](docs/rules-digest.md), and open questions are in [`docs/ambiguities.md`](docs/ambiguities.md).
+The status is: M1 to M5 are done, and M6 (computer opponent) is next. Mechanics are summarised in [`docs/rules-digest.md`](docs/rules-digest.md), and open questions are in [`docs/ambiguities.md`](docs/ambiguities.md).
 
 ## 1. What I read
 

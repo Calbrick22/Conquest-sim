@@ -9,6 +9,7 @@ import { createRng, rollD6, type RngState } from './rng';
 import type { Ctx } from './dice';
 import { applyM4, endActivation, logManualRules, validateM4 } from './gameM4';
 import { beginRound, cardTargets, type ReinforcementChoice } from './round';
+import { victoryPhase } from './scoring/victory';
 import './rules/special/rules';
 import {
   canTakeAction,
@@ -46,6 +47,7 @@ export type Action =
   | { type: 'supremacyRollOff' }
   | { type: 'chooseFirst'; first: PlayerId }
   | { type: 'useSupremacy'; player: PlayerId }
+  | { type: 'pickZone'; player: PlayerId; zoneId: string }
   | { type: 'drawCard'; player: PlayerId }
   | { type: 'activateCharacter'; characterId: string }
   | { type: 'drawEvent'; name: string }
@@ -199,8 +201,8 @@ export function createGame(input: SetupInput): SetupResult {
     round: 1,
     phase: 'setup',
     players: {
-      P1: { id: 'P1', listName: input.lists.P1.title, faction: input.lists.P1.faction, glossary: input.lists.P1.glossary, vp: 0, stack: [], stackSet: false, reinforcementDone: false, supremacyUsed: false },
-      P2: { id: 'P2', listName: input.lists.P2.title, faction: input.lists.P2.faction, glossary: input.lists.P2.glossary, vp: 0, stack: [], stackSet: false, reinforcementDone: false, supremacyUsed: false },
+      P1: { id: 'P1', listName: input.lists.P1.title, faction: input.lists.P1.faction, points: input.lists.P1.pointsLimit ?? input.lists.P1.points, glossary: input.lists.P1.glossary, vp: 0, stack: [], stackSet: false, reinforcementDone: false, supremacyUsed: false },
+      P2: { id: 'P2', listName: input.lists.P2.title, faction: input.lists.P2.faction, points: input.lists.P2.pointsLimit ?? input.lists.P2.points, glossary: input.lists.P2.glossary, vp: 0, stack: [], stackSet: false, reinforcementDone: false, supremacyUsed: false },
     },
     regiments,
     characters,
@@ -214,6 +216,10 @@ export function createGame(input: SetupInput): SetupResult {
     pendingCharge: null,
     forcedDice: [],
     tally: { charactersKilled: { P1: 0, P2: 0 }, regimentsDestroyed: { P1: 0, P2: 0 }, warlordSlain: { P1: false, P2: false }, markersDestroyed: { P1: [], P2: [] } },
+    markers: Object.fromEntries(input.scenario.markers.map((m) => [m.id, { id: m.id, woundsBy: { P1: 0, P2: 0 }, destroyed: false }])),
+    zonePicks: { P1: null, P2: null },
+    scoreHistory: [],
+    warlordScored: { P1: false, P2: false },
   };
   const events: GameEvent[] = [{ type: 'setup', text: `Game created on ${input.scenario.name} (seed ${input.seed}).`, round: 1 }];
   for (const w of warnings) events.push({ type: 'warning', text: w, round: 1 });
@@ -498,7 +504,8 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
       break;
     }
     case 'endRound': {
-      ev({ type: 'victory', text: `Victory Phase, Round ${s.round} (scoring arrives in M5).` });
+      ev({ type: 'victory', text: `Victory Phase, Round ${s.round}.` });
+      victoryPhase(ctx);
       s.round += 1;
       if (s.round > s.scenario.rounds) {
         s.phase = 'ended';

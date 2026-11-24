@@ -30,6 +30,7 @@ interface Props {
   /** Edge segments to highlight as legal entry areas. */
   highlightEdges?: { a: Vec; b: Vec; ok: boolean }[];
   onRegimentDown?: (id: string, p: Vec) => void;
+  onMarkerDown?: (id: string) => void;
   onTap?: (p: Vec) => void;
   /** Called while the pointer is dragged after onRegimentDown returned. */
   onDrag?: (p: Vec) => void;
@@ -142,9 +143,26 @@ export function TableView(props: Props) {
         {s.scenario.zones.map((z) => (
           <circle key={z.id} cx={z.x} cy={fy(z.y)} r={z.diameter / 2} className="zone" fill={z.friendlyTo ? OWNER_COLOR[z.friendlyTo] : 'var(--zone)'} />
         ))}
-        {s.scenario.markers.map((m) => (
-          <rect key={m.id} x={m.x - markerSide / 2} y={fy(m.y) - markerSide / 2} width={markerSide} height={markerSide} className="marker" fill={m.friendlyTo ? OWNER_COLOR[m.friendlyTo] : 'var(--zone)'} />
-        ))}
+        {s.scenario.markers.map((m) => {
+          const st = s.markers[m.id];
+          if (st?.destroyed) return null;
+          return (
+            <g
+              key={m.id}
+              onPointerDown={(e) => {
+                if (!props.onMarkerDown) return;
+                e.stopPropagation();
+                props.onMarkerDown(m.id);
+              }}
+              data-testid={`marker-${m.id}`}
+            >
+              <rect x={m.x - markerSide / 2} y={fy(m.y) - markerSide / 2} width={markerSide} height={markerSide} className="marker" fill={m.friendlyTo ? OWNER_COLOR[m.friendlyTo] : 'var(--zone)'} />
+              {st && (st.woundsBy.P1 > 0 || st.woundsBy.P2 > 0) && (
+                <text x={m.x} y={fy(m.y) + 0.5} className="rlabel">{st.woundsBy.P1}/{st.woundsBy.P2}</text>
+              )}
+            </g>
+          );
+        })}
         {s.scenario.noReinforcement.map((seg, i) => {
           const x = seg.edge === 'left' ? 0 : seg.edge === 'right' ? W : null;
           return x !== null ? (

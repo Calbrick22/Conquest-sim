@@ -361,6 +361,12 @@ Spires use "Practitioner" Actions instead. They are faction-specific and listed 
 - Damage is tracked separately for each player. A Marker is destroyed when one player has dealt 3 Wounds.
 - A friendly Marker inside a zone makes that zone **Contested**: the enemy can't seize it.
 
+### What the engine does each Round
+
+- At the end of each Round it works out who seizes each zone from where the Stands are.
+- It scores Markers destroyed and Characters and Regiments killed that Round.
+- It applies the scenario's scoring rules.
+
 ### Heroic End
 
 - A player with nothing left on the table or in Reinforcements doesn't lose automatically. The opponent keeps playing and scoring (pack p.8).

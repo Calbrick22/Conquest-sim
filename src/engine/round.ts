@@ -209,6 +209,7 @@ export function beginRound(s: GameState): void {
   s.supremacyWinner = null;
   s.turn = null;
   s.drawn = null;
+  s.zonePicks = { P1: null, P2: null };
   s.tally = { charactersKilled: { P1: 0, P2: 0 }, regimentsDestroyed: { P1: 0, P2: 0 }, warlordSlain: { P1: false, P2: false }, markersDestroyed: { P1: [], P2: [] } };
   s.reinforcementLine = { P1: computeReinforcementLine(s, 'P1'), P2: computeReinforcementLine(s, 'P2') };
 }

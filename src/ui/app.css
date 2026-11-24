@@ -128,3 +128,10 @@ input.grow { flex: 1; font: inherit; padding: 8px; min-height: 40px; border: 1px
 .dice-row { padding: 6px 0; border-bottom: 1px solid var(--line); }
 .manual-tools { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 6px; }
 .manual-tools select, .phase-panel select { font: inherit; padding: 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+.score { font-weight: 700; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.scroll-x { overflow-x: auto; }
+.scoreboard { border-collapse: collapse; font-size: 0.9rem; }
+.scoreboard th, .scoreboard td { border: 1px solid var(--line); padding: 4px 8px; text-align: center; }
+.card.result { border-color: var(--accent); }
+select, input, textarea { max-width: 100%; }
+.card { overflow-wrap: anywhere; }

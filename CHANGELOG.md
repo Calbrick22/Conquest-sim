@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.5.0] - 2026-11-24 (M5: scoring, save and log)
+
+### Added
+- Victory Phase scoring from the table:
+  - Objective Zones are seized by Stands overlapping them, using Class weights (Light 0, Medium and Heavy 1, Monster 3) and the "more in total and more seizing" test.
+  - Broken Regiments and Regiments that declined a Duel cannot seize.
+  - A friendly Marker inside a zone contests it.
+  - Zones count from Round 2, or Round 1 in Maelstorm.
+- Objective Markers can be Charged, Clashed and Volleyed (Volley only within Effective Range), from Round 2 and only by the enemy:
+  - Defense 3 and 3 Wounds;
+  - Wounds per Action capped at 1 (2 for Heavy Regiments in melee);
+  - damage tracked per player;
+  - 3 Wounds from one player destroys a Marker.
+- Scoring rules from all 12 scenarios, applied each Round:
+  - zones, bonuses for the number of zones, Markers, Character and Regiment kills, the Warlord (once per game);
+  - Round-dependent bonuses;
+  - zone picks for Declined Flank, Foresight and Grind Them Down.
+- Score shown in the top bar, a per-Round scoreboard (zones and kills), and a zone-status preview before ending a Round.
+- Games save automatically on the device after every action, and can be resumed from the Play screen. Save and Undo both replay the seed and the list of actions.
+- Export: the Markdown game log in the owner's format (header, result, score table by Round), followed by the full event log. Also a JSON game file that loads back in.
+- The required end-to-end test: import two fixture lists, choose Forlorn Hope, play Rounds 1 and 2, move a Regiment onto a zone, end the Round, check the score is 2–0, then resume the saved game.
+
+### Fixed
+- Character Activations now show their controls.
+- On phones the setup screen overflowed and zoomed out.
+- A Shattered Regiment was counted as destroyed twice.
+
+### Decided
+- AMB-34: contact with an Objective Marker.
+
 ## [0.4.0] - 2026-11-24 (M4: Round loop and combat)
 
 ### Added

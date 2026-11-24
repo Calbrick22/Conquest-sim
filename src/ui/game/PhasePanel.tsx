@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Action } from '../../engine/game';
 import type { CommandCard, GameState, PlayerId } from '../../engine/model/types';
 import { cardTargets, defaultStackOrder, reinforcementChoices, reinforcementNeed, reserveRegiments } from '../../engine/round';
+import { zoneResults } from '../../engine/scoring/victory';
 
 const PLAYERS: PlayerId[] = ['P1', 'P2'];
 
@@ -17,7 +18,8 @@ export function PhasePanel({ s, dispatch, onSelect }: { s: GameState; dispatch: 
       {s.step === 'victory' && (
         <>
           <h3>Victory Phase</h3>
-          <p className="meta">Every Command Card has been played. Round scoring arrives in M5.</p>
+          <p className="meta">Every Command Card has been played. Ending the Round scores it (core p.106).</p>
+          <ZoneStatus s={s} />
           <button type="button" onClick={() => dispatch({ type: 'endRound' })} data-testid="end-round">
             End Round {s.round}
           </button>
@@ -122,7 +124,9 @@ function Supremacy({ s, dispatch }: { s: GameState; dispatch: (a: Action) => boo
   return (
     <>
       <h3>Supremacy Phase</h3>
-      {!s.supremacyWinner ? (
+      {s.firstPlayer && s.scenario.zonePick ? (
+        <ZonePicks s={s} dispatch={dispatch} />
+      ) : !s.supremacyWinner ? (
         <button type="button" onClick={() => dispatch({ type: 'supremacyRollOff' })} data-testid="supremacy-roll">
           Roll off for Supremacy
         </button>
@@ -169,7 +173,16 @@ function Draw({ s, dispatch, onSelect }: { s: GameState; dispatch: (a: Action) =
         <div className="actions wrap">
           {targets.map((id) =>
             card.kind === 'character' ? (
-              <button key={id} type="button" onClick={() => dispatch({ type: 'activateCharacter', characterId: id })} data-testid="activate-drawn">
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  const reg = s.characters[id]!.attachedTo;
+                  if (reg) onSelect(reg);
+                  dispatch({ type: 'activateCharacter', characterId: id });
+                }}
+                data-testid="activate-drawn"
+              >
                 Activate {s.characters[id]!.name}
               </button>
             ) : (
@@ -203,5 +216,48 @@ function Draw({ s, dispatch, onSelect }: { s: GameState; dispatch: (a: Action) =
         </button>
       )}
     </>
+  );
+}
+
+function ZonePicks({ s, dispatch }: { s: GameState; dispatch: (a: Action) => boolean }) {
+  const zp = s.scenario.zonePick!;
+  const first = s.firstPlayer!;
+  const second: PlayerId = first === 'P1' ? 'P2' : 'P1';
+  const next = s.zonePicks[first] === null ? first : second;
+  const zones = s.scenario.zones.filter((z) => !zp.eligibleZoneIds || zp.eligibleZoneIds.includes(z.id));
+  const what = zp.mode === 'bonusPick' ? 'a 6″ zone with none of your Regiments in range: +3 VP if you Seize it' : zp.mode === 'vetoSecret' ? 'a zone in secret: no VP for it this Round' : 'a zone: no VP for it this Round';
+  return (
+    <>
+      <p>
+        <strong>{next}</strong> picks {what} (pack p.{s.scenario.page}).
+      </p>
+      <div className="actions wrap">
+        {zones.map((z) => (
+          <button key={z.id} type="button" className="secondary small" onClick={() => dispatch({ type: 'pickZone', player: next, zoneId: z.id })} data-testid={`pick-${z.id}`}>
+            {z.label ?? z.id} ({z.x}, {z.y})
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function ZoneStatus({ s }: { s: GameState }) {
+  if (s.round < s.scenario.objectivesFromRound) return <p className="meta">Zones cannot be Seized this Round.</p>;
+  const zr = zoneResults(s);
+  return (
+    <ul className="plain">
+      {s.scenario.zones.map((z) => {
+        const r = zr[z.id]!;
+        return (
+          <li key={z.id}>
+            Zone {z.label ?? z.id} {z.diameter}″: <strong>{r.seizedBy ?? 'nobody'}</strong>{' '}
+            <span className="meta">
+              (Stands P1 {r.totals.P1}/{r.seizing.P1} seizing, P2 {r.totals.P2}/{r.seizing.P2}){r.contestedBy.length ? `, contested by ${r.contestedBy.join(', ')}'s Marker` : ''}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

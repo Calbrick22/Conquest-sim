@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   attachedCharacter,
   describeMoves,
@@ -22,10 +22,17 @@ import { duelTargets, enemiesInContact, withdrawPose } from '../../engine/action
 import { isEngaged } from '../../engine/queries';
 import { barrageOf } from '../../engine/rules/special/rules';
 import { DiceTray } from './DiceTray';
+import { gameLogMarkdown } from '../../engine/log/markdown';
+import { markerAttackProblems, markerInContact, MARKER_PREFIX } from '../../engine/markers';
+import { saveGame } from '../../storage/db';
+import { Scoreboard } from './Scoreboard';
+import type { NewGame } from './SetupScreen';
 import { ManualTools } from './ManualTools';
 import { PhasePanel } from './PhasePanel';
 import { TableView, type Ghost, type Ruler } from './TableView';
 import { useGame, type GameSession } from './useGame';
+
+export type { GameSession };
 
 type Mode = 'select' | 'march' | 'enter' | 'reform' | 'ruler' | 'override' | 'withdraw' | 'target' | 'placeCharge';
 type TargetKind = 'charge' | 'volley' | 'clash';
@@ -33,8 +40,8 @@ type TargetKind = 'charge' | 'volley' | 'clash';
 const deg = (d: number) => (d * Math.PI) / 180;
 const fmt = (n: number) => `${(Math.round(n * 100) / 100).toFixed(2)}″`;
 
-export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () => void }) {
-  const { session, dispatch, undo, error, setError } = useGame(start);
+export function TableScreen({ game, onQuit }: { game: NewGame; onQuit: () => void }) {
+  const { session, dispatch, undo, error, setError } = useGame(game.session);
   const s = session.state;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('select');
@@ -48,8 +55,41 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
   const [targetKind, setTargetKind] = useState<TargetKind>('charge');
   const [crFiles, setCrFiles] = useState(2);
 
-  const sel: RegimentState | null = selectedId ? (s.regiments[selectedId] ?? null) : null;
+  // With nothing selected, the active Regiment is shown (e.g. after an Entourage Activation).
+  const sel: RegimentState | null = selectedId ? (s.regiments[selectedId] ?? null) : s.activation ? (s.regiments[s.activation.regimentId] ?? null) : null;
   const active = s.activation ? s.regiments[s.activation.regimentId]! : null;
+
+  // Autosave on this device after every action (replayable from seed + actions).
+  useEffect(() => {
+    if (session.actions.length === 0) return;
+    const st = session.state;
+    saveGame({
+      id: game.id,
+      name: `${st.scenario.name}: ${st.players.P1.listName} v ${st.players.P2.listName}`,
+      savedAt: new Date().toISOString(),
+      createdAt: game.createdAt,
+      you: game.you,
+      initial: session.initial,
+      initialRng: session.initialRng,
+      initialEvents: session.initialEvents,
+      actions: session.actions,
+      round: st.round,
+      vp: { P1: st.players.P1.vp, P2: st.players.P2.vp },
+      ended: st.phase === 'ended',
+    }).catch(() => undefined);
+  }, [session, game]);
+
+  const download = (name: string, text: string, type: string) => {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const date = game.createdAt.slice(0, 10);
+  const markdown = () => gameLogMarkdown({ state: s, events: session.events, you: game.you, date });
+  const fileBase = `conquest-${s.scenario.id}-${date}`;
 
   const resetModes = () => {
     setMode('select');
@@ -111,6 +151,12 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
   const draftProblems = draft && mode !== 'override' && mode !== 'withdraw' ? validate(s, draft.action) : null;
 
   // ------------------------------------------------ table interaction
+  const onMarkerDown = (id: string) => {
+    if (mode === 'target' && sel) {
+      if (run({ type: targetKind, regimentId: sel.id, targetId: `${MARKER_PREFIX}${id}` })) setMode('select');
+    }
+  };
+
   const onRegimentDown = (id: string, p: Vec) => {
     if (mode === 'ruler') {
       rulerTap(p, id);
@@ -287,6 +333,13 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
               {shoots && <button type="button" onClick={() => target('volley')} data-testid="volley">Volley</button>}
               {shoots && <button type="button" className="secondary" onClick={() => run({ type: 'takeAim', regimentId: r.id })}>Take Aim</button>}
               {r.broken && <button type="button" onClick={() => run({ type: 'rally', regimentId: r.id })}>Rally</button>}
+              {s.scenario.markers
+                .filter((m) => markerInContact(s, r, m.id) && markerAttackProblems(s, r.owner, m.id).length === 0)
+                .map((m) => (
+                  <button key={m.id} type="button" onClick={() => run({ type: 'clash', regimentId: r.id, targetId: `${MARKER_PREFIX}${m.id}` })}>
+                    Clash Marker {m.label ?? m.id}
+                  </button>
+                ))}
             </>
           )}
           {!act.ended && engaged && (
@@ -319,6 +372,9 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
         <strong>
           {s.scenario.name} · Round {Math.min(s.round, s.scenario.rounds)}/{s.scenario.rounds}
         </strong>
+        <span className="score" data-testid="score">
+          P1 {s.players.P1.vp} – {s.players.P2.vp} P2
+        </span>
         <span className="meta">
           {s.phase === 'setup' ? 'Setup' : s.phase === 'ended' ? 'Game over' : active ? `Active: ${active.name}` : 'Choose a Regiment to activate'}
         </span>
@@ -329,7 +385,7 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
           <button type="button" className="secondary small" onClick={() => { resetModes(); undo(); }} disabled={session.actions.length === 0} data-testid="undo">
             Undo
           </button>
-          <button type="button" className="secondary small" onClick={() => confirm('Leave this game? It is not saved yet (saving arrives in M5).') && onQuit()}>
+          <button type="button" className="secondary small" onClick={onQuit}>
             Quit
           </button>
         </div>
@@ -342,6 +398,7 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
         ruler={ruler?.result ?? (ruler?.a ? { a: ruler.a, b: ruler.a, label: 'tap a second point or Regiment' } : null)}
         highlightEdges={highlightEdges}
         onRegimentDown={onRegimentDown}
+        onMarkerDown={onMarkerDown}
         onTap={onTap}
         onDrag={onDrag}
         onDragEnd={() => setDrag(null)}
@@ -358,7 +415,7 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
       {mode === 'ruler' && <p className="meta">Ruler: tap two points, or tap two Regiments for the edge-to-edge distance.</p>}
       {mode === 'target' && (
         <div className="card info">
-          Tap the enemy Regiment to {targetKind}.{' '}
+          Tap the enemy Regiment{s.round >= s.scenario.objectivesFromRound && s.scenario.markers.length ? ' or enemy Objective Marker' : ''} to {targetKind}.{' '}
           <button type="button" className="secondary small" onClick={resetModes}>Cancel</button>
         </div>
       )}
@@ -526,6 +583,38 @@ export function TableScreen({ start, onQuit }: { start: GameSession; onQuit: () 
           </ul>
         </div>
       )}
+
+      {s.phase === 'ended' && (
+        <div className="card result" data-testid="result">
+          <h3>Battle over</h3>
+          <p>
+            {s.players.P1.vp === s.players.P2.vp ? 'A draw' : `${s.players.P1.vp > s.players.P2.vp ? 'P1' : 'P2'} wins`}: P1 {s.players.P1.vp} – {s.players.P2.vp} P2.
+            {` You were ${game.you}.`}
+          </p>
+        </div>
+      )}
+      <Scoreboard s={s} />
+      <div className="card">
+        <h3>Game log</h3>
+        <div className="actions wrap">
+          <button type="button" className="secondary small" onClick={() => download(`${fileBase}.md`, markdown(), 'text/markdown')} data-testid="export-md">Export Markdown log</button>
+          <button type="button" className="secondary small" onClick={() => navigator.clipboard?.writeText(markdown())}>Copy Markdown</button>
+          <button
+            type="button"
+            className="secondary small"
+            onClick={() =>
+              download(
+                `${fileBase}.json`,
+                JSON.stringify({ id: game.id, name: `${s.scenario.name}`, createdAt: game.createdAt, savedAt: new Date().toISOString(), you: game.you, initial: session.initial, initialRng: session.initialRng, initialEvents: session.initialEvents, actions: session.actions, round: s.round, vp: { P1: s.players.P1.vp, P2: s.players.P2.vp }, ended: s.phase === 'ended', events: session.events }, null, 1),
+                'application/json',
+              )
+            }
+          >
+            Export game file (JSON)
+          </button>
+        </div>
+        <p className="meta">The game is saved on this device after every action. The JSON file replays it exactly (seed + actions).</p>
+      </div>
 
       <DiceTray events={session.events} />
 
