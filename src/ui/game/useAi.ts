@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import type { AiDecision } from '../../ai/ai';
 import { decisionMaker } from '../../ai/ai';
 import type { Action } from '../../engine/game';
+import type { Difficulty } from '../../ai/difficulty';
 import type { GameState, PlayerId } from '../../engine/model/types';
 
 /**
  * Drives the computer opponent: whenever it is the AI player's decision, ask the worker for an
  * Action and dispatch it (through the same validate/apply path as a human).
  */
-export function useAi(state: GameState, aiPlayer: PlayerId | null, paused: boolean, dispatch: (a: Action) => boolean, blocked: boolean) {
+export function useAi(state: GameState, aiPlayer: PlayerId | null, paused: boolean, dispatch: (a: Action) => boolean, blocked: boolean, difficulty: Difficulty = 'beginner') {
   const worker = useRef<Worker | null>(null);
   const seq = useRef(0);
   const [thinking, setThinking] = useState(false);
@@ -40,10 +41,10 @@ export function useAi(state: GameState, aiPlayer: PlayerId | null, paused: boole
         }
         if (!dispatch(e.data.decision.action)) setAiError(`The computer chose an illegal action (${e.data.decision.action.type}); it is paused. Play on by hand or use the manual tools.`);
       };
-      w.postMessage({ id, state, player: aiPlayer });
+      w.postMessage({ id, state, player: aiPlayer, difficulty });
     }, 350);
     return () => clearTimeout(timer);
-  }, [state, aiPlayer, paused, blocked, dispatch]);
+  }, [state, aiPlayer, paused, blocked, dispatch, difficulty]);
 
   return { thinking, aiError, clearAiError: () => setAiError(null) };
 }

@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.3.0] - 2026-11-25 (computer difficulty)
+
+### Added
+- **Computer difficulty levels**, chosen on the New Game screen: Beginner, Intermediate, Advanced and Expert. The choice is remembered on the device, saved with the game, and shown in the HUD. Games saved earlier play as Beginner. See docs/ai-difficulty.md.
+  - **Beginner** plays aggressively. It goes straight for objectives and enemies, charges and shoots whatever is nearest, never withdraws, always takes the first turn, and keeps its Command Stack in army-list order.
+  - **Intermediate** weighs targets, counters and threats, and orders its Command Stack sensibly. It does this on about 60% of its decisions and slips on the rest.
+  - **Advanced** orders its Command Stack by threats and opportunities. It avoids fights it would lose, holds its objectives, and positions for its next Charge or Volley. It tests its moves against the real zone-seizing rules and punishes exposed flanks and Broken units. About 85% of its decisions are informed.
+  - **Expert** does all of that on every decision, and leans harder into opportunities.
+  - **Measured strength:** 60 computer-vs-computer games per pairing, with each level playing both synthetic armies from both sides on five scenarios.
+
+    | Pairing | Wins | VP |
+    |---|---|---|
+    | Beginner v Intermediate | 26–28 | 878–937 |
+    | Intermediate v Advanced | 28–28 | 921–1062 |
+    | Advanced v Expert | 25–27 | 999–1046 |
+    | Beginner v Expert | 23–34 | 740–1093 |
+
+### Fixed
+- **A Charge can no longer turn its target onto an Objective Marker or Impassable terrain.** Before, this left the target in an illegal position.
+- **The computer no longer gets stuck** ending a Character's Activation when its Regiment is in an illegal position.
+- **Beginner archers** shoot when a target is in range, instead of marching.
+
 ## [2.2.1] - 2026-11-25 (play feedback)
 
 ### Added

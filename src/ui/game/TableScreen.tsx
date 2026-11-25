@@ -128,13 +128,13 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
   const [showUnit, setShowUnit] = useState(true);
   const [rulerMode, setRulerMode] = useState<'point' | 'regiment'>('point');
   // Once one side has nothing left, the rest of the game can be played out automatically.
-  const auto = useAutoplay(s, dispatch);
+  const auto = useAutoplay(s, dispatch, game.difficulty);
   const wiped = (['P1', 'P2'] as const).find((p) => wipedOut(s, p)) ?? null;
   const [summaryClosed, setSummaryClosed] = useState(false);
   const { settings, update: updateSettings } = useSettings();
   const [menuOpen, setMenuOpen] = useState(false);
   // The computer waits while the pause menu is open.
-  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused || auto.running || menuOpen, dispatch, needsAck);
+  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused || auto.running || menuOpen, dispatch, needsAck, game.difficulty);
   // Wide screens show the selected Regiment in a side panel instead of a floating card.
   const [wide, setWide] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(min-width: 1280px)').matches);
   useEffect(() => {
@@ -157,6 +157,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
       createdAt: game.createdAt,
       you: game.you,
       mode: game.mode,
+      difficulty: game.difficulty,
       initial: session.initial,
       initialRng: session.initialRng,
       initialEvents: session.initialEvents,
@@ -234,7 +235,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
   const exportGameFile = () =>
     download(
       `${fileBase}.json`,
-      JSON.stringify({ id: game.id, name: `${s.scenario.name}`, createdAt: game.createdAt, savedAt: new Date().toISOString(), you: game.you, initial: session.initial, initialRng: session.initialRng, initialEvents: session.initialEvents, actions: session.actions, round: s.round, vp: { P1: s.players.P1.vp, P2: s.players.P2.vp }, ended: s.phase === 'ended', events: session.events }, null, 1),
+      JSON.stringify({ id: game.id, name: `${s.scenario.name}`, createdAt: game.createdAt, savedAt: new Date().toISOString(), you: game.you, mode: game.mode, difficulty: game.difficulty, initial: session.initial, initialRng: session.initialRng, initialEvents: session.initialEvents, actions: session.actions, round: s.round, vp: { P1: s.players.P1.vp, P2: s.players.P2.vp }, ended: s.phase === 'ended', events: session.events }, null, 1),
       'application/json',
     );
   // Keyboard (game-ui-ux: every action reachable without a mouse). Ignored while typing or in a dialog.
@@ -738,7 +739,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
 
   return (
     <section className="game-screen" style={{ '--side-w': `${settings.sideWidth}px`, '--left-w': `${settings.leftWidth}px` } as React.CSSProperties}>
-      <Hud s={s} you={game.you} mode={game.mode}>
+      <Hud s={s} you={game.you} mode={game.mode} difficulty={game.difficulty}>
         <Tooltip tip="Measure (R)">
           <button type="button" className={`icon-btn ${mode === 'ruler' ? 'on' : ''}`} onClick={toggleRuler} data-testid="ruler" aria-label="Ruler">
             📏<span className="btn-label">Ruler</span>

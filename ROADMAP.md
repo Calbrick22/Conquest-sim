@@ -29,8 +29,8 @@ This roadmap follows the MVP. It is ranked by **value to a player who uses the a
 
 | # | Item | Why it matters | Size |
 |---|---|---|---|
-| 3.1 | **Look-ahead search:** a shallow search over the AI's own Activation (both Actions) and the opponent's best reply, with a time budget in the Web Worker. | Fewer obviously poor sequences, such as marching into charge range. | M |
-| 3.2 | **Smarter Command Stack and activation timing**, using Entourage, holding back to react, and Supremacy timing. | Order of play is a core skill to practise against. | M |
+| 3.1 | *(v2.3.0: one-Action simulation was tried for the Expert and dropped; a search must cover a whole Activation and the reply)* **Look-ahead search:** a shallow search over the AI's own Activation (both Actions) and the opponent's best reply, with a time budget in the Web Worker. | Fewer obviously poor sequences, such as marching into charge range. | M |
+| 3.2 | 🟡 *(v2.3.0: difficulty levels; Advanced and Expert stack by threats and opportunities, hold back, choose the First Player)* **Smarter Command Stack and activation timing**, using Entourage, holding back to react, and Supremacy timing. | Order of play is a core skill to practise against. | M |
 | 3.3 | **Faction-specific tactics:** Spires Strain timing, screening with Light Drones, Monster use. | More realistic opponents for your actual matchups. | M per faction |
 | 3.4 | **Difficulty levels and AI personalities** (aggressive, objective-focused, gunline). | Rehearse against different opponent styles. | S |
 | 3.5 | **Faster geometry:** spatial indexing and incremental polygons, so deeper search runs on a phone. | It enables 3.1 on older devices. | S–M |

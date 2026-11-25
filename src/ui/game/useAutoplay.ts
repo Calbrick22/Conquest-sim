@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Action } from '../../engine/game';
+import type { Difficulty } from '../../ai/difficulty';
 import type { GameState } from '../../engine/model/types';
 import { decisionMaker, type AiDecision } from '../../ai/ai';
 
@@ -8,7 +9,7 @@ import { decisionMaker, type AiDecision } from '../../ai/ai';
  * the computer's own decisions, so the surviving army marches on the objectives to score what it
  * can. Runs in a worker; every Action still goes through the normal validate/apply path.
  */
-export function useAutoplay(state: GameState, dispatch: (a: Action) => boolean): { running: boolean; start: () => void; stop: () => void; error: string | null } {
+export function useAutoplay(state: GameState, dispatch: (a: Action) => boolean, difficulty: Difficulty = 'beginner'): { running: boolean; start: () => void; stop: () => void; error: string | null } {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const worker = useRef<Worker | null>(null);
@@ -35,8 +36,8 @@ export function useAutoplay(state: GameState, dispatch: (a: Action) => boolean):
         setRunning(false);
       }
     };
-    w.postMessage({ id, state, player });
-  }, [state, active, dispatch]);
+    w.postMessage({ id, state, player, difficulty });
+  }, [state, active, dispatch, difficulty]);
 
   useEffect(() => () => worker.current?.terminate(), []);
   return { running: active, start: () => { setError(null); setRunning(true); }, stop: () => setRunning(false), error };

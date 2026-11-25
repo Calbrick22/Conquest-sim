@@ -295,7 +295,9 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
         const tPose: Pose = { x: contact.x + dx * c - dy * si, y: contact.y + dx * si + dy * c, angle: t.pose.angle + turn };
         const tp = regimentPolys(s, t, { pose: tPose });
         const clash = onTableRegiments(s).some((o) => o.id !== t.id && o.id !== r.id && anyOverlap(tp, regimentPolys(s, o)));
-        if (onTable(s, tp) && !clash && !anyOverlap(tp, rp) && distancePolys(tp, rp) <= 0.05) return { pose, targetPose: tPose };
+        // The turned target must not end on an Objective Marker or Impassable terrain either (pack p.8, core p.87).
+        const onMarker = markerPolys(s).some((m) => tp.some((q) => overlaps(q, m)));
+        if (onTable(s, tp) && !clash && !onMarker && !terrainPositionProblems(s, tp).length && !anyOverlap(tp, rp) && distancePolys(tp, rp) <= 0.05) return { pose, targetPose: tPose };
       }
     }
   }

@@ -1,4 +1,5 @@
 import type { GameState, PlayerId } from '../../engine/model/types';
+import { DIFFICULTIES, type Difficulty } from '../../ai/difficulty';
 import { Tooltip } from '../shell/Tooltip';
 
 const STEPS: { id: GameState['step']; label: string; tip: string }[] = [
@@ -13,7 +14,7 @@ const STEPS: { id: GameState['step']; label: string; tip: string }[] = [
  * The battle HUD: scenario and Round, the phase track, both sides' score, whose turn it is and
  * the Activation in progress. It only reads the state.
  */
-export function Hud({ s, you, mode, children }: { s: GameState; you: PlayerId; mode: 'hotseat' | 'ai'; children?: React.ReactNode }) {
+export function Hud({ s, you, mode, difficulty, children }: { s: GameState; you: PlayerId; mode: 'hotseat' | 'ai'; difficulty?: Difficulty; children?: React.ReactNode }) {
   const act = s.activation;
   const r = act ? s.regiments[act.regimentId] : undefined;
   const c = act?.characterId ? s.characters[act.characterId] : undefined;
@@ -24,7 +25,7 @@ export function Hud({ s, you, mode, children }: { s: GameState; you: PlayerId; m
       <span className="hud-tag">{p}</span>
       <span className="hud-army">
         {s.players[p].listName}
-        {mode === 'ai' && <small>{p === you ? 'You' : 'Computer'}</small>}
+        {mode === 'ai' && <small data-testid={p === you ? undefined : 'hud-difficulty'}>{p === you ? 'You' : `Computer · ${DIFFICULTIES.find((d) => d.id === (difficulty ?? 'beginner'))!.label}`}</small>}
       </span>
       {s.firstPlayer === p && (
         <Tooltip tip="First Player this Round (core p.21)">

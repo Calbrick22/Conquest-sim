@@ -10,3 +10,5 @@ playwright-report/
 .claude/skills/
 skills-lock.json
 e2e/*.local.spec.ts
+src/**/*.local.test.ts
+!src/import/realLists.local.test.ts

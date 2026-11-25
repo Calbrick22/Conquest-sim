@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createGame, rollOff, type GameEvent } from '../../engine/game';
 import type { PlayerId } from '../../engine/model/types';
+import { DIFFICULTIES, type Difficulty } from '../../ai/difficulty';
 import { createRng } from '../../engine/rng';
 import syntheticList from '../../import/__fixtures__/synthetic-list.txt?raw';
 import { parseArmyList } from '../../import/parseList';
@@ -23,10 +24,12 @@ export interface NewGame {
   /** Which side the human plays ("hotseat" controls both). */
   you: PlayerId;
   mode: 'hotseat' | 'ai';
+  /** Computer opponent difficulty. */
+  difficulty: Difficulty;
 }
 
 export function resumeGame(g: SavedGame): NewGame {
-  return { id: g.id, createdAt: g.createdAt, you: g.you, mode: g.mode ?? 'hotseat', session: replay(g.initial, g.initialRng, g.initialEvents, g.actions) };
+  return { id: g.id, createdAt: g.createdAt, you: g.you, mode: g.mode ?? 'hotseat', difficulty: g.difficulty ?? 'beginner', session: replay(g.initial, g.initialRng, g.initialEvents, g.actions) };
 }
 
 export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
@@ -35,6 +38,21 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
   const [theirs, setTheirs] = useState(DEMO_ID);
   const [scenarioId, setScenarioId] = useState('forlorn-hope');
   const [mode, setMode] = useState<'ai' | 'hotseat'>('ai');
+  const [difficulty, setDifficulty] = useState<Difficulty>(() => {
+    try {
+      return (localStorage.getItem('conquest-difficulty') as Difficulty | null) ?? 'intermediate';
+    } catch {
+      return 'intermediate';
+    }
+  });
+  const chooseDifficulty = (d: Difficulty) => {
+    setDifficulty(d);
+    try {
+      localStorage.setItem('conquest-difficulty', d);
+    } catch {
+      /* per-device convenience only */
+    }
+  };
   const [seed, setSeed] = useState(() => (Date.now() >>> 0) % 1_000_000);
   const [roll, setRoll] = useState<{ winner: 'you' | 'opponent'; rolls: [number, number][] } | null>(null);
   const [games, setGames] = useState<SavedGame[]>([]);
@@ -84,6 +102,7 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
       session: { initial: g.state, initialRng: g.rng, initialEvents, state: g.state, rng: g.rng, actions: [], events: initialEvents, last: null },
       you: youAre,
       mode,
+      difficulty,
     });
   };
 
@@ -183,6 +202,20 @@ export function SetupScreen({ onStart }: { onStart: (g: NewGame) => void }) {
             <option value="hotseat">Hotseat (you play both sides)</option>
           </select>
         </label>
+        {mode === 'ai' && (
+          <fieldset className="difficulty" data-testid="difficulty">
+            <legend>Computer difficulty</legend>
+            {DIFFICULTIES.map((d) => (
+              <label key={d.id} className={`difficulty-option ${difficulty === d.id ? 'on' : ''}`}>
+                <input type="radio" name="difficulty" value={d.id} checked={difficulty === d.id} onChange={() => chooseDifficulty(d.id)} data-testid={`difficulty-${d.id}`} />
+                <span>
+                  <strong>{d.label}</strong>
+                  <small>{d.blurb}</small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        )}
         <label className="field small">
           Seed <input type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value) >>> 0)} />
         </label>

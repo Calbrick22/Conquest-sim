@@ -9,7 +9,7 @@
  */
 import { chargeFacing, chargePlacement, chargeProblems, clashTargets, enemiesInContact, footprintOf, planVolley, volleyAimed } from '../engine/actions';
 import { charStat, stat } from '../engine/combat';
-import { validate, type Action, type ActionBody } from '../engine/game';
+import { apply, validate, type Action, type ActionBody } from '../engine/game';
 import { dist, normalizeAngle, type Vec } from '../engine/geometry/vec';
 import { applyPath, type MoveSeg } from '../engine/movement';
 import { markerAttackProblems, markerInContact } from '../engine/markers';
@@ -34,10 +34,12 @@ import {
 } from '../engine/queries';
 import { buildCards, cardTargets, flankChoices, reinforcementChoices, reinforcementClass, reinforcementNeed, tidalChoices } from '../engine/round';
 import { legalFiles } from '../engine/formation';
-import { hasRule, manualRules, ruleX } from '../engine/rules/special/rules';
+import { barrageOf, hasRule, manualRules, ruleX } from '../engine/rules/special/rules';
 import { zoneResults } from '../engine/scoring/victory';
 import { aiContactVolley, aiRitual, aiSkActivation, placeRituals, skSpellValue } from './sorcererKingsAi';
 import { aiBoost, aiDwActivation } from './dweghomAi';
+import { BEGINNER, PROFILES, profileFor, type Difficulty, type Profile } from './difficulty';
+import { createRng } from '../engine/rng';
 
 export interface AiDecision {
   action: Action;
@@ -71,6 +73,11 @@ export function decisionMaker(s: GameState): PlayerId | 'any' | null {
       return 'any';
   }
 }
+
+// ---------------------------------------------------------------- difficulty (see difficulty.ts)
+
+/** The profile for the decision being made (set by aiDecide; the AI is single-threaded and pure per call). */
+let P: Profile = BEGINNER;
 
 // ---------------------------------------------------------------- small deterministic noise
 
@@ -158,6 +165,87 @@ function exposure(s: GameState, r: RegimentState, at: Vec): number {
   return t;
 }
 
+/**
+ * Danger at a position (informed levels): enemies that could Charge there and would win the fight.
+ * Enemies that have not yet Activated this Round count double: they can still strike this Round.
+ */
+function danger(s: GameState, r: RegimentState, at: Vec): number {
+  let t = 0;
+  for (const e of onTableRegiments(s)) {
+    if (e.owner === r.owner || e.broken) continue;
+    const d = dist(at, centreOf(s, e)) - footprintOf(s, e).halfDepth - footprintOf(s, r).halfDepth;
+    if (d > marchValue(s, e) + 6) continue;
+    const theirs = meleeExpect(s, e, r) + impactExpect(e, r);
+    const ours = meleeExpect(s, r, e) * 0.7;
+    const net = theirs - ours;
+    if (net > 0) t += net * (e.activatedThisRound ? 0.5 : 1) * (d <= marchValue(s, e) + 3.5 ? 1 : 0.4);
+  }
+  return t;
+}
+
+/** What a position sets up for this Regiment's next Activation: Volleys in range, winning Charges in reach. */
+function opportunity(s: GameState, r: RegimentState, at: Vec, angle: number): number {
+  let v = 0;
+  const b = barrageOf(r.rules);
+  const fwd = { x: Math.cos(angle), y: Math.sin(angle) };
+  for (const e of onTableRegiments(s)) {
+    if (e.owner === r.owner) continue;
+    const c = centreOf(s, e);
+    const d = dist(at, c) - footprintOf(s, e).halfDepth;
+    const ahead = (c.x - at.x) * fwd.x + (c.y - at.y) * fwd.y > 0;
+    if (!ahead) continue;
+    if (b && d <= b.range) v += 0.6;
+    const reach = marchValue(s, r) + 3.5 + footprintOf(s, r).halfDepth;
+    if (d <= reach && meleeExpect(s, r, e) + impactExpect(r, e) > meleeExpect(s, e, r)) v += 0.8;
+  }
+  return Math.min(v, 2.5);
+}
+
+/** Bonus for attacking where it hurts: exposed flanks and rears, Broken and wounded Regiments. */
+function opportunism(s: GameState, _attacker: RegimentState, t: RegimentState, facing?: string, expected = 0): number {
+  if (!P.opportunism) return 0;
+  const health = t.stands.reduce((a, x) => a + Math.max(0, stat(t, 'W') - x.wounds), 0);
+  let b = 0;
+  if (facing && facing !== 'front') b += 1.5;
+  if (t.broken) b += 1.5;
+  if (t.stands.length < t.startingStands || t.stands.some((x) => x.wounds > 0)) b += 0.5;
+  if (expected >= health * 0.8) b += 2; // likely to finish it
+  if (attachedCharacter(s, t.id)?.isWarlord) b += 0.5;
+  return b * P.opportunism;
+}
+
+/**
+ * Advanced and Expert: what a move does to the Objective Zones right now, by the real seizing
+ * rules (stands in range, Classes, Broken…): zones we would take or deny, minus zones we would
+ * give up. The move is played on a copy of the game; nothing is rolled.
+ */
+function zoneSwing(s: GameState, p: PlayerId, action: ActionBody): number {
+  if (P.scenario < 0.8 || !s.scenario.zones.length) return 0;
+  const count = (st: GameState) => {
+    const zr = zoneResults(st);
+    let v = 0;
+    for (const z of Object.values(zr)) v += z.seizedBy === p ? 1 : z.seizedBy === other(p) ? -1 : 0;
+    return v;
+  };
+  try {
+    const after = apply(s, action as Action, createRng(0)).state;
+    return count(after) - count(s);
+  } catch {
+    return 0;
+  }
+}
+
+/** Scenario weight of a zone (informed levels): contested or enemy-held zones matter most. */
+function zoneWorth(s: GameState, p: PlayerId, zoneId: string, zr: ReturnType<typeof zoneResults>): number {
+  if (!P.scenario) return 0;
+  const z = zr[zoneId];
+  if (!z) return 0;
+  const mine = z.seizing[p] ?? 0;
+  const theirs = z.seizing[other(p)] ?? 0;
+  const priority = s.scenario.scoring.some((x) => x.kind === 'priorityZoneSeized') ? 0.5 : 0;
+  return P.scenario * ((theirs > 0 ? 1 : 0) + (mine > theirs + 3 ? -0.8 : 0) + (mine === 0 && theirs === 0 ? 0.5 : 0) + priority);
+}
+
 // ---------------------------------------------------------------- movement planning
 
 /** A March toward a point: wheel to face it (within budget), then forward as far as legal. */
@@ -213,7 +301,8 @@ function decideReinforcements(s: GameState, p: PlayerId): AiDecision {
   // Bring the most valuable Regiment that is allowed to arrive this Round (Mediums and Heavies first).
   const choices = reinforcementChoices(s, p).filter((r) => reinforcementNeed(s.round, reinforcementClass(s, r)) !== 'auto');
   const rank = (r: RegimentState) => (r.cls === 'Heavy' ? 3 : r.cls === 'Medium' ? 2 : 1) * 10 + regimentValue(r);
-  const best = choices.sort((a, b) => rank(b) - rank(a))[0];
+  // Beginner: the first one in its list; informed: the most valuable Medium or Heavy.
+  const best = P.targeting ? choices.sort((a, b) => rank(b) - rank(a))[0] : choices[0];
   // Flank Regiments arrive as soon as they may (core p.98).
   const flank = Object.fromEntries(flankChoices(s, p).map((r) => [r.id, true]));
   const flankNote = Object.keys(flank).length ? `; Flank: ${flankChoices(s, p).map((r) => r.name).join(', ')} arrive` : '';
@@ -226,6 +315,9 @@ function decideReinforcements(s: GameState, p: PlayerId): AiDecision {
 /** Command Stack: ranged and fast first, units likely to charge later (they want targets to come closer). */
 function decideStack(s: GameState, p: PlayerId): AiDecision {
   const cards = buildCards(s, p);
+  // Beginner: the cards in army-list order.
+  if (P.stack === 'list') return { action: { type: 'setStack', player: p, order: cards.map((c) => c.id) }, reason: 'stacks its Command Cards in army-list order' };
+  if (P.stack === 'threats') return threatStack(s, p, cards);
   const score = (c: CommandCard) => {
     // Ritual cards first (sk p.5): their effect and the same-Court follow-up come early.
     if (c.kind === 'ritual') return -100;
@@ -249,11 +341,60 @@ function decideStack(s: GameState, p: PlayerId): AiDecision {
   return { action: { type: 'setStack', player: p, order: final.map((c) => c.id) }, reason: 'orders the Command Stack: ranged and fast first, chargers later' };
 }
 
+/**
+ * Advanced and Expert Command Stack (threats and opportunities):
+ * 1. Regiments that can strike now (a favourable Charge in reach, a Volley in range) go first,
+ *    before the enemy can move out of reach or strike them.
+ * 2. Regiments threatened by a fight they would lose go early, to strike first or get clear.
+ * 3. Regiments that would win if Charged go late: they counter-charge after the enemy commits.
+ * 4. Objective runners in between; the rest last. Characters just above their Regiment.
+ */
+function threatStack(s: GameState, p: PlayerId, cards: CommandCard[]): AiDecision {
+  const zones = targetZones(s, p);
+  const why: string[] = [];
+  const score = (r: RegimentState): number => {
+    if (r.location !== 'table') return r.location === 'arriving' ? -4 : 50;
+    const here = centreOf(s, r);
+    const enemies = onTableRegiments(s).filter((e) => e.owner !== p);
+    const strike = enemies.some((e) => {
+      const d = regimentDistance(s, r, e);
+      const charge = chargeChance(s, r, d) >= 0.5 && impactExpect(r, e) + meleeExpect(s, r, e) > meleeExpect(s, e, r);
+      const b = barrageOf(r.rules);
+      return charge || (!!b && d <= b.range && !isEngaged(s, r));
+    });
+    if (isEngaged(s, r)) return -25 - meleeExpect(s, r, enemiesInContact(s, r)[0]!);
+    if (strike) return -30 - regimentValue(r) * 0.1;
+    const dz = danger(s, r, here);
+    if (dz > 2) return -18 - dz;
+    const counter = enemies.some((e) => regimentDistance(s, r, e) < marchValue(s, e) + 6 && meleeExpect(s, r, e) + impactExpect(r, e) > meleeExpect(s, e, r) + impactExpect(e, r));
+    if (counter) return 25;
+    const near = zones.some((z) => dist(here, z.c) < 2 * marchValue(s, r) + z.d / 2);
+    return near ? -6 : 10 - (r.profile.M ?? 0);
+  };
+  const regs = cards.filter((c) => c.kind === 'regiment').sort((a, b) => score(s.regiments[a.refId]!) - score(s.regiments[b.refId]!));
+  const out: CommandCard[] = [];
+  for (const rc of regs) {
+    const ch = cards.find((c) => c.kind === 'character' && s.characters[c.refId]!.attachedTo === rc.refId);
+    if (ch) out.push(ch);
+    out.push(rc);
+  }
+  for (const c of cards) if (!out.includes(c)) out.push(c);
+  const final = placeRituals(s, [...cards.filter((c) => c.kind === 'ritual'), ...out.filter((c) => c.kind !== 'ritual')]);
+  const first = s.regiments[regs[0]?.refId ?? '']?.name;
+  if (first) why.push(`${first} first`);
+  return { action: { type: 'setStack', player: p, order: final.map((c) => c.id) }, reason: `orders the Command Stack by threats and opportunities${why.length ? ` (${why.join('; ')})` : ''}` };
+}
+
 function decideFirst(s: GameState, p: PlayerId): AiDecision {
-  // Go second if an enemy could charge us this Round (let them commit first); otherwise go first.
-  const threatened = onTableRegiments(s).some((r) => r.owner === p && exposure(s, r, centreOf(s, r)) > 2);
-  const first = threatened ? other(p) : p;
-  return { action: { type: 'chooseFirst', first }, reason: threatened ? 'lets the opponent act first to react to their charges' : 'takes the initiative' };
+  // Beginner: always takes the initiative.
+  if (!P.targeting) return { action: { type: 'chooseFirst', first: p }, reason: 'takes the initiative' };
+  // Informed: go first with strikes available; go second when threatened, to react to the enemy.
+  const mine = onTableRegiments(s).filter((r) => r.owner === p);
+  const strikes = mine.filter((r) => onTableRegiments(s).some((e) => e.owner !== p && chargeChance(s, r, regimentDistance(s, r, e)) >= 0.6 && meleeExpect(s, r, e) + impactExpect(r, e) > meleeExpect(s, e, r))).length;
+  const threatened = mine.filter((r) => danger(s, r, centreOf(s, r)) > 2).length;
+  if (strikes > threatened) return { action: { type: 'chooseFirst', first: p }, reason: `goes first: ${strikes} Regiment${strikes > 1 ? 's' : ''} can strike before the enemy reacts` };
+  if (threatened) return { action: { type: 'chooseFirst', first: other(p) }, reason: 'lets the opponent act first to react to their Charges' };
+  return { action: { type: 'chooseFirst', first: p }, reason: 'takes the initiative' };
 }
 
 function decideZonePick(s: GameState, p: PlayerId): AiDecision {
@@ -301,7 +442,8 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
       const a = marchToward(s, r, nearestZone(zones, { x, y: own === 'bottom' ? 0 : s.scenario.table.height }) ?? { x: 36, y: 24 }, 1, 'enter', { edge: own, along: x }, files, partial);
       if (a) {
         const end = a.type === 'enter' ? applyPath(entryPose(s, a.edge, a.along), a.moves, footprintOf(s, r).halfWidth * 2) : r.pose;
-        out.push({ action: a, score: 5 - 0.05 * Math.abs(x - 36) - 0.3 * exposure(s, r, end) + noise(s, x), reason: `marches on toward the objectives at ${x}″` });
+        const risk = P.danger ? 0.3 * P.danger * danger(s, r, { x: end.x, y: end.y }) : 0;
+        out.push({ action: a, score: 5 - 0.05 * Math.abs(x - 36) - risk + P.noise * noise(s, x), reason: `marches on toward the objectives at ${x}″` });
       }
     }
     return out;
@@ -314,11 +456,13 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
     if (used === 0 && !r.broken && targets.length) add({ type: 'inspire', regimentId: r.id }, 2.5, 'is Inspired before Clashing');
     for (const t of targets) {
       const w = meleeExpect(s, r, t);
-      add({ type: 'clash', regimentId: r.id, targetId: t.id }, 3 + w, `Clashes with ${t.name}: about ${w.toFixed(1)} expected Wounds`);
+      // Beginner: any enemy in contact will do; informed: the one it hurts most, or can finish.
+      const sc = P.targeting ? 3 + w * P.targeting + opportunism(s, r, t, undefined, w) : 3 + P.noise * noise(s, progress(s) + t.stands.length);
+      add({ type: 'clash', regimentId: r.id, targetId: t.id }, sc, `Clashes with ${t.name}: about ${w.toFixed(1)} expected Wounds`);
     }
-    // Withdraw a Light or Medium Regiment that is clearly losing.
+    // Withdraw a Light or Medium Regiment that is clearly losing (a Beginner never backs off).
     const incoming = enemiesInContact(s, r).reduce((a, e) => a + meleeExpect(s, e, r), 0);
-    if (r.cls !== 'Heavy' && incoming > regimentValue(r) * 0.6) add({ type: 'withdraw', regimentId: r.id, moves: [{ kind: 'forward', d: Math.min(3, marchValue(s, r)) }] }, 2, 'Withdraws from a losing fight');
+    if (P.danger && r.cls !== 'Heavy' && incoming > regimentValue(r) * (0.7 - 0.15 * P.danger)) add({ type: 'withdraw', regimentId: r.id, moves: [{ kind: 'forward', d: Math.min(3, marchValue(s, r)) }] }, 2 + P.danger, 'Withdraws from a losing fight');
     return out;
   }
 
@@ -333,8 +477,13 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
     const p = chargeChance(s, r, d);
     const gain = impactExpect(r, t) + meleeExpect(s, r, t);
     const loss = meleeExpect(s, t, r);
-    const score = p * (gain * 1.2 - loss * 0.6) - (1 - p) * 1.5 + 1;
-    if (p >= 0.4) add({ type: 'charge', regimentId: r.id, targetId: t.id }, score, `Charges ${t.name}: ${Math.round(p * 100)}% charge chance, ${gain > loss ? 'favourable' : 'risky'} trade (~${gain.toFixed(1)} v ${loss.toFixed(1)} Wounds)`);
+    const facing = chargeFacing(s, r, t);
+    // Beginner: charges whatever it can reach, keenly. Informed: weighs the trade, the target and its facing.
+    // The enemy hits back in its own Activation, so a losing trade counts against the Charge.
+    const score = P.targeting
+      ? p * (gain * 1.2 * P.targeting - loss * (0.6 + 0.5 * P.danger)) - (1 - p) * 1.5 + 1 + p * opportunism(s, r, t, facing, gain)
+      : 2.5 + p * 2 + P.noise * noise(s, progress(s) + d * 10);
+    if (p >= P.minCharge) add({ type: 'charge', regimentId: r.id, targetId: t.id }, score, `Charges ${t.name}${facing !== 'front' ? ` in the ${facing}` : ''}: ${Math.round(p * 100)}% charge chance, ${gain > loss ? 'favourable' : 'risky'} trade (~${gain.toFixed(1)} v ${loss.toFixed(1)} Wounds)`);
   }
   // Volleys (Take Aim first if there is time).
   for (const t of enemies) {
@@ -345,7 +494,9 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
     const skill = Math.max(0, ...plan.plans.map((x) => x.skill));
     const w = expectedWounds(shots, skill, t, { reduceD: ap });
     if (used === 0 && !volleyAimed(s, r)) add({ type: 'takeAim', regimentId: r.id }, 2 + w * 0.4, `Takes Aim to Volley ${t.name}`);
-    add({ type: 'volley', regimentId: r.id, targetId: t.id }, 2 + w, `Volleys ${t.name}: ${shots} shots, about ${w.toFixed(1)} expected Wounds`);
+    // Beginner: the nearest target in range. Informed: the most damage, finishing off, Armor Piercing on armour.
+    const vs = P.targeting ? 2 + w * (0.6 + 0.4 * P.targeting) + opportunism(s, r, t, undefined, w) : 3.6 - regimentDistance(s, r, t) * 0.05 + 0.3 * P.noise * noise(s, progress(s) + shots);
+    add({ type: 'volley', regimentId: r.id, targetId: t.id }, vs, `Volleys ${t.name}: ${shots} shots, about ${w.toFixed(1)} expected Wounds`);
   }
   // Flames of Conquest (ns p.5): Burning a zone it is Seizing is worth 4 VP at once.
   for (const z of s.scenario.zones) add({ type: 'burnZone', regimentId: r.id, zoneId: z.id }, 6, `Burns zone ${z.label ?? z.id} for 4 VP`);
@@ -359,20 +510,34 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
   const light = r.cls === 'Light';
   const here = centreOf(s, r);
   const zones = targetZones(s, r.owner);
+  const zr = P.scenario ? zoneResults(s) : {};
+  const width = footprintOf(s, r).halfWidth * 2;
+  /** Informed levels: what the end position risks and sets up. */
+  const place = (end: { x: number; y: number; angle: number }) => (P.danger ? -0.3 * P.danger * danger(s, r, end) : 0) + (P.setup ? 0.6 * P.setup * opportunity(s, r, end, end.angle) : 0);
   for (const z of zones) {
     const a = marchToward(s, r, z.c, light ? 6 : 0, 'march');
     if (!a || a.type !== 'march') continue;
-    const end = applyPath(r.pose, a.moves, footprintOf(s, r).halfWidth * 2);
+    const end = applyPath(r.pose, a.moves, width);
     const gained = dist(here, z.c) - dist({ x: end.x, y: end.y }, z.c);
     const onZone = dist({ x: end.x, y: end.y }, z.c) < z.d / 2 + 1.5 && !light ? 3 : 0;
-    const score = 1 + gained * 0.35 + onZone - 0.25 * exposure(s, r, { x: end.x, y: end.y }) + noise(s, progress(s) + z.c.x);
+    const score = 1 + gained * 0.35 + onZone * (1 + zoneWorth(s, r.owner, z.id, zr) * 0.3) + zoneWorth(s, r.owner, z.id, zr) + place(end) + 2.5 * P.scenario * zoneSwing(s, r.owner, a) + P.noise * noise(s, progress(s) + z.c.x);
     out.push({ action: a, score, reason: light ? `screens toward zone ${z.id}` : `marches toward zone ${z.id}${onZone ? ' to Seize it' : ''}` });
   }
-  for (const e of enemies.slice(0, 4)) {
+  for (const e of enemies.slice(0, P.targeting ? 6 : 4)) {
     const a = marchToward(s, r, centreOf(s, e), footprintOf(s, e).halfDepth + 2, 'march');
     if (!a || a.type !== 'march') continue;
     const melee = meleeExpect(s, r, e) + impactExpect(r, e);
-    out.push({ action: a, score: 0.5 + melee * 0.25 - (light ? 2 : 0) + noise(s, progress(s) + 99), reason: `closes on ${e.name}` });
+    const end = applyPath(r.pose, a.moves, width);
+    // A Beginner closes on the enemy keenly; informed levels only when the fight favours them.
+    const score = P.targeting ? 0.5 + (melee - meleeExpect(s, e, r) * 0.6) * 0.3 * P.targeting - (light ? 2 : 0) + place(end) + 2.5 * P.scenario * zoneSwing(s, r.owner, a) : 1.8 + melee * 0.2 - (light ? 1 : 0);
+    out.push({ action: a, score: score + P.noise * noise(s, progress(s) + 99), reason: `closes on ${e.name}` });
+  }
+  // Holding back (informed levels): staying put can beat walking into a losing fight.
+  if (P.danger && !light) {
+    const onZoneNow = zones.some((z) => dist(here, z.c) < z.d / 2 + 1.5);
+    const hold: ActionBody = { type: 'pass' };
+    const hs = 0.8 + (onZoneNow ? 2.5 * Math.max(0.5, P.scenario) : 0) + place({ ...here, angle: r.pose.angle });
+    if (validate(s, hold as Action).ok) out.push({ action: hold, score: hs, reason: onZoneNow ? 'holds its objective' : 'holds back out of a losing fight' });
   }
   return out;
 }
@@ -416,7 +581,8 @@ function bestSpell(s: GameState, casterId: string): Scored | null {
               : t.owner === c.owner
                 ? engaged ? 1.5 : enemiesNear(s, t, 8) ? 1 : 0.2
                 : engaged ? 1 : 0.5;
-      const score = 1 + p * value * 1.5;
+      // Beginner: casts whatever it can, without weighing the target.
+      const score = P.targeting ? 1 + p * value * 1.5 : 1 + p + P.noise * noise(s, progress(s) + id.length);
       if (value > 0 && (!best || score > best.score)) best = { action: { type: 'spell', casterId, spell, targetId: id }, score, reason: `casts ${spell} on ${t.name} (${Math.round(p * 100)}% to cast)` };
     }
   }
@@ -492,7 +658,10 @@ function decideActivation(s: GameState): AiDecision {
         if (t) return { action: { type: 'characterAbility', characterId: c.id, name: ab.name, targetId: t.id }, reason: `${c.name} uses ${ab.name} on ${t.name}` };
       }
     }
-    return { action: { type: 'endActivation', entourage: true }, reason: `ends ${c.name}'s Activation and calls its Regiment (Entourage)` };
+    const endIt: ActionBody = { type: 'endActivation', entourage: true };
+    // An illegal resting place (e.g. left on a Marker by an enemy Charge): the logged fallback.
+    if (!validate(s, endIt as Action).ok) return finish(s, r);
+    return { action: endIt, reason: `ends ${c.name}'s Activation and calls its Regiment (Entourage)` };
   }
   if (act.ended) return finish(s, r);
   // A free Spellcasting Action (Theokrator, Memories of Old) is used even after both Actions.
@@ -638,10 +807,18 @@ function nearestZone(zones: { c: Vec }[], from: Vec): Vec | null {
 }
 
 /** The AI's next Action for player `p`. */
-export function aiDecide(s: GameState, p: PlayerId): AiDecision {
-  const d = decideInner(s, p);
-  return { action: { ...d.action, why: d.action.why ?? d.reason }, reason: d.reason };
+export function aiDecide(s: GameState, p: PlayerId, difficulty: Difficulty = 'beginner', tuning?: Partial<Profile>): AiDecision {
+  P = { ...profileFor(s, difficulty, progress(s) + (p === 'P1' ? 0 : 500) + s.round * 37), ...(tuning ?? {}) };
+  try {
+    const d = decideInner(s, p);
+    return { action: { ...d.action, why: d.action.why ?? d.reason }, reason: d.reason };
+  } finally {
+    P = BEGINNER;
+  }
 }
+
+
+export { PROFILES };
 
 function decideInner(s: GameState, p: PlayerId): AiDecision {
   switch (s.step) {

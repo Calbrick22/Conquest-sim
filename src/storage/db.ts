@@ -1,6 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { Action, GameEvent } from '../engine/game';
 import type { GameState, PlayerId } from '../engine/model/types';
+import type { Difficulty } from '../ai/difficulty';
 import type { RngState } from '../engine/rng';
 import type { ArmyList } from '../import/types';
 
@@ -21,6 +22,8 @@ export interface SavedGame {
   createdAt: string;
   you: PlayerId;
   mode?: 'hotseat' | 'ai';
+  /** Computer opponent difficulty (games saved before it existed play as Beginner). */
+  difficulty?: Difficulty;
   initial: GameState;
   initialRng: RngState;
   initialEvents: GameEvent[];

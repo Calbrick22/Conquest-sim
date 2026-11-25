@@ -477,3 +477,12 @@ button.menu-item { background: linear-gradient(180deg, var(--panel-2), var(--pan
   .game-left { padding-right: 14px; }
   .panel-resizer:hover, .panel-resizer:focus-visible { background: linear-gradient(90deg, transparent 3px, var(--gold) 3px, var(--gold) 7px, transparent 7px); outline: none; }
 }
+
+/* ---------------------------------------------------------------- computer difficulty (setup) */
+.difficulty { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin: 8px 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.difficulty legend { padding: 0 6px; color: var(--gold-2); font-family: var(--serif); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.85rem; }
+.difficulty-option { display: flex; gap: 8px; align-items: flex-start; padding: 8px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.difficulty-option.on { border-color: var(--gold); background: rgba(212, 174, 98, 0.08); }
+.difficulty-option input { margin-top: 4px; }
+.difficulty-option span { display: grid; gap: 2px; }
+.difficulty-option small { color: var(--muted); font-size: 0.8rem; line-height: 1.3; }
