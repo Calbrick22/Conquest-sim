@@ -23,6 +23,8 @@ import { piecePoly, terrainOf } from '../terrain';
 
 export const COURTS: Court[] = ['Fire', 'Air', 'Water', 'Earth'];
 
+export const SK_DRAW_EVENTS = ['Elemental Conduit', 'Elemental Prowess', 'Elemental Assault', 'Dancing Scimitar', 'Fan the Flames'];
+
 export const RITUALS: Record<string, { court: Court; threshold: number; page: number }> = {
   'Intrusive Thoughts': { court: 'Fire', threshold: 7, page: 22 },
   Conflagration: { court: 'Fire', threshold: 7, page: 22 },

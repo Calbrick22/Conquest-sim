@@ -27,6 +27,7 @@ import { barrageOf, flatRules, hasRule, ruleX } from './rules/special/rules';
 import { magnanimity, poolMods } from './rules/special/effects';
 import { elementalKind, isElemental, ofCourt, skUnit, warlordCourts, warlordHas, waterPieces, within } from './factions/sorcererKings';
 import { volleyInContact } from './factions/sorcererKingsActions';
+import { dwAfterDuel, dwMustAccept, dwOnCharge, dwOnDecline, toTheEnd } from './factions/dweghomActions';
 import { autoPassesResolve, markOnce, takeGlimmers, xhiliarchChargeBonus } from './factions/oldDominion';
 import { chargeThroughHindering, coverHalves, standLosSize, terrainBlocks, terrainPathProblems, terrainPositionProblems } from './terrain';
 
@@ -351,10 +352,11 @@ export function takeBlessed(r: RegimentState): boolean {
  * Overstimulation), and whether a failed Charge may be re-rolled (Unstoppable or a Standard Bearer,
  * core p.69, p.101; not against Induce Lethargy, sp p.16).
  */
-export function chargeDice(s: GameState, r: RegimentState, t: RegimentState): { twoDice: boolean; reroll: boolean } {
+export function chargeDice(s: GameState, r: RegimentState, t: RegimentState): { twoDice: boolean; lowest?: boolean; reroll: boolean } {
   const unstoppable = hasRule(r.rules, 'Unstoppable') || (r.commandModels.includes('Standard Bearer') && r.stands.some((x) => x.isCommand));
   const lethargy = !!attachedCharacter(s, t.id)?.options.some((o) => o.toLowerCase() === 'induce lethargy');
-  return { twoDice: !!r.flags.charge2d6 || endocrine(s, r), reroll: unstoppable && !lethargy };
+  // Broken Ground (dw p.27): no Charge Distance re-roll. Fear (dw p.28): 2D6, keep the lowest.
+  return { twoDice: !!r.flags.charge2d6 || endocrine(s, r) || !!r.flags.fear, ...(r.flags.fear ? { lowest: true } : {}), reroll: unstoppable && !lethargy && !r.flags.brokenGround };
 }
 
 /** Endocrine Overstimulation (sp p.17): friendly Regiments within 8″ of that Character roll 2D6 for Charge Distance, keeping the highest. */
@@ -371,12 +373,17 @@ export function chargeDistanceRule(s: GameState, r: RegimentState, t: RegimentSt
   // Induce Lethargy (sp p.16): no Unstoppable or Juggernaut when Charging that Character's Regiment.
   const lethargy = !!t && !!attachedCharacter(s, t.id)?.options.some((o) => o.toLowerCase() === 'induce lethargy');
   // Adrenal Hysteria (Onslaught Drones Strain, sp p.26): +2″ Charge Distance. Sorcerer Kings bonuses (sk p.34–40).
-  const bonus = (t?.flags.marked ? 2 : 0) + xhiliarchChargeBonus(s, r) + (hasRule(r.rules, 'Adrenal Hysteria') ? 2 : 0) + skChargeBonus(s, r, t);
+  const bonus = (t?.flags.marked ? 2 : 0) + xhiliarchChargeBonus(s, r) + (hasRule(r.rules, 'Adrenal Hysteria') ? 2 : 0) + skChargeBonus(s, r, t) + dwChargeBonus(r, t);
   // Fire Elemental (sk p.32–35): Juggernaut against an "Inflamed" enemy, and it may still add Charge Distance bonuses.
   const fire = !!t && isFireJuggernaut(r, t);
-  if ((hasRule(r.rules, 'Juggernaut') || fire) && !lethargy) return { fixed: M + 5 + (fire || elementalKind(r, 'Fire') ? bonus : 0), bonus: 0 };
+  if ((hasRule(r.rules, 'Juggernaut') || fire) && !lethargy && !r.flags.brokenGround) return { fixed: M + 5 + (fire || elementalKind(r, 'Fire') ? bonus : 0), bonus: 0 };
   if (hasRule(r.rules, 'Phalanx')) return { fixed: M + 3 + bonus, bonus };
   return { fixed: null, bonus };
+}
+
+/** Magmaforged Empowerment (dw p.41); Echoes of Dheureghodh: Dragonslayers +2″ against a Monster (dw p.29). */
+function dwChargeBonus(r: RegimentState, t: RegimentState | null): number {
+  return (r.flags.chargeBonus ?? 0) + (r.name === 'Dragonslayers' && t?.type === 'Monster' ? 2 : 0);
 }
 
 /** Fire Elemental (sk p.32–35): charging an "Inflamed" enemy gives Juggernaut. */
@@ -430,10 +437,10 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
   } else {
     const dice = chargeDice(s, r, t);
     if (dice.twoDice) {
-      // Master of the Legions (Strategos, od p.9): 2D6, keep the highest.
+      // Master of the Legions (Strategos, od p.9): 2D6, keep the highest. Fear (dw p.28): keep the lowest.
       const [a, b] = rollN(ctx, 2) as [number, number];
-      die = Math.max(a, b);
-      notes.push(`2D6 keep highest: ${a}, ${b} (${r.flags.charge2d6 ? 'Master of the Legions' : 'Endocrine Overstimulation'})`);
+      die = dice.lowest ? Math.min(a, b) : Math.max(a, b);
+      notes.push(dice.lowest ? `2D6 keep lowest: ${a}, ${b} (Fear)` : `2D6 keep highest: ${a}, ${b} (${r.flags.charge2d6 ? 'Master of the Legions' : 'Endocrine Overstimulation'})`);
     } else [die] = rollN(ctx, 1) as [number];
     const xb = xhiliarchChargeBonus(s, r);
     if (xb) markOnce(s, r.owner, 'obdurate');
@@ -441,7 +448,11 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
     total = die + M + rule.bonus;
     if (total < d - TOL && dice.reroll) {
       const first = die;
-      [die] = rollN(ctx, 1) as [number];
+      if (dice.twoDice) {
+        // Fear (dw p.28): re-rolling a Charge re-rolls both dice.
+        const [a, b] = rollN(ctx, 2) as [number, number];
+        die = dice.lowest ? Math.min(a, b) : Math.max(a, b);
+      } else [die] = rollN(ctx, 1) as [number];
       total = die + M + rule.bonus;
       notes.push(`Unstoppable re-roll ${first}→${die} (core p.101)`);
     }
@@ -456,6 +467,16 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
   });
   recordAction(act, 'charge');
   if (!success) {
+    // Broken Ground (dw p.27): a failed Charge costs Wounds equal to the die, without Morale.
+    if (r.flags.brokenGround && die > 0) {
+      ev(ctx, { type: 'note', text: `Broken Ground: ${r.name} suffers ${die} Wounds from its failed Charge, no Morale (dw p.27).`, regimentId: r.id });
+      allocateWounds(ctx, r, die, r.owner === 'P1' ? 'P2' : 'P1');
+      if (r.location === 'destroyed') {
+        recordAction(act, 'charge');
+        act.ended = true;
+        return;
+      }
+    }
     const move = failedChargeDistance(s, r, die || total - M);
     if (move > 0) r.pose = applyPath(r.pose, [{ kind: 'forward', d: move }], footprintOf(s, r).halfWidth * 2);
     act.ended = true;
@@ -486,6 +507,8 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
 export function chargeHindered(s: GameState, r: RegimentState, from: Pose, to: Pose): boolean {
   // Flowing Stride (sk p.19): ignores Hindering terrain.
   if (r.flags.flowingStride) return false;
+  // Flame Wall (dw p.26): counts as within Hindering terrain.
+  if (r.flags.flameWall) return true;
   const flies = hasRule(r.rules, 'Fly') && !attachedCharacter(s, r.id);
   return chargeThroughHindering(s, (pose) => regimentPolys(s, r, { pose }), from, to, flies);
 }
@@ -502,6 +525,8 @@ export function completeCharge(ctx: Ctx, r: RegimentState, t: RegimentState, fac
     regimentId: r.id,
   });
   ctx.s.activation!.inspired = !loseInspired;
+  // Ardent Creed (dw p.6): a successful Charge Awakens [Ardent] and [Clan] Regiments.
+  dwOnCharge(ctx, r);
   // Fury: +1 Attacks until the end of the Round (core p.98). Shock: +1 Clash (core p.100).
   // Glorious Charge: Terrifying (1) until the end of the Round (core p.99).
   if (hasRule(r.rules, 'Fury')) r.roundMods.push({ stat: 'A', delta: 1, source: 'Fury' });
@@ -759,6 +784,11 @@ export function applyVolley(ctx: Ctx, r: RegimentState, t: RegimentState): void 
     for (const q of pools) q.label += ' shots)';
     const res = resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: t.id, arc, pools, morale: murderous, terrifying: 0, what: `${r.name} Volley`, kind: 'volley' });
     ones += res.naturalOnes;
+    // Battery (Found, dw p.40): Wounds from its Volley give the target −1 March this Round.
+    if (res.wounds > 0 && hasRule(r.rules, 'Battery') && !t.flags.battered && s.regiments[t.id]!.location === 'table') {
+      t.flags.battered = true;
+      ev(ctx, { type: 'note', text: `Battery: ${t.name} has −1 March until the end of the Round (dw p.40).`, regimentId: t.id });
+    }
     if (s.regiments[t.id]!.location === 'destroyed') break;
   }
   // Visceral Bombardment: each natural 1 is a Hit on every other enemy within 3″ of the target (no Morale).
@@ -954,10 +984,19 @@ function duelAttack(ctx: Ctx, a: CharacterState, d: CharacterState): [number, nu
   return [w, counter];
 }
 
-export function applyDuel(ctx: Ctx, c: CharacterState, target: CharacterState, accept: boolean): void {
+export function applyDuel(ctx: Ctx, c: CharacterState, target: CharacterState, acceptIn: boolean): void {
   const s = ctx.s;
+  // Tempered Goad, Dismay (dw p.22, p.28): the Duel cannot be declined.
+  const accept = acceptIn || dwMustAccept(s, c, target);
+  if (!acceptIn && accept) ev(ctx, { type: 'duel', text: `${target.name} cannot decline the Duel (dw p.22, p.28).` });
+  const targetReg = target.attachedTo;
   if (!accept) {
     const tr = s.regiments[target.attachedTo!]!;
+    // To the End (dw p.10–14): the challenger's Regiment Awakens; Refined Beyond Nature: no penalty.
+    if (dwOnDecline(ctx, c, target)) {
+      ev(ctx, { type: 'duel', text: `${target.name} declines the Duel; Refined Beyond Nature: ${tr.name} suffers no penalty (dw p.18).` });
+      return;
+    }
     if (tr.broken) {
       ev(ctx, { type: 'duel', text: `${target.name} cannot decline: its Regiment is Broken (core p.60). The Duel is fought.` });
     } else {
@@ -995,12 +1034,22 @@ export function applyDuel(ctx: Ctx, c: CharacterState, target: CharacterState, a
       apply(first, w2, second);
       apply(second, back2, first);
     }
+    dwAfterDuel(ctx, c, target, targetReg);
     return;
   }
-  const [toTarget, backToC] = duelAttack(ctx, c, target);
-  const [toChallenger, backToT] = duelAttack(ctx, target, c);
-  apply(target, toTarget + backToT, c);
-  apply(c, toChallenger + backToC, target);
+  const exchange = () => {
+    const [toTarget, backToC] = duelAttack(ctx, c, target);
+    const [toChallenger, backToT] = duelAttack(ctx, target, c);
+    apply(target, toTarget + backToT, c);
+    apply(c, toChallenger + backToC, target);
+  };
+  exchange();
+  // To the End (dw p.10–14): keep Duelling until a Character is destroyed (at most 20 exchanges).
+  for (let i = 0; i < 20 && toTheEnd(c) && s.players[s.regiments[c.attachedTo ?? targetReg!]?.owner ?? 'P1'].dw && !c.destroyed && !target.destroyed; i++) {
+    ev(ctx, { type: 'duel', text: `To the End: ${c.name} and ${target.name} fight on (dw p.10).` });
+    exchange();
+  }
+  dwAfterDuel(ctx, c, target, targetReg);
 }
 
 export interface VolleyLine {

@@ -350,6 +350,7 @@ export function TableView(props: Props) {
                 {r.flags.marked ? ' ◎Marked' : ''}
                 {r.flags.decay ? ' ☣' : ''}
                 {r.flags.inflamed ? ' 🔥' : ''}
+                {r.flags.awakened ? ' ✦' : ''}
               </text>
             );
           })}

@@ -37,6 +37,7 @@ import { legalFiles } from '../engine/formation';
 import { hasRule, manualRules, ruleX } from '../engine/rules/special/rules';
 import { zoneResults } from '../engine/scoring/victory';
 import { aiContactVolley, aiRitual, aiSkActivation, placeRituals, skSpellValue } from './sorcererKingsAi';
+import { aiBoost, aiDwActivation } from './dweghomAi';
 
 export interface AiDecision {
   action: Action;
@@ -477,8 +478,10 @@ function decideActivation(s: GameState): AiDecision {
     if (ode) return ode;
     const skc = aiSkActivation(s, r, c.id);
     if (skc) return { action: { ...skc.action, why: `${c.name} ${skc.reason}` }, reason: skc.reason };
+    const dwc = aiDwActivation(s, r, c.id);
+    if (dwc) return { action: { ...dwc.action, why: `${c.name} ${dwc.reason}` }, reason: dwc.reason };
     const sp = bestSpell(s, c.id);
-    if (sp && validate(s, sp.action as Action).ok) return { action: { ...sp.action, why: `${c.name} ${sp.reason}` }, reason: sp.reason };
+    if (sp && validate(s, sp.action as Action).ok) return { action: { ...aiBoost(s, sp.action), why: `${c.name} ${sp.reason}` }, reason: sp.reason };
     const pr = bestPractitioner(s, c);
     if (pr) return { action: { ...pr.action, why: `${c.name} ${pr.reason}` }, reason: pr.reason };
     if (act.actions.length === 0) {
@@ -504,6 +507,8 @@ function decideActivation(s: GameState): AiDecision {
   if (ode) return ode;
   const skd = aiSkActivation(s, r);
   if (skd) return { action: { ...skd.action, why: `${r.name} ${skd.reason}` }, reason: skd.reason };
+  const dwd = aiDwActivation(s, r);
+  if (dwd) return { action: { ...dwd.action, why: `${r.name} ${dwd.reason}` }, reason: dwd.reason };
   const de = chooseDrawEvent(s, r);
   if (de) return de;
   const cands = regimentCandidates(s, r);

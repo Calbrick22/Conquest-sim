@@ -6,6 +6,7 @@ import { spiresCharacterMods, spiresGrants, strainFor } from '../../factions/spi
 import { distancePolys, regimentPolys } from '../../queries';
 import { waterMods } from '../../terrain';
 import { elementalKind, skRegimentGrants } from '../../factions/sorcererKings';
+import { dwCharacterRules, dwRegimentGrants, worldBreakerMods } from '../../factions/dweghom';
 import { TOL } from '../../geometry/vec';
 
 /**
@@ -92,15 +93,21 @@ export function refreshRules(s: GameState): void {
     drawEvents.push(...og.drawEvents);
     // Sorcerer Kings: Courts, Elementals, Forms and upgrades (sk p.4–46).
     const kg = skRegimentGrants(s, r);
-    r.grantRoles = [...og.roles, ...kg.roles];
-    rules.push(...kg.rules);
-    drawEvents.push(...kg.drawEvents);
+    // Dweghom: Creeds, Awakened effects, Heralds and upgrades (dw p.4–45).
+    const dg = dwRegimentGrants(s, r);
+    r.grantRoles = [...og.roles, ...kg.roles, ...dg.roles];
+    rules.push(...kg.rules, ...dg.rules);
+    drawEvents.push(...kg.drawEvents, ...dg.drawEvents);
     let eff = dedupe(rules);
     if (og.removeBrittle) eff = eff.filter((x) => x.name !== 'Brittle');
+    // Unmake Armor (dw p.27): loses Hardened this Round.
+    if (r.flags.unmade) eff = eff.filter((x) => x.name !== 'Hardened');
     r.rules = eff;
     // Water (core p.87): −1 Clash with at least half the Stands within it; not for a Water Elemental (sk p.43).
     const water = r.location === 'table' && !elementalKind(r, 'Water') ? waterMods(s, regimentPolys(s, r), r.profile.C ?? 0) : [];
-    r.grantMods = [...og.mods, ...kg.mods, ...water];
+    r.grantMods = [...og.mods, ...kg.mods, ...dg.mods, ...water];
+    // World Breakers (dw p.24): Defense, Evasion and Resolve never below 3.
+    r.grantMods.push(...worldBreakerMods(r, (k) => (r.profile[k] ?? 0) + [...r.roundMods, ...(r.grantMods ?? [])].filter((m) => m.stat === k).reduce((a, m) => a + m.delta, 0)));
     r.drawEvents = [...new Set(drawEvents)];
   }
   // Strains that change enemies in contact (e.g. "enemy -1 Clash"), while the Strain is active.
@@ -122,9 +129,11 @@ export function refreshRules(s: GameState): void {
     const host = c.attachedTo && !c.embodied ? s.regiments[c.attachedTo] : undefined;
     const shared = host ? host.roundRules.filter((x) => x.name !== 'Decay') : [];
     const sharedMods = host ? host.roundMods.filter((m) => m.source !== 'manual' && m.source !== 'Bastion') : [];
-    c.rules = dedupe([...c.baseRules, ...(charRuleAdds.get(c.id) ?? []), ...og.rules, ...shared]);
+    c.rules = dedupe([...c.baseRules, ...(charRuleAdds.get(c.id) ?? []), ...og.rules, ...shared, ...dwCharacterRules(s, c)]);
     c.drawEvents = [...new Set([...(c.baseDrawEvents ?? c.drawEvents), ...og.drawEvents])];
-    c.grantMods = [...(og.mods as StatMod[]), ...spiresCharacterMods(c), ...sharedMods];
+    // Runeforged Plate (dw p.23): extra Attacks this Round.
+    const rune = s.players[c.id.startsWith('P1') ? 'P1' : 'P2'].dw?.charAttacks?.[c.id];
+    c.grantMods = [...(og.mods as StatMod[]), ...spiresCharacterMods(c), ...sharedMods, ...(rune ? [{ stat: 'A' as const, delta: rune, source: 'Runeforged Plate' }] : [])];
   }
   spiresGrants(s);
 }

@@ -1,0 +1,53 @@
+Anvil Hold 2000 / 2000
+Dweghom
+Tempered Creed
+Warband 1
+Tempered Sorcerer 1 110
+M V C A W R D E Type Infantry
+- 3 2 4 4 3 2 0 Class -
+Supremacy Abilities Forgemaster
+Special Rules Barrage (3) [14"], Wizard (6)
+Battlefield Role Character, Tempered, Forged
+Options
+Schools Magma
+Fireforged Mainstay 3 160
+M V C A W R D E Type Infantry
+5 2 2 3 4 3 3 0 Class Medium
+Special Rules Barrage (3) [14", Armor Piercing (1)], Shield
+Command Models Leader, Standard Bearer
+Battlefield Role Tempered, Forged
+Inferno Automata Mainstay 3 180
+M V C A W R D E Type Brute
+7 1 2 5 5 3 3 2 Class Light
+Special Rules Irregular, Impact (2), Aura of Death (2)
+Battlefield Role Tempered, Forged
+Hold Warriors Mainstay 3 145
+M V C A W R D E Type Infantry
+5 1 2 4 4 3 2 0 Class Medium
+Special Rules Shield, Vanguard (3)
+Command Models Leader, Standard Bearer
+Battlefield Role Clan
+Options
+Officers Herald of Fire
+Warband 2
+Tempered Steelshaper 1 110
+M V C A W R D E Type Infantry
+- 2 3 4 5 - 3 3 Class -
+Special Rules Wizard (6), Terrifying (1), Smite
+Battlefield Role Character, Tempered, Forged
+Magmaforged Mainstay 3 190
+M V C A W R D E Type Infantry
+5 1 3 4 4 4 3 0 Class Medium
+Special Rules Aura of Death (2), Cleave (2)
+Command Models Leader, Standard Bearer
+Battlefield Role Tempered, Forged
+Stoneforged Restricted 1 230
+M V C A W R D E Type Monster
+6 1 3 9 18 4 4 0 Class Heavy
+Special Rules Cleave (2), Impact (4), Terrifying (1), Fearless, Unstoppable
+Battlefield Role Tempered, Forged
+Rules
+Wizard
+Synthetic placeholder: this unit casts spells.
+Irregular
+Synthetic placeholder: ignored for lines.

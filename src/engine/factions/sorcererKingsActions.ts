@@ -250,7 +250,7 @@ export function applyGilded(ctx: Ctx, r: RegimentState): void {
 
 // ---------------------------------------------------------------- Draw Events
 
-export const SK_DRAW_EVENTS = ['Elemental Conduit', 'Elemental Prowess', 'Elemental Assault', 'Dancing Scimitar', 'Fan the Flames'];
+export { SK_DRAW_EVENTS } from './sorcererKings';
 
 export interface SkDrawChoice {
   option?: string;

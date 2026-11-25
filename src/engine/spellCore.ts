@@ -10,13 +10,19 @@ export interface SpellDef {
   court?: Court;
   /** Successes needed instead of 2 (Sunder (the Land), sk p.21). */
   minSuccesses?: number;
+  /** Dweghom: the Elemental School (dw p.26–27). */
+  school?: string;
+  /** Cast automatically, as if it scored the successes needed (dw p.28). */
+  autoCast?: boolean;
+  /** Attunement that depends on the target (Unmake Armor: its Defense, dw p.27). */
+  attunementFor?: (s: GameState, target: RegimentState) => number;
   range: number | 'self';
   attunement: number;
   scaling: boolean;
   /** Causes Hits (needs Line of Sight; core p.80). */
   hits: boolean;
   /** 'zone' / 'terrain': an Objective Zone or a piece of terrain (target id `zone:<id>` / `terrain:<id>`). */
-  target: 'enemy' | 'friendly' | 'self' | 'zone' | 'terrain';
+  target: 'enemy' | 'friendly' | 'self' | 'zone' | 'terrain' | 'any';
   /** Effect on a zone or terrain target. */
   applyArea?: (ctx: Ctx, caster: Caster, areaId: string, successes: number) => void;
   /** Extra target restrictions. */
@@ -40,7 +46,7 @@ export interface Caster {
 }
 
 
-export function spellHits(ctx: Ctx, caster: Caster, target: RegimentState, hitsIn: number, what: string, pool: { reduceD?: number; defenseOverride?: number } = {}, morale = true): void {
+export function spellHits(ctx: Ctx, caster: Caster, target: RegimentState, hitsIn: number, what: string, pool: { reduceD?: number; defenseOverride?: number } = {}, morale = true, arc: 'front' | 'left' = 'front'): void {
   // Loose Formation (core p.99): Hits from Spells are halved, rounding up.
   const hits = hasRule(target.rules, 'Loose Formation') ? Math.ceil(hitsIn / 2) : hitsIn;
   if (hits !== hitsIn) ev(ctx, { type: 'note', text: `${target.name} has Loose Formation: ${hitsIn} Hits become ${hits} (core p.99).`, regimentId: target.id });
@@ -48,7 +54,7 @@ export function spellHits(ctx: Ctx, caster: Caster, target: RegimentState, hitsI
     attackerOwner: caster.owner,
     attackerId: caster.regiment.id,
     targetId: target.id,
-    arc: 'front', // Spells ignore the flank and rear rules (core p.81)
+    arc, // Spells ignore the flank and rear rules (core p.81), unless the Spell says so (Pyroclast, dw p.26)
     pools: [{ label: what, dice: 0, skill: 0, autoHits: hits, ...pool }],
     morale,
     terrifying: 0,

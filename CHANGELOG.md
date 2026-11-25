@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.2.0] - 2026-11-25 (Dweghom; Sorcerer Kings manual rules automated)
+
+### Added
+- **Dweghom** (November 10th 2026 list; rules digest §25):
+  - **Core rules:**
+    - The Gift, with Awakened shown as ✦ on the table.
+    - The Elemental Power pool, shown in a new panel.
+    - Forged By the Elements, with every Empowerment.
+    - The Unbound: Dweghom Regiments are never Shattered.
+  - **Creeds:** Ardent, Tempered and Clan. The Creed comes from the list, else from the Warlord.
+  - **Supremacy Abilities:** all six, including choosing the Hold Raegh's two Regiments in the Supremacy Phase.
+  - **Character rules:**
+    - To the End: Duels continue until one Character falls.
+    - But First, and Hymns of War.
+    - Igneolithic Mastery and Refined Beyond Nature.
+    - The Lost Ancestor's rules.
+  - **All 20 Spells:** Fire, Magma, Earth and Steel Schools, Kerawegh, Lost Ancestor. Terrain can be targeted and becomes Erupting. A [Tempered] Character can spend Elemental Power to boost Wizard.
+  - **Units and Heralds:** the units' Awakened effects, and the Heralds.
+  - **Upgrades:** most Relics and Masteries.
+  - **The computer plays Dweghom:** it chooses Empowerments, Draw Events and Spell boosts, and spends Markers to Awaken.
+- **Sorcerer Kings, formerly manual:**
+  - Tidal Summons: chosen on the Reinforcement screen, and the computer uses it.
+  - Air Step, Translocation (Old Dominion) and On Soaring Winds: a move panel opens with the right limits.
+  - Sunder (the Land): targets an Objective Zone, which counts as Hindering for Charges.
+  - Niyantran, Bound to the Elements (it changes the Character's Type), the Initiates' cover near Water, and the Air Elemental's Reinforcement Line.
+- **Spells can target an Objective Zone or a piece of terrain.**
+
+### Fixed
+- **March modifiers now apply:** Round and granted changes to March, for example Induced Aggression (Spires) and Kiss of the Earth.
+- **Rule names match regardless of hyphens and plurals:**
+  - "Counter Attack" now works as Counter-Attack;
+  - "Quicksilver Strikes" now works as Quicksilver Strike.
+
 ## [2.1.1] - 2026-11-25 (Sorcerer Kings: tested with a real list)
 
 ### Fixed

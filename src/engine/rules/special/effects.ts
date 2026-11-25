@@ -39,7 +39,12 @@ export function poolMods(rules: readonly RuleRef[], target: RegimentState, kind:
     // Relentless Blows (2): Hit Rolls of 1 and 2 (Intrusive Thoughts, Fury of the Tempest; sk p.22, p.38).
     ...(clashLike && ruleX(rules.filter((r) => r.name === 'Relentless Blows'), 'Relentless Blows') >= 2 ? { onesUpTo: 2 } : {}),
     // Homing Winds (sk p.20): Volleys re-roll failed Hit Rolls of 6. Water Elemental in Water (sk p.43–46): all Hit Rolls.
-    ...((kind === 'volley' && hasRule(rules, 'Homing Winds')) || (kind !== 'special' && hasRule(rules, 'Elemental Waters')) ? { rerollSixes: true } : {}),
+    // Herald of Fire (dw p.45): all Hit Rolls. Hone Blades (dw p.27): in a Clash.
+    ...((kind === 'volley' && hasRule(rules, 'Homing Winds')) ||
+    (kind !== 'special' && (hasRule(rules, 'Elemental Waters') || hasRule(rules, 'Herald of Fire'))) ||
+    (clashLike && hasRule(rules, 'Hone Blades'))
+      ? { rerollSixes: true }
+      : {}),
   };
 }
 

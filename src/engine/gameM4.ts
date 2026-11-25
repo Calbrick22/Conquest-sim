@@ -7,6 +7,8 @@ import { shrouded, spiresActivationStart } from './factions/spires';
 import { endOfSupremacy, prepareProblems, sk, skUnit } from './factions/sorcererKings';
 import { afterRitualDraw, applyForm, applyGilded, applyRitualCard, formProblems, gildedProblems, ritualActionProblems, skActivationEnd, skActivationStart } from './factions/sorcererKingsActions';
 import { startPreparing } from './factions/sorcererKings';
+import { dw as dwState } from './factions/dweghom';
+import { applyDwSpend, boostProblems, dwActivatedSupremacy, dwActivationEnd, dwActivationStart, dwEndOfSupremacy, dwSpendProblems, raeghProblems } from './factions/dweghomActions';
 import { hasRule } from './rules/special/rules';
 import {
   applyCharge,
@@ -156,7 +158,18 @@ export function validateM4(s: GameState, a: Action): Validation {
     case 'spell': {
       const r = casterOf(s, a.casterId)?.regiment;
       if (!r) return fail('Unknown spellcaster.');
-      const p = [...canTakeAction(s, r.id, 'spell'), ...spellProblems(s, a.casterId, a.spell, a.targetId, a.attunement)];
+      const p = [...canTakeAction(s, r.id, 'spell'), ...spellProblems(s, a.casterId, a.spell, a.targetId, a.attunement), ...boostProblems(s, casterOf(s, a.casterId)!, a.boost ?? 0)];
+      return p.length ? fail(...p) : ok();
+    }
+    // Dweghom (dw p.4–45)
+    case 'dwSpend': {
+      const r = s.regiments[a.regimentId];
+      if (!r) return fail('Unknown Regiment.');
+      const p = dwSpendProblems(s, r, a.what);
+      return p.length ? fail(...p) : ok();
+    }
+    case 'dwRaegh': {
+      const p = raeghProblems(s, a.player, a.regimentIds);
       return p.length ? fail(...p) : ok();
     }
     case 'memories':
@@ -315,6 +328,7 @@ function startActionPhase(ctx: Ctx): void {
   const first = s.firstPlayer!;
   // Rituals start Being Prepared at the end of the Supremacy Phase (sk p.5).
   endOfSupremacy(ctx);
+  dwEndOfSupremacy(ctx);
   s.step = 'action';
   ev(ctx, { type: 'phase', text: `Action Phase: ${first} is the First Player (core p.22).` });
   if (s.players[first].stack.length) s.turn = first;
@@ -332,6 +346,7 @@ export function endActivation(ctx: Ctx, entourage: boolean): void {
   const r = s.regiments[a.regimentId]!;
   const owner = r.owner;
   skActivationEnd(ctx, a, r);
+  dwActivationEnd(ctx, a, r);
   onActivationEnd(ctx, a, r);
   if (a.characterId) {
     const c = s.characters[a.characterId]!;
@@ -417,6 +432,9 @@ export function applyM4(ctx: Ctx, a: Action): void {
       s.players[a.player].supremacyUsed = true;
       const w = Object.values(s.characters).find((c) => c.isWarlord && c.id.startsWith(a.player))!;
       if (isOdSupremacy(s, a.player)) applyOdSupremacy(ctx, a.player, a.targets ?? []);
+      else if (dwActivatedSupremacy(ctx, a.player)) {
+        // Dweghom [Activated] Supremacy (dw p.6–7).
+      }
       else if (w.supremacyAbilities.some((x) => x.toLowerCase() === 'remorseless hunter')) {
         // Remorseless Hunter [Activated]: all friendly Regiments gain Sureshot and Longshot until the end of the Round.
         for (const r of Object.values(s.regiments).filter((x) => x.owner === a.player)) r.roundRules.push({ name: 'Sureshot', raw: 'Sureshot' }, { name: 'Longshot', raw: 'Longshot' });
@@ -446,6 +464,14 @@ export function applyM4(ctx: Ctx, a: Action): void {
       } else startPreparing(ctx, a.player, a.ritual, 'chosen instead');
       break;
     }
+    case 'dwSpend':
+      applyDwSpend(ctx, s.regiments[a.regimentId]!, a.what);
+      break;
+    case 'dwRaegh': {
+      dwState(s, a.player)!.raeghChoice = [...a.regimentIds];
+      ev(ctx, { type: 'supremacy', text: `${a.player} chooses ${a.regimentIds.map((id) => s.regiments[id]!.name).join(' and ')} to become Awakened at the end of the Supremacy Phase (First Born of War, dw p.8).`, player: a.player });
+      break;
+    }
     case 'ritual':
       applyRitualCard(ctx, a.player, { ...(a.targetId ? { targetId: a.targetId } : {}), ...(a.terrainId ? { terrainId: a.terrainId } : {}), ...(a.option ? { option: a.option } : {}), ...(a.order ? { order: a.order } : {}) });
       break;
@@ -465,6 +491,7 @@ export function applyM4(ctx: Ctx, a: Action): void {
       s.drawn = null;
       startActivation(ctx, r, { characterId: c.id });
       skActivationStart(ctx, r, afterRitual);
+      dwActivationStart(ctx, r);
       ev(ctx, { type: 'activate', text: `${r.owner} activates the Character ${c.name}${r.location !== 'table' ? ' (not on the Battlefield yet: no Draw Event, core p.23)' : ''}.`, player: r.owner });
       odActivationStartSpells(ctx);
       spiresActivationStart(ctx);
@@ -476,7 +503,7 @@ export function applyM4(ctx: Ctx, a: Action): void {
     case 'spell': {
       const c = casterOf(s, a.casterId)!;
       recordAction(s.activation!, 'spell');
-      castSpell(ctx, a.casterId, a.spell, a.targetId, { ...(a.attunement ? { attunement: a.attunement } : {}), ...(a.pool ? { pool: a.pool } : {}) });
+      castSpell(ctx, a.casterId, a.spell, a.targetId, { ...(a.attunement ? { attunement: a.attunement } : {}), ...(a.pool ? { pool: a.pool } : {}), ...(a.boost ? { boost: a.boost } : {}) });
       void c;
       break;
     }

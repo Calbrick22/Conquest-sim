@@ -85,6 +85,19 @@ describe('computer opponent', () => {
     240_000,
   );
   it(
+    'plays a full game with a synthetic Dweghom army: Elemental Power, Empowerments, Awakened (dw p.4)',
+    () => {
+      const { s, events } = playAiGame(52, 'melee', 'synthetic-dw-list.txt');
+      expect(s.phase).toBe('ended');
+      expect(s.players.P1.dw).toBeDefined();
+      expect(events.some((e) => /Elemental Power Marker/.test(e.text))).toBe(true);
+      expect(events.some((e) => /Forged By the Elements: /.test(e.text))).toBe(true);
+      expect(events.some((e) => e.type === 'awakened')).toBe(true);
+      expect(events.filter((e) => e.override).map((e) => e.text)).toEqual([]);
+    },
+    240_000,
+  );
+  it(
     'is deterministic for a seed',
     () => {
       const a = playAiGame(77, 'melee');

@@ -34,6 +34,7 @@ import { ActionCallout, UnitCallout } from './Callouts';
 import { DrawDeck, StackBuilder } from './CommandDeck';
 import { OdActivation, PowerBar } from './OldDominionPanel';
 import { RitualBar, SkActivation } from './SorcererKingsPanel';
+import { DwActivation, ElementalPowerBar } from './DweghomPanel';
 import { SPECIAL_MOVE_LABEL, specialMoveAllowance, type SpecialMoveKind } from '../../engine/specialMoves';
 import { isOdDrawEvent } from '../../engine/factions/oldDominionActions';
 import { canInduceAggression, strainFor } from '../../engine/factions/spires';
@@ -507,7 +508,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
       // Strain Expression and Memories of Old may be used in addition to another Draw Event.
       const extraDe = (d: string) => d === 'Strain Expression' || d === 'Memories of Old';
       // Sorcerer Kings Draw Events with choices are offered by SkActivation.
-      const withChoice = ['Elemental Prowess', 'Elemental Assault', 'Dancing Scimitar'];
+      const withChoice = ['Elemental Prowess', 'Elemental Assault', 'Dancing Scimitar', 'Forged By the Elements', 'Preternatural Focus', 'Runeforged Plate', 'Fires of the Descent'];
       const avail = names.filter(
         (n) => !isOdDrawEvent(baseName(n)) && !withChoice.includes(baseName(n)) && (loc === 'table' || baseName(n) === 'Elemental Conduit') && !done.includes(baseName(n)) && (extraDe(baseName(n)) || !done.some((d) => !extraDe(d))),
       );
@@ -589,6 +590,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
           {drawEventButtons(c.drawEvents)}
           <OdActivation key={`od-${c.id}`} s={s} run={run} />
           <SkActivation key={`sk-${c.id}`} s={s} run={run} onVolleyInContact={() => undefined} />
+          <DwActivation key={`dw-${c.id}`} s={s} run={run} />
           <PractitionerButtons key={`pr-${c.id}`} s={s} c={c} run={run} />
           <div className="actions wrap">
             {used === 0 && targets.map((t) => (
@@ -630,6 +632,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
         {drawEventButtons(r.drawEvents)}
         <OdActivation key={`od-${r.id}`} s={s} run={run} />
         <SkActivation key={`sk-${r.id}`} s={s} run={run} onVolleyInContact={(id) => run({ type: 'volley', regimentId: r.id, targetId: id })} onSoaring={() => beginSpecial('soaring', r.id)} />
+        <DwActivation key={`dw-${r.id}`} s={s} run={run} />
         <div className="actions wrap">
           {!act.ended && r.location === 'arriving' && <button type="button" onClick={() => beginEnter(r)} data-testid="march-on">March on</button>}
           {!act.ended && r.location === 'table' && !engaged && (
@@ -838,6 +841,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
       )}
       <PowerBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
       <RitualBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
+      <ElementalPowerBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
       <PhasePanel s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
 
       {s.phase === 'setup' && (

@@ -47,9 +47,13 @@ export function regimentPolys(s: GameState, r: RegimentState, override?: Partial
 
 /** Lowest March Characteristic in the Regiment; Characters with "-" are ignored (core p.28; AMB-21). */
 export function marchValue(s: GameState, r: RegimentState): number {
-  const vals = [r.profile.M, attachedCharacter(s, r.id)?.profile.M].filter((m): m is number => typeof m === 'number');
-  // Kiss of the Earth (sk p.25): −2 March on its first March or Charge this Round.
-  return vals.length ? Math.max(0, Math.min(...vals) - (r.flags.kissOfEarth ? 2 : 0)) : 0;
+  // March changes: Round modifiers and granted ones (Stride, Crown of Ushkelodh, Empowerments,
+  // Roots of Stone, Induced Aggression…) apply to the Regiment's own March.
+  const mods = [...r.roundMods, ...(r.grantMods ?? [])].filter((m) => m.stat === 'M').reduce((a, m) => a + m.delta, 0);
+  const own = r.profile.M === null ? null : r.profile.M + mods;
+  const vals = [own, attachedCharacter(s, r.id)?.profile.M].filter((m): m is number => typeof m === 'number');
+  // Kiss of the Earth (sk p.25): −2 March on its first March or Charge this Round. Battery (dw p.40): −1.
+  return vals.length ? Math.max(0, Math.min(...vals) - (r.flags.kissOfEarth ? 2 : 0) - (r.flags.battered ? 1 : 0)) : 0;
 }
 
 export function onTableRegiments(s: GameState): RegimentState[] {
@@ -281,6 +285,8 @@ export function marchAllowance(s: GameState, r: RegimentState): number {
   const sb = r.commandModels.includes('Standard Bearer') && r.stands.some((x) => x.isCommand);
   // Forced March (od p.24): the Standard Bearer adds +2″ instead.
   if (sb && s.activation?.actions.filter((k) => k === 'march').length === 1) m += r.rules.some((x) => x.name === 'Forced March') ? 2 : 1;
+  // Relentless March (dw p.25): friendly Infantry +1 on the second March of each Activation.
+  if (r.type === 'Infantry' && s.activation?.regimentId === r.id && s.activation.actions.filter((k) => k === 'march').length === 1 && s.players[r.owner].dw && Object.values(s.characters).some((c) => c.id.startsWith(r.owner) && !c.destroyed && c.options.some((o) => o.toLowerCase() === 'relentless march'))) m += 1;
   // Vanguard (X): +X to the first March when entering from Reinforcements (core p.101).
   if (s.activation?.regimentId === r.id && s.activation.entering && !s.activation.actions.includes('march')) m += vanguardX(r);
   return m;

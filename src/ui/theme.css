@@ -452,3 +452,12 @@ button.menu-item { background: linear-gradient(180deg, var(--panel-2), var(--pan
 .ccard.ritual { background: linear-gradient(160deg, #3b1f4a, #1d1026); border-color: #b48cd8; color: #f2e6ff; }
 .ritual-card .far-sight ol { margin: 4px 0; padding-left: 20px; }
 .sk-activation { margin: 4px 0; }
+
+/* ---------------------------------------------------------------- Dweghom: Elemental Power */
+.dw-bar h3 { margin-top: 0; }
+.dw-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0; }
+.dw-row + .dw-row { border-top: 1px solid var(--line); }
+.dw-row .raegh { flex-basis: 100%; }
+.ritual-pips .pip.ember { border-color: #d0624d; }
+.ritual-pips .pip.ember.on { background: radial-gradient(circle at 35% 35%, #ffd3a1, #e0703d 60%, #7d2d14); box-shadow: 0 0 6px rgba(224, 112, 61, 0.7); }
+.dw-activation { margin: 4px 0; }

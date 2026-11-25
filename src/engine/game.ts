@@ -10,6 +10,8 @@ import { createRng, rollD6, type RngState } from './rng';
 import type { Ctx } from './dice';
 import { applyM4, endActivation, logManualRules, validateM4 } from './gameM4';
 import { initSorcererKings } from './factions/sorcererKings';
+import { initDweghom } from './factions/dweghom';
+import { dwActivationStart, dwAfterApply } from './factions/dweghomActions';
 import { applySpecialMove, specialMoveProblems } from './specialMoves';
 import { skActivationStart, skAfterApply } from './factions/sorcererKingsActions';
 import { beginRound, cardTargets, type ReinforcementChoice } from './round';
@@ -81,7 +83,7 @@ export type ActionBody =
   | { type: 'duel'; characterId: string; targetCharacterId: string; accept: boolean }
   | { type: 'characterAbility'; characterId: string; name: string; targetId?: string; target2Id?: string }
   // Spellcasting (core p.80–81) and Old Dominion faction Actions (od p.5–8)
-  | { type: 'spell'; casterId: string; spell: string; targetId: string; attunement?: number; pool?: PowerPool }
+  | { type: 'spell'; casterId: string; spell: string; targetId: string; attunement?: number; pool?: PowerPool; boost?: number }
   | { type: 'memories'; regimentId: string }
   // Sorcerer Kings (sk p.5, p.22–25, p.42–46)
   | { type: 'prepareRitual'; player: PlayerId; ritual: string }
@@ -91,6 +93,9 @@ export type ActionBody =
   // Moves outside the March rules: Air Step, Translocation, On Soaring Winds (specialMoves.ts)
   | { type: 'specialMove'; regimentId: string; kind: 'airStep' | 'translocation' | 'soaring'; moves: MoveSeg[] }
   | { type: 'skipMove' }
+  // Dweghom (dw p.4–45)
+  | { type: 'dwSpend'; regimentId: string; what: 'wander' | 'herald' }
+  | { type: 'dwRaegh'; player: PlayerId; regimentIds: string[] }
   // Flames of Conquest (ns p.5)
   | { type: 'burnZone'; regimentId: string; zoneId: string }
   | { type: 'powerPref'; player: PlayerId; pool: PowerPool }
@@ -364,6 +369,7 @@ export function createGame(input: SetupInput): SetupResult {
   }
   initOldDominion(state);
   initSorcererKings(state);
+  initDweghom(state);
   refreshRules(state);
   const events: GameEvent[] = [{ type: 'setup', text: `Game created on ${input.scenario.name} (seed ${input.seed}).`, round: 1 }];
   for (const w of warnings) events.push({ type: 'warning', text: w, round: 1 });
@@ -382,6 +388,8 @@ export function validate(s: GameState, a: Action): Validation {
       if (r.owner !== a.characterId.slice(0, 2)) return fail('Characters join friendly Regiments only.');
       if (r.warband !== c.warband) return fail('A Character joins a Regiment from its own Warband (core p.72).');
       if (!attachTypeOk(c, r)) return fail(`A ${c.type} Character can only join a ${c.type} Regiment (core p.72).`);
+      // Life for Glory (Flame Berserkers, dw p.31): no Character can be attached.
+      if (r.name === 'Flame Berserkers' && /dweghom/i.test(s.players[r.owner].faction)) return fail('A Character cannot be attached to Flame Berserkers (dw p.31).');
       const other = Object.values(s.characters).find((x) => x.attachedTo === r.id && x.id !== c.id);
       if (other) return fail(`${r.name} already has ${other.name} attached (core p.73).`);
       return ok();
@@ -627,6 +635,7 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
       ev({ type: 'activate', text: `${r.owner} activates ${r.name}.`, player: r.owner, regimentId: r.id });
       if (onActivationStart(ctx, r, card)) {
         skActivationStart(ctx, r, afterRitual);
+        dwActivationStart(ctx, r);
         odActivationStartSpells(ctx);
         logManualRules(ctx, r);
       }
@@ -706,6 +715,8 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
   refreshRules(ctx.s);
   // Sorcerer Kings: Ritual access, Shattered Perfection, Air Elemental, Last Word (sk p.5–46).
   skAfterApply(ctx);
+  // Dweghom: Paragon of War (dw p.6).
+  dwAfterApply(ctx);
   refreshRules(ctx.s);
   // Power Tokens earned during the Action are added at its end (od p.6).
   if (ctx.power?.length) {

@@ -626,3 +626,51 @@ Mechanics in our own words. The code is in `src/engine/factions/sorcererKings*.t
   - Best Money can Buy, Elemental Feedback, Bound to the Elements (the change of Type is manual) and Elemental Projection.
 
   Niyantran and Favored of Hormus are manual.
+
+## 25. Dweghom (Dweghom army list, November 10th 2026; cited as dw p.N)
+
+Mechanics in our own words. The code is in `src/engine/factions/dweghom*.ts`.
+
+- **The Gift (dw p.4).** "Awakened" lasts until the end of the Round. An Awakened Regiment cannot become Broken, and a Broken one Rallies out of sequence as it Awakens. A Regiment that is already Awakened, or always counts as Awakened (Litanies of Victory), cannot Awaken again.
+- **Forged (dw p.4).**
+  - The Elemental Power pool holds at most 10 Markers. Every [Forged] Regiment has the Forged By the Elements Draw Event: it spends Markers on its Empowerment, once per Round, and becomes Awakened. A [Forged] Regiment that does not use it adds a Marker at the end of its Activation.
+  - Empowerments (dw p.30–43):
+    - Fireforged: Barrage (+2).
+    - Hellbringer Drake: Barrage (+2) and Armor Piercing (+1). With Hellbringer Sorcerer, 3 Markers give double and 5 give triple, with Armor Piercing at most +2.
+    - Inferno Automata: +1 March, or Impact (+2).
+    - Found: Barrage (+1) and +4″ range.
+    - Magmaforged: +2″ Charge or +1 Defense, or both for 3 Markers.
+    - Steelforged: +2 Attacks or Hardened (1), or both for 3.
+    - Stoneforged: Heal 3 or +2 March.
+- **The Unbound (dw p.5).** Dweghom Regiments are never Shattered.
+- **Creeds (dw p.5–8).** The Creed comes from the list's sub-faction line, else from the Warlord (AMB-78).
+  - Ardent: a successful Charge, or destroying an enemy Regiment, Awakens [Ardent] and [Clan] Regiments. Every friendly Regiment gains Pathfinders.
+  - Tempered: [Tempered] Characters add a Marker for each School Spell they cast, and may spend 2, 4 or 6 Markers for +1, +2 or +3 Wizard on a Spell.
+  - Clan: Awakened [Clan] Regiments gain Oblivious and Iron Discipline.
+- **Supremacy (dw p.6–8).**
+  - Herald of War: its Regiment Awakening also Awakens [Ardent] Regiments within 8″. [Activated]: [Ardent] Regiments Heal 4 and gain Lethal Demise (+4).
+  - Paragon of War: while its Regiment is engaged, every friendly Regiment is Awakened. The Character gains Forward Force.
+  - Living Legend: Ardent and Tempered are both active.
+  - Thesis/Antithesis/Synthesis: non-Monster [Forged] Regiments Heal 2 on Awakening; once per game, 3 Markers Heal 5 instead (AMB-79). [Activated]: each [Forged] Regiment adds a Marker when it Activates.
+  - Forgemaster: one free extra Spellcasting each Round, and the Sorcerer attempts each Spell once per Round.
+  - First Born of War: two Regiments Awaken at the end of the Supremacy Phase (AMB-83). The Character gains Forward Force.
+- **Characters (dw p.10–21).**
+  - To the End: Duels continue until a Character dies, and a declined Duel Awakens the challenger's Regiment.
+  - But First: a free Duel after a Spell. Hymns of War: a Spell Awakens a nearby [Ardent] Regiment (AMB-84).
+  - Preternatural Focus and Unassailable Authority: Draw Events that Awaken a Regiment.
+  - Igneolithic Mastery: no Enemy Interference for the Steelshaper; enemy Spells on its Regiment, or on [Forged] Regiments within 10″, need 1 more success.
+  - Refined Beyond Nature: no penalty for refusing a Duel.
+  - The Lost Ancestor may join Infantry and never Dies Fighting. With Not All who Wander, Lost and Found may spend 2 Markers to Awaken.
+- **Spells (dw p.26–28).**
+  - Fire: Coruscation, Fireball, and Flame Wall (4 or more successes: the target counts as within Hindering terrain).
+  - Magma: Magmatic Seep and Eruption target terrain, which becomes Erupting. Pyroclast hits the flank, and reaches any enemy within 6″ of Erupting terrain.
+  - Earth: Roots of Stone, Broken Ground, and Rock Shaping (+1 Marker).
+  - Steel: Hone Blades, Unmake Armor (Attunement equal to the target's Defense), and Temper Plate.
+  - The Kerawegh's Fear, Rancor, Dismay and Resolve. The Lost Ancestor's Songs of the Descent and Litanies of Battle, which are cast automatically.
+- **Units, Heralds and upgrades (dw p.22–45).**
+  - Awakened effects: Hold Warriors gain Impact (2), Initiates Support (+1), Flame Berserkers Lethal Demise (+2), Wardens Linebreaker, and an Awakened Lost gives Stride (+1 March).
+  - Blades of the Ancestor, Venerable and Echoes of Dheureghodh. Life for Glory: never Broken, Awaken instead, always pass Morale, no Character.
+  - Shieldwall (+2 Defense to the front), Battery, Unstable Alloys and Testaments to Honor.
+  - Heralds: Fire re-rolls failed Hit Rolls of 6, Magma gives Linebreaker, Stone gives Untouchable, and the Mnemancer's Apprentice gives Unyielding. A Herald puts its Regiment in the Creed's sub-faction, and in a Tempered army it may spend 1 Marker to Awaken.
+  - Relics and Masteries: Litanies of Victory, Runeforged Plate, The Crown of Ushkelodh, Tempered Goad, Invocation of the Shattering, Gifted in Fire, World Breakers, First in the Fray, Superiority, Bloody-Minded Focus, Relentless March, Thaumaturge and Ferric Throne. Profile changes (Champion's Horns, Draegbhrud) come from the export.
+  - Manual: AMB-85.

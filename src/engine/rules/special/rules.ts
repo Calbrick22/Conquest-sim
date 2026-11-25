@@ -162,6 +162,33 @@ const IMPLEMENTED: [string, string][] = [
   ['Gilded Statue', 'sk p.42'],
   ['Sorcerous Blessing', 'sk p.14'],
   ['Tidal Summons', 'sk p.45 (chosen on the Reinforcement screen)'],
+  // Dweghom (dw = Dweghom army list, November 10th 2026)
+  ['Forged By the Elements', 'dw p.4'],
+  ['Herald of Fire', 'dw p.45'],
+  ['Hone Blades', 'dw p.27'],
+  ['Unstable Alloys', 'dw p.43'],
+  ['Venerable', 'dw p.29'],
+  ['Life for Glory', 'dw p.31'],
+  ['Shieldwall', 'dw p.37'],
+  ['Battery', 'dw p.40'],
+  ['World Breakers', 'dw p.24'],
+  ['Barrage Range', 'dw p.40'],
+  ['Preternatural Focus', 'dw p.12'],
+  ['Unassailable Authority', 'dw p.20'],
+  ['Gifted in Fire', 'dw p.22'],
+  ['Runeforged Plate', 'dw p.23'],
+  ['Fires of the Descent', 'dw p.39'],
+  ['To the End', 'dw p.10–14'],
+  ['But First', 'dw p.10'],
+  ['Hymns of War', 'dw p.11 (target picked by the engine, AMB-84)'],
+  ['Igneolithic Mastery', 'dw p.18'],
+  ['Refined Beyond Nature', 'dw p.18'],
+  ['Not All who Wander are Lost', 'dw p.20'],
+  ['Blades of the Ancestor', 'dw p.29'],
+  ['Echoes of Dheureghodh', 'dw p.29'],
+  ['Stride', 'dw p.39'],
+  ['Testaments to Honor', 'dw p.38'],
+  ['Empowerment', 'dw p.30–43'],
   ['On Soaring Winds', 'sk p.36'],
   // Core Draw Events (p.94–95)
   ['Bastion', 'core p.94'],
@@ -180,9 +207,17 @@ export function flatRules(rules: readonly RuleRef[]): RuleRef[] {
   return rules.flatMap((r) => [r, ...(r.sub ? flatRules(r.sub) : [])]);
 }
 
+/**
+ * Rule names compare without case, hyphens or a plural "s": lists print "Counter Attack" and
+ * "Quicksilver Strikes" for the core's "Counter-Attack" and "Quicksilver Strike".
+ */
+export function ruleKey(name: string): string {
+  return name.toLowerCase().replace(/[-‐–]/g, ' ').replace(/\s+/g, ' ').trim().replace(/s$/, '');
+}
+
 export function hasRule(rules: readonly RuleRef[], name: string): boolean {
-  const n = name.toLowerCase();
-  return rules.some((r) => r.name.toLowerCase() === n);
+  const n = ruleKey(name);
+  return rules.some((r) => ruleKey(r.name) === n);
 }
 
 /**
@@ -190,11 +225,11 @@ export function hasRule(rules: readonly RuleRef[], name: string): boolean {
  * instances add to it (core p.96). Returns 0 if absent.
  */
 export function ruleX(rules: readonly RuleRef[], name: string): number {
-  const n = name.toLowerCase();
+  const n = ruleKey(name);
   let base = 0;
   let plus = 0;
   for (const r of rules) {
-    if (r.name.toLowerCase() !== n) continue;
+    if (ruleKey(r.name) !== n) continue;
     if (r.plus) plus += r.x ?? 0;
     else base = Math.max(base, r.x ?? 0);
   }
@@ -209,10 +244,12 @@ export function barrageOf(rules: readonly RuleRef[]): { shots: number; range: nu
   const r = b.find((x) => !x.plus) ?? b[0]!;
   // Barrage (+X) adds shots to the profile (e.g. from Memories of Old, od p.27).
   const plus = b.filter((x) => x !== r && x.plus).reduce((a, x) => a + (x.x ?? 0), 0);
-  return { shots: (r.x ?? 0) + plus, range: r.range ?? 0, sub: r.sub ?? [] };
+  // Barrage range bonuses (Found Empowerment, dw p.40).
+  const longer = ruleX(rules, 'Barrage Range');
+  return { shots: (r.x ?? 0) + plus, range: (r.range ?? 0) + longer, sub: r.sub ?? [] };
 }
 
 /** Rules not automated by the engine. */
 export function manualRules(rules: readonly RuleRef[]): RuleRef[] {
-  return rules.filter((r) => !IMPLEMENTED.some(([n]) => n.toLowerCase() === r.name.toLowerCase()));
+  return rules.filter((r) => !IMPLEMENTED.some(([n]) => ruleKey(n) === ruleKey(r.name)));
 }

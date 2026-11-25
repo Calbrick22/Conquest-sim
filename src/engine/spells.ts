@@ -14,6 +14,8 @@ import { hasRule, ruleX } from './rules/special/rules';
 import { addPower, darkTierMax, pantheonTier, poolTier, regimentDarkTier, roleOf } from './factions/oldDominion';
 import { addMarkers, characterCourts, ofCourt, sk, skUnit, spellKey, warlordHas } from './factions/sorcererKings';
 import { SK_SPELLS } from './factions/sorcererKingsSpells';
+import { DW_SPELLS } from './factions/dweghomSpells';
+import { dwAfterCast, dwExtraSuccessesNeeded, dwNoInterference, dwOnAttempt, dwSpellProblems, dwRangeExempt, spendBoost } from './factions/dweghomActions';
 
 /**
  * Spellcasting (core p.80–81):
@@ -182,7 +184,7 @@ export const SPELLS: Record<string, SpellDef> = {
   },
 };
 
-Object.assign(SPELLS, SK_SPELLS);
+Object.assign(SPELLS, SK_SPELLS, DW_SPELLS);
 
 export function spellDef(name: string): SpellDef | undefined {
   const k = Object.keys(SPELLS).find((n) => spellKey(n) === spellKey(name));
@@ -274,6 +276,8 @@ export function spellProblems(s: GameState, casterId: string, name: string, targ
     if ((st.spellCount[spellKey(name)] ?? 0) >= 3) return [`${name} has already been cast three times this Round (Omnipotence, sk p.6).`];
   }
   if (c.regiment.location !== 'table') return ['The caster must be on the Battlefield.'];
+  const dwp = dwSpellProblems(s, c, name);
+  if (dwp.length) return dwp;
   const area = spellDef(name);
   if (area && (area.target === 'zone' || area.target === 'terrain')) {
     const polys = areaPolys(s, targetId);
@@ -290,7 +294,7 @@ export function spellProblems(s: GameState, casterId: string, name: string, targ
     if (def.target === 'self' && t.id !== c.regiment.id) return [`${name} has Range Self: it targets the caster's own Regiment (core p.80).`];
     if (def.target === 'friendly' && t.owner !== c.owner) return [`${name} targets a friendly Regiment.`];
     if (def.target === 'enemy' && t.owner === c.owner) return [`${name} targets an enemy Regiment.`];
-    const tethered = tether(s, c, t);
+    const tethered = tether(s, c, t) || dwRangeExempt(s, name, t);
     const range = def.range === 'self' ? 'self' : def.range + rangeBonus(s, c);
     if (range !== 'self' && !tethered && distancePolys(casterPolys(s, c), regimentPolys(s, t)) > range + TOL) return [`${t.name} is beyond ${range}″.`];
     if (def.hits) {
@@ -325,6 +329,7 @@ function castAreaSpell(ctx: Ctx, c: Caster, name: string, def: SpellDef, areaId:
   const s = ctx.s;
   const act = s.activation!;
   (act.spellsCast ??= []).push(name.toLowerCase());
+  dwOnAttempt(s, c, name);
   const st = sk(s, c.owner);
   if (st) {
     const k = spellKey(name);
@@ -340,6 +345,7 @@ function castAreaSpell(ctx: Ctx, c: Caster, name: string, def: SpellDef, areaId:
   if (!ok) return;
   def.applyArea?.(ctx, c, areaId, roll.passes);
   if (st) skAfterCast(ctx, c, def, roll.passes);
+  dwAfterCast(ctx, c, def, null);
 }
 
 export function areaLabel(s: GameState, id: string): string {
@@ -351,7 +357,7 @@ export function areaLabel(s: GameState, id: string): string {
   return p ? `${p.kind} ${p.id}` : id;
 }
 
-export function castSpell(ctx: Ctx, casterId: string, name: string, targetId: string, opts: { attunement?: number; pool?: PowerPool } = {}): void {
+export function castSpell(ctx: Ctx, casterId: string, name: string, targetId: string, opts: { attunement?: number; pool?: PowerPool; boost?: number } = {}): void {
   const s = ctx.s;
   const c = casterOf(s, casterId)!;
   const areaDef = spellDef(name);
@@ -360,9 +366,13 @@ export function castSpell(ctx: Ctx, casterId: string, name: string, targetId: st
   const def = spellDef(name);
   const act = s.activation!;
   (act.spellsCast ??= []).push(name.toLowerCase());
+  dwOnAttempt(s, c, name);
   if (c.character?.sacrament) c.character.sacrament = false;
-  const baseAtt = def?.attunement ?? opts.attunement!;
-  const penal = interference(s, c, t);
+  // Tempered Creed (dw p.7): spend up to 6 Elemental Power Markers for +1 Wizard per 2.
+  if (opts.boost) c.dice += spendBoost(ctx, c, opts.boost);
+  const baseAtt = def?.attunementFor ? def.attunementFor(s, t) : def?.attunement ?? opts.attunement!;
+  // Igneolithic Mastery (Tempered Steelshaper, dw p.18): no Enemy Interference.
+  const penal = !dwNoInterference(c) && interference(s, c, t);
   const att = Math.max(0, baseAtt - (penal ? 1 : 0));
   const st = sk(s, c.owner);
   if (st) {
@@ -372,7 +382,8 @@ export function castSpell(ctx: Ctx, casterId: string, name: string, targetId: st
   }
   // Eminence (Mahabharati Initiates, sk p.27): against an enemy spellcaster, +2 Evasion and +5 Stands for Scaling.
   const eminence = t.owner !== c.owner && !!skUnit(t)?.eminence;
-  const need = (def?.minSuccesses ?? 2) + (def?.scaling ? scalingExtra(s, t, eminence ? 5 : 0) : 0);
+  // Igneolithic Mastery (dw p.18): enemy Spells on the Steelshaper's Regiment or [Forged] near it need 1 more success.
+  const need = (def?.minSuccesses ?? 2) + (def?.scaling ? scalingExtra(s, t, eminence ? 5 : 0) : 0) + dwExtraSuccessesNeeded(s, c, t);
   if (eminence) {
     t.roundMods.push({ stat: 'E', delta: 2, source: 'Eminence' });
     ev(ctx, { type: 'note', text: `Eminence: ${t.name} has +2 Evasion and counts as +5 Stands for Scaling during this Spellcasting (sk p.27).`, regimentId: t.id });
@@ -382,8 +393,13 @@ export function castSpell(ctx: Ctx, casterId: string, name: string, targetId: st
   if (kavach) act.kavach = true;
   const sixes = (!!c.character && c.character.options.some((o) => o.toLowerCase() === 'devoted to hazlia')) || kavach;
   // RULE-AMBIGUITY: AMB-51 — Spellcasting dice follow Characteristic Tests: 1 always succeeds, 6 always fails.
-  const roll = rollTest(ctx, c.dice, { target: att, rerollSixes: sixes }, `${c.name}: ${name}`);
+  const roll = rollTest(ctx, def?.autoCast ? 0 : c.dice, { target: att, rerollSixes: sixes }, `${c.name}: ${name}`);
   let successes = roll.passes;
+  // Lost Ancestor Spells (dw p.28) are cast automatically.
+  if (def?.autoCast) {
+    successes = need;
+    roll.record.notes?.push('cast automatically');
+  }
   // Devout (core p.97): a friendly Priest's Spell on this Regiment converts one failed die.
   const devout = c.priest && t.owner === c.owner && (hasRule(t.rules, 'Devout') || !!attachedCharacter(s, t.id)?.rules.some((x) => x.name === 'Devout'));
   if (devout && successes < c.dice) {
@@ -419,6 +435,7 @@ export function castSpell(ctx: Ctx, casterId: string, name: string, targetId: st
   else ev(ctx, { type: 'manual', text: `${name} is cast with ${successes} successes: apply its effect with the manual tools.`, player: c.owner, regimentId: t.id });
   if (eminence) t.roundMods = t.roundMods.filter((m) => m.source !== 'Eminence');
   if (st) skAfterCast(ctx, c, def, successes);
+  dwAfterCast(ctx, c, def, t);
   // Unholy Mastery (od p.21): 4+ successes give a free additional Spellcasting, once per Activation.
   if (c.character && successes >= 4 && !act.unholyMastery && c.character.options.some((o) => o.toLowerCase() === 'unholy mastery')) {
     act.unholyMastery = true;

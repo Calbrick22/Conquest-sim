@@ -7,6 +7,7 @@ import { distancePolys, regimentPolys } from '../../engine/queries';
 import { fallenDivinity, hasMemories, od, pantheonTier, poolTier, roleOf, tierThresholds, warlord, warlordHas } from '../../engine/factions/oldDominion';
 import { isOdDrawEvent, OD_SUPREMACY, odSpendProblems, tokensAvailable } from '../../engine/factions/oldDominionActions';
 import { areaLabel, castableSpells, casterOf, spellDef } from '../../engine/spells';
+import { boostOptions } from './DweghomPanel';
 import { validate } from '../../engine/game';
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV'];
@@ -60,6 +61,8 @@ export function OdActivation({ s, run }: { s: GameState; run: (a: Action) => boo
   const act = s.activation;
   const [spell, setSpell] = useState<string | null>(null);
   const [att, setAtt] = useState(3);
+  // Tempered Creed (dw p.7): Elemental Power Markers spent on the Spell (+1 Wizard per 2).
+  const [boost, setBoost] = useState(0);
   const [awaken, setAwaken] = useState<string[]>([]);
   if (!act) return null;
   const r = s.regiments[act.regimentId]!;
@@ -164,6 +167,18 @@ export function OdActivation({ s, run }: { s: GameState; run: (a: Action) => boo
       )}
       {spell && (
         <div className="actions wrap">
+          {boostOptions(s, r.owner).length > 1 && (
+            <label className="meta">
+              Elemental Power{' '}
+              <select value={boost} onChange={(e) => setBoost(Number(e.target.value))} data-testid="spell-boost">
+                {boostOptions(s, r.owner).map((b) => (
+                  <option key={b} value={b}>
+                    {b ? `${b} (Wizard +${b / 2})` : 'none'}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {!spellDef(spell) && (
             <label className="meta">
               Attunement{' '}
@@ -178,7 +193,10 @@ export function OdActivation({ s, run }: { s: GameState; run: (a: Action) => boo
               type="button"
               className="small"
               onClick={() => {
-                if (run({ type: 'spell', casterId, spell, targetId: id, ...(spellDef(spell) ? {} : { attunement: att }) })) setSpell(null);
+                if (run({ type: 'spell', casterId, spell, targetId: id, ...(spellDef(spell) ? {} : { attunement: att }), ...(boost && boostOptions(s, r.owner).includes(boost) ? { boost } : {}) })) {
+                  setSpell(null);
+                  setBoost(0);
+                }
               }}
             >
               {spell} → {s.regiments[id]?.name ?? areaLabel(s, id)}

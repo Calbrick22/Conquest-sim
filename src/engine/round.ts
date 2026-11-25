@@ -3,6 +3,7 @@ import type { CommandCard, GameState, PlayerId, RegimentState, UnitClass } from 
 import { computeReinforcementLine, hasFlank, other, regimentStandCount } from './queries';
 import { beginRoundOd } from './factions/oldDominion';
 import { beginRoundSk, elementalKind, placeRituals } from './factions/sorcererKings';
+import { beginRoundDw } from './factions/dweghom';
 
 /**
  * Reinforcement table (core p.21): the roll needed this Round per Class, 'auto' when the Class
@@ -262,6 +263,8 @@ export function beginRound(s: GameState): void {
     r.flags.epigenetic = false;
     // Sorcerer Kings effects until the end of the Round (sk p.18–25).
     for (const k of ['inflamed', 'cauterized', 'hypoxia', 'flowingStride', 'cyclone', 'stabilized', 'reinforced', 'searing', 'quake', 'noRally', 'kissOfEarth', 'form', 'tidecaller', 'blessing', 'aqueousBy'] as const) delete r.flags[k];
+    // Dweghom effects until the end of the Round (dw p.4–45).
+    for (const k of ['awakened', 'empowered', 'fear', 'dismay', 'brokenGround', 'flameWall', 'chargeBonus', 'battered', 'unmade'] as const) delete r.flags[k];
     r.standsAtRoundStart = r.stands.length;
     // RULE-AMBIGUITY: AMB-33 — a Regiment still Broken counts Shattering from the start of each new Round.
     if (r.broken) r.standsWhenBroken = r.stands.length;
@@ -269,6 +272,7 @@ export function beginRound(s: GameState): void {
   for (const c of Object.values(s.characters)) c.activatedThisRound = false;
   beginRoundOd(s);
   beginRoundSk(s);
+  beginRoundDw(s);
   delete s.pendingMove;
   s.hinderingZones = [];
   for (const p of ['P1', 'P2'] as const) {

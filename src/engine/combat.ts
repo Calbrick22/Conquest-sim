@@ -10,6 +10,7 @@ import { hasRule, ruleX } from './rules/special/rules';
 import { autoPassesResolve, onRegimentDestroyed, onStandLost, rerollsMoraleSuccesses } from './factions/oldDominion';
 import { pheromanticDrive } from './factions/spires';
 import { skUnit } from './factions/sorcererKings';
+import { dwAutoPassesMorale, dwNoShatter, dwOnDestroyed, dwPreventBroken } from './factions/dweghomActions';
 
 /**
  * Niyantran (sk p.16): while its Regiment is not Broken, friendly Regiments within 12″ of that
@@ -150,7 +151,8 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
   const melee = kind === 'clash' || kind === 'impact';
   // Shield: +1 Defense against the front arc (core p.100). Phalanx: +1 Defense and Resolve against the front (core p.100).
   const shieldBonus = spec.arc === 'front' && hasRule(target.rules, 'Shield') ? 1 : 0;
-  const phalanxBonus = spec.arc === 'front' && hasRule(target.rules, 'Phalanx') ? 1 : 0;
+  // Shieldwall (Initiates, dw p.37): +2 Defense against Hits from the front arc.
+  const phalanxBonus = (spec.arc === 'front' && hasRule(target.rules, 'Phalanx') ? 1 : 0) + (spec.arc === 'front' && hasRule(target.rules, 'Shieldwall') ? 2 : 0);
   const bastion = target.roundMods.filter((m) => m.stat === 'D' && m.source === 'Bastion').reduce((a, m) => a + m.delta, 0);
   const hardened = ruleX(target.rules, 'Hardened');
   for (const pool of spec.pools) {
@@ -208,7 +210,9 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
       const passed = [...def.passed];
       const vals = [...def.values];
       // Untouchable: re-roll failed Defense rolls of 6 (core p.101).
-      if (hasRule(target.rules, 'Untouchable') && vals.some((v, i) => v === 6 && !passed[i])) {
+      // Unstable Alloys (Stoneforged, dw p.43): Untouchable against Volleys.
+      const untouchable = hasRule(target.rules, 'Untouchable') || (kind === 'volley' && hasRule(target.rules, 'Unstable Alloys'));
+      if (untouchable && vals.some((v, i) => v === 6 && !passed[i])) {
         const idx = vals.map((v, i) => (v === 6 && !passed[i] ? i : -1)).filter((i) => i >= 0);
         const rr = rollTest(ctx, idx.length, { target: t, defense: true }, `${target.name}: Untouchable re-roll`);
         idx.forEach((i, k) => {
@@ -269,6 +273,8 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
     if (!isDestroyed(target) && spec.morale) res.moraleWounds = moraleTest(ctx, target, wounds, spec);
     res.standsLost = before - target.stands.length;
     res.destroyed = isDestroyed(target);
+    // Ardent Creed, Blades of the Ancestor (dw p.6, p.29).
+    if (res.destroyed) dwOnDestroyed(ctx, spec.attackerId, target);
   }
   resolvePending(ctx);
   return res;
@@ -281,6 +287,11 @@ function resolvePending(ctx: Ctx): void {
     const from = ctx.s.regiments[p.fromId];
     const to = ctx.s.regiments[p.toId];
     if (!from || !to || isDestroyed(to)) continue;
+    // Venerable (Dragonslayers, dw p.29): no Hits from Lethal Demise.
+    if (p.kind === 'Lethal Demise' && hasRule(to.rules, 'Venerable')) {
+      ev(ctx, { type: 'note', text: `${to.name} is Venerable: no Hits from Lethal Demise (dw p.29).`, regimentId: to.id });
+      continue;
+    }
     ev(ctx, { type: 'note', text: `${p.kind}: ${to.name} suffers ${p.hits} Hit${p.hits === 1 ? '' : 's'} from ${from.name}.` });
     if (p.kind === 'Lethal Demise' && hasRule(from.rules, 'Reprocessing Agents')) reprocess(ctx, to);
     resolveAttack(ctx, {
@@ -324,6 +335,10 @@ export function moraleTest(ctx: Ctx, r: RegimentState, wounds: number, spec: Pic
     ev(ctx, { type: 'note', text: `${r.name} has Animate Vessel: it passes its Morale Tests automatically (od p.5).`, player: r.owner });
     return 0;
   }
+  if (dwAutoPassesMorale(ctx.s, r)) {
+    ev(ctx, { type: 'note', text: `${r.name} has Life for Glory: it passes its Morale Tests automatically (dw p.31).`, player: r.owner });
+    return 0;
+  }
   const ignoresFear = hasRule(r.rules, 'Fearless') || hasRule(r.rules, 'Bravery');
   const phalanx = spec.arc === 'front' && hasRule(r.rules, 'Phalanx') ? 1 : 0;
   const R = Math.max(0, resolveValue(ctx, r) - (ignoresFear ? 0 : spec.terrifying) + phalanx);
@@ -337,8 +352,8 @@ export function moraleTest(ctx: Ctx, r: RegimentState, wounds: number, spec: Pic
     `${r.name}: Morale`,
   );
   let failed = wounds - t.passes;
-  if (r.flags.declinedDuel) {
-    // Re-roll successful Resolve tests of 1 (core p.76).
+  // A declined Duel (core p.76), Fear and Dismay (dw p.28): re-roll successful Resolve tests of 1.
+  if (r.flags.declinedDuel || r.flags.fear || r.flags.dismay) {
     const ones = t.values.filter((v, i) => v === 1 && t.passed[i]).length;
     if (ones) {
       const rr = rollTest(ctx, ones, { target: R }, `${r.name}: declined Duel re-roll`);
@@ -431,11 +446,14 @@ export function checkBroken(ctx: Ctx, r: RegimentState): void {
   if (!r.broken) {
     const lost = r.standsAtRoundStart - n;
     if (lost > 0 && lost >= Math.ceil(r.standsAtRoundStart / 2)) {
+      // The Gift (dw p.4): an Awakened Regiment cannot become Broken; Flame Berserkers Awaken instead.
+      if (dwPreventBroken(ctx, r)) return;
       r.broken = true;
       r.standsWhenBroken = n + 0;
       ev(ctx, { type: 'broken', text: `${r.name} is Broken (lost ${lost} of ${r.standsAtRoundStart} Stands this Round, core p.60).`, player: r.owner, regimentId: r.id });
     }
-  } else if (r.standsWhenBroken !== null) {
+  } else if (r.standsWhenBroken !== null && !dwNoShatter(ctx.s, r)) {
+    // The Unbound (dw p.5): Dweghom Regiments cannot be Shattered.
     const lost = r.standsWhenBroken - n;
     if (lost > 0 && lost >= Math.ceil(r.standsWhenBroken / 2)) {
       ev(ctx, { type: 'shattered', text: `${r.name} is Shattered and flees (core p.61).`, player: r.owner, regimentId: r.id });
@@ -453,8 +471,11 @@ export function checkBroken(ctx: Ctx, r: RegimentState): void {
 function dieFightingCheck(ctx: Ctx, r: RegimentState, byPlayer: PlayerId): void {
   const c = Object.values(ctx.s.characters).find((x) => x.attachedTo === r.id && !x.destroyed);
   if (!c || c.type === 'Monster' || r.type === 'Monster') return;
+  // The Lost Ancestor never Dies Fighting; Bloody-Minded Focus always does (dw p.20, p.24).
+  if (c.name === 'Lost Ancestor' && ctx.s.players[r.owner].dw) return;
   const act = ctx.s.activation;
-  const acted = r.activatedThisRound || c.activatedThisRound || (act && act.regimentId === r.id && act.actions.length > 0);
+  const always = c.options.some((o) => o.toLowerCase() === 'bloody-minded focus');
+  const acted = !always && (r.activatedThisRound || c.activatedThisRound || (act && act.regimentId === r.id && act.actions.length > 0));
   if (acted) return;
   const slot = layout(formationInput(ctx.s, r)).find((x) => x.isCharacter);
   if (!slot) return;

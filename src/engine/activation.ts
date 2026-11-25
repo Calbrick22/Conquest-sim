@@ -10,7 +10,10 @@ import { attachedCharacter, distancePolys, formationInput, isEngaged, regimentPo
 import { hasRole, sectOf } from './rules/special/grants';
 import { barrageOf, hasRule, ruleX } from './rules/special/rules';
 import { OD_DRAW_EVENTS, applyOdDrawEvent, isOdDrawEvent, odDrawEventProblems } from './factions/oldDominionActions';
-import { SK_DRAW_EVENTS, applySkDrawEvent, skDrawEventProblems } from './factions/sorcererKingsActions';
+import { applySkDrawEvent, skDrawEventProblems } from './factions/sorcererKingsActions';
+import { applyDwDrawEvent, dwDrawEventProblems } from './factions/dweghomActions';
+import { SK_DRAW_EVENTS } from './factions/sorcererKings';
+import { DW_DRAW_EVENTS } from './factions/dweghom';
 import { applyPractitioner, canInduceAggression, decayWounds, degenerativeAura, isPractitioner, practitionerProblems, shrouded, strainFor } from './factions/spires';
 
 // ---------------------------------------------------------------- Action bookkeeping
@@ -71,8 +74,8 @@ export function onActivationStart(ctx: Ctx, r: RegimentState, card: CommandCard 
     const myPolys = regimentPolys(s, r);
     let hits = 0;
     for (const e of enemiesInContact(s, r)) {
-      // Stabilize (the Pattern) (sk p.21): no Aura of Death on it.
-      if (r.flags.stabilized) break;
+      // Stabilize (the Pattern) (sk p.21), Venerable (dw p.29): no Aura of Death on it.
+      if (r.flags.stabilized || hasRule(r.rules, 'Venerable')) break;
       const x = ruleX(e.rules, 'Aura of Death');
       if (!x) continue;
       const per = e.type === 'Monster' ? x : Math.min(4, x);
@@ -193,6 +196,7 @@ export function heal(ctx: Ctx, r: RegimentState, points: number, why: string): v
 
 export const DRAW_EVENTS_AUTOMATED = [
   ...OD_DRAW_EVENTS,
+  ...DW_DRAW_EVENTS,
   ...SK_DRAW_EVENTS.filter((d) => d !== 'Fan the Flames'),
   'Bastion',
   'Biotic Renewal',
@@ -251,6 +255,7 @@ export function drawEventProblems(s: GameState, name: string, choice: DrawEventC
   if (r.location !== 'table' && !(baseName(name) === 'Elemental Conduit' && r.location === 'arriving')) return ['Draw Events are not resolved while arriving from Reinforcements (core p.23).'];
   if (isOdDrawEvent(baseName(name))) return odDrawEventProblems(s, r, baseName(name), choice);
   if (SK_DRAW_EVENTS.includes(baseName(name))) return skDrawEventProblems(s, r, c, baseName(name), choice);
+  if (DW_DRAW_EVENTS.includes(baseName(name))) return dwDrawEventProblems(s, r, c, baseName(name), choice);
   if (baseName(name) === 'Suppress Higher Functions' || baseName(name) === 'Epigenetic Trigger') {
     const t = choice.targetId ? s.regiments[choice.targetId] : r;
     if (!t || t.owner !== r.owner || t.location !== 'table') return ['Choose a friendly Regiment on the Battlefield.'];
@@ -353,6 +358,10 @@ export function applyDrawEvent(ctx: Ctx, name: string, choice: DrawEventChoice):
       }
       if (SK_DRAW_EVENTS.includes(bn)) {
         applySkDrawEvent(ctx, r, c, bn, choice);
+        return;
+      }
+      if (DW_DRAW_EVENTS.includes(bn)) {
+        applyDwDrawEvent(ctx, r, c, bn, choice);
         return;
       }
       ev(ctx, { type: 'manual', text: `Draw Event: ${name} (manual — apply its effect with the manual tools).`, regimentId: r.id });

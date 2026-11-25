@@ -221,6 +221,25 @@ export interface RegimentFlags {
   aqueousBy?: PlayerId;
   /** Earthquake: enemies within cannot Rally or Combat Rally. */
   noRally?: boolean;
+  // Dweghom (dw p.4–45), until the end of the Round:
+  /** "Awakened" (dw p.4). */
+  awakened?: boolean;
+  /** Empowerment used this Round (dw p.4). */
+  empowered?: boolean;
+  /** Fear (dw p.28): Charge Distance on the lowest of 2D6; re-roll successful Morale Tests of 1. */
+  fear?: boolean;
+  /** Dismay (dw p.28): re-roll successful Morale Tests of 1; its Characters cannot decline a Duel. */
+  dismay?: boolean;
+  /** Broken Ground (dw p.27): no Juggernaut, no Charge re-roll, Wounds on a failed Charge. */
+  brokenGround?: boolean;
+  /** Flame Wall (dw p.26): counts as within Hindering terrain. */
+  flameWall?: boolean;
+  /** Extra Charge Distance this Round (Magmaforged Empowerment). */
+  chargeBonus?: number;
+  /** Unmake Armor (dw p.27): loses Hardened this Round. */
+  unmade?: boolean;
+  /** Battery (Found, dw p.40): −1 March this Round. */
+  battered?: boolean;
   /** Last Word resolved (Rakshasa). */
   lastWordDone?: boolean;
   /** Permanent: the first time below its starting strength (Shattered Perfection, Raging Elements). */
@@ -341,6 +360,25 @@ export interface PlayerState {
   tierProfiles?: Record<string, Record<string, TierProfileDef>>;
   /** Sorcerer Kings Rituals (sk p.6). */
   sk?: SkPlayerState;
+  /** Dweghom Elemental Power and once-per-game abilities (dw p.4–8). */
+  dw?: DwPlayerState;
+}
+
+export interface DwPlayerState {
+  /** Elemental Power Markers (at most 10, dw p.4). */
+  pool: number;
+  /** Thesis/Antithesis/Synthesis: the once-per-game 3-Marker Heal is used. */
+  steelHealUsed: boolean;
+  /** First Born of War: the two Regiments chosen in this Supremacy Phase. */
+  raeghChoice: string[];
+  /** Forgemaster: Round in which each Character used its free Spellcasting. */
+  forgemasterRound: Record<string, number>;
+  /** Thesis/Antithesis/Synthesis [Activated]: the Round it was activated. */
+  steelshaperRound: number;
+  /** Forgemaster: Spells each Character attempted this Round. */
+  castThisRound: Record<string, string[]>;
+  /** Runeforged Plate: extra Attacks for a Character this Round. */
+  charAttacks?: Record<string, number>;
 }
 
 export type Court = 'Fire' | 'Air' | 'Water' | 'Earth';
@@ -431,6 +469,8 @@ export interface GameState {
   burnedZones?: string[];
   /** A move granted outside the normal sequence, waiting to be made or skipped (Air Step, Translocation). */
   pendingMove?: { regimentId: string; kind: 'airStep' | 'translocation'; max: number };
+  /** Pieces of terrain that are Erupting this Round (Dweghom School of Magma, dw p.26). */
+  eruptingPieces?: string[];
   /** Objective Zones that count as Hindering this Round (Sunder (the Land), sk p.21). */
   hinderingZones?: string[];
   /** Terrain keywords to restore at the end of the Round (Sorcerer Kings Rituals change them). */
