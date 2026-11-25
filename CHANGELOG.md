@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.3.1] - 2026-11-25 (Dweghom: tested with a real list)
+
+### Fixed
+- **List import (Dweghom export):**
+  - The "Spells: Fire School" option is read as the School choice, not as more Spells; before, the Mastery that followed was swallowed too.
+  - A named rule paragraph such as "Empowerment: …" no longer leaks into the Battlefield Role. That had broken the Found's [Forged] role.
+- **The Lost Ancestor** knows its own Spells plus its School's Spells. Before, the School's were missing when the export listed Spells.
+- **Characters are no longer attached to Flame Berserkers** at setup (Life for Glory, dw p.31).
+- **Charges where the target pivots to meet the charger** (core p.32) now check that the charger's own end position is legal. A charger could be left overlapping a friend, a Marker or Impassable terrain.
+
 ## [2.3.0] - 2026-11-25 (computer difficulty)
 
 ### Added

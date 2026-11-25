@@ -273,7 +273,8 @@ export function parseArmyList(text: string): ArmyList {
       continue;
     }
 
-    const lab = startsWithLabel(line);
+    // Inside Options, "Spells Fire School" is an option group (the Dweghom School choice), not the Spells label.
+    const lab: Label | null = label === 'Options' && /^Spells\b/.test(line) ? null : startsWithLabel(line);
     if (lab && entry) {
       flushLabel();
       flushNote();
@@ -300,7 +301,10 @@ export function parseArmyList(text: string): ArmyList {
       }
     }
     // A sentence that starts with the entry's own name, e.g. "Marid Apsara may perform …" (Sorcerer Kings export).
-    const ownName = !!entry && line.startsWith(`${(entry as ListEntry).name} `) && /^\s*(may|can|counts|gains|must|is|has|adds)\b/.test(line.slice((entry as ListEntry).name.length));
+    const ownName =
+      (!!entry && line.startsWith(`${(entry as ListEntry).name} `) && /^\s*(may|can|counts|gains|must|is|has|adds)\b/.test(line.slice((entry as ListEntry).name.length))) ||
+      // A named rule paragraph, e.g. "Empowerment: The Regiment may spend …" (Dweghom export).
+      (!!entry && label !== 'Options' && /^[A-Z][A-Za-z’' -]{2,40}: [A-Z]/.test(line));
     if ((isSentence(line) || ownName) && (label !== 'Options' || /[.!?]$/.test(line) || SENTENCE_START_RE.test(line) || ownName)) {
       flushLabel();
       flushNote();

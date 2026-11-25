@@ -240,7 +240,9 @@ export function createGame(input: SetupInput): SetupResult {
         // Theokrator, od p.8, p.15): it gets its own one-Stand Monster Regiment.
         // RULE-AMBIGUITY: AMB-48 — Duels with these Characters are manual.
         const embodied = type === 'Monster' && list.faction && (/old dominion/i.test(list.faction) || c.specialRules.some((x) => x.name === 'Animate Vessel'));
-        let target = embodied ? -1 : wb.regiments.findIndex((e) => toStandType(e.type) === type);
+        // Life for Glory (Flame Berserkers, dw p.31): no Character may be attached to them.
+        const noCharacter = (e: { name: string }) => /dweghom/i.test(list.faction) && e.name === 'Flame Berserkers';
+        let target = embodied ? -1 : wb.regiments.findIndex((e) => toStandType(e.type) === type && !noCharacter(e));
         let attachId: string | null = target >= 0 ? `${pid}-w${wi}-r${target}` : null;
         if (embodied) {
           const rid = `${pid}-w${wi}-cr`;

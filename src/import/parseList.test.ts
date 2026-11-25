@@ -136,3 +136,40 @@ describe('Sorcerer Kings export layout (synthetic, seen in a real export)', () =
     expect(l.warbands[0]!.regiments[1]!.options).toEqual({ Courts: ['Court of Water'] });
   });
 });
+
+describe('Dweghom export layout (synthetic, seen in a real export)', () => {
+  const text = [
+    'Forge Test 1000 / 1000',
+    'Dweghom',
+    'The Ardent Creed',
+    'Warband 1',
+    'Lost Ancestor 1 125',
+    'M V C A W R D E Type Brute',
+    '- 1 3 5 6 4 3 3 Class -',
+    'Special Rules Cleave (2), Wizard (6)',
+    'Spells Litanies of Battle, Songs of the Descent',
+    'Battlefield Role Character, Tempered, Ardent',
+    'Options',
+    'Spells Fire School',
+    'Masteries Bloody-Minded Focus',
+    'Found Mainstay 3 160',
+    'M V C A W R D E Type Brute',
+    '6 2 2 4 5 4 3 0 Class Medium',
+    'Special Rules Barrage (3) [14"]',
+    'Battlefield Role Ardent, Tempered, Forged',
+    'Empowerment: The Regiment may spend an Elemental Power Marker to gain the',
+    'Barrage (+1) Special Rule.',
+  ].join('\n');
+  it('reads the sub-faction line as the Creed and a "Spells" option group as the School choice', () => {
+    const l = parseArmyList(text);
+    expect(l.sect).toBe('The Ardent Creed');
+    const c = l.warbands[0]!.character!;
+    expect(c.spells).toEqual(['Litanies of Battle', 'Songs of the Descent']);
+    expect(c.options).toEqual({ Spells: ['Fire School'], Masteries: ['Bloody-Minded Focus'] });
+  });
+  it('keeps a named rule paragraph ("Empowerment: …") out of the Battlefield Role', () => {
+    const f = parseArmyList(text).warbands[0]!.regiments[0]!;
+    expect(f.battlefieldRoles).toEqual(['Ardent', 'Tempered', 'Forged']);
+    expect(f.notes[0]).toMatch(/^Empowerment: The Regiment may spend/);
+  });
+});

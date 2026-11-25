@@ -193,7 +193,9 @@ export function initDweghom(s: GameState): void {
       if (c.name === 'Lost Ancestor') add('Unassailable Authority');
       if (hasOpt(c, 'Gifted in Fire')) add('Gifted in Fire');
       if (hasOpt(c, 'Runeforged Plate')) add('Runeforged Plate');
-      if (!c.spells?.length) c.spells = defaultSpells(c);
+      // The export lists a Character's own Spells; the chosen School's Spells are added (dw p.16, p.21).
+      const known = defaultSpells(c);
+      if (known) c.spells = [...new Set([...(c.spells ?? []), ...known])];
     }
   }
 }

@@ -283,7 +283,9 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
       }
       const pose = atD(hi);
       const rp = regimentPolys(s, r, { pose });
-      if (!anyOverlap(rp, regimentPolys(s, t)) && pathClear(pose)) {
+      // The charger's own end position must be legal too (core p.13): no overlap, Marker or Impassable terrain.
+      const chargerOk = positionProblems(s, r, rp, { allowFriendOverlap: false, allowOffTable: false, enemyGap: false }).length === 0;
+      if (chargerOk && !anyOverlap(rp, regimentPolys(s, t)) && pathClear(pose)) {
         const [, contact] = closestPair(rp, regimentPolys(s, t));
         // Target forward so its charged edge faces the charger.
         const want = facing === 'front' ? r.pose.angle + Math.PI : facing === 'rear' ? r.pose.angle : facing === 'left' ? r.pose.angle - Math.PI / 2 : r.pose.angle + Math.PI / 2;

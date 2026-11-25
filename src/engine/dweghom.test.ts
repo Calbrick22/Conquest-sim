@@ -245,3 +245,15 @@ describe('Dweghom: Spells and unit rules (dw p.26–45)', () => {
     expect(hasRule([R('Quicksilver Strikes')], 'Quicksilver Strike')).toBe(true);
   });
 });
+
+describe('Dweghom: real export details (dw p.16–31)', () => {
+  it('a listed Lost Ancestor keeps its own Spells and gains its School’s (dw p.21)', () => {
+    const { s } = game([{ character: char('Lost Ancestor', ['Tempered', 'Ardent'], [], { type: 'Brute', rules: ['Wizard (6)'], spells: ['Litanies of Battle', 'Songs of the Descent'], options: { Spells: ['Fire School'] } }), regiments: [unit('Lost', ['Ardent', 'Tempered'], { type: 'Brute' })] }], 'The Ardent Creed');
+    expect(Object.values(s.characters)[0]!.spells).toEqual(['Litanies of Battle', 'Songs of the Descent', 'Coruscation', 'Fireball', 'Flame Wall']);
+  });
+  it('a Character is never attached to Flame Berserkers at setup (Life for Glory, dw p.31)', () => {
+    const { s } = game([{ character: char('Ardent Kerawegh', ['Ardent'], ['Herald of War'], { rules: ['Priest (6)'] }), regiments: [unit('Flame Berserkers', ['Ardent']), unit('Wardens', ['Ardent'])] }], 'The Ardent Creed');
+    const c = Object.values(s.characters)[0]!;
+    expect(s.regiments[c.attachedTo!]!.name).toBe('Wardens');
+  });
+});
