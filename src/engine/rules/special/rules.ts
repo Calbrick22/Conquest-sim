@@ -161,6 +161,8 @@ const IMPLEMENTED: [string, string][] = [
   ['Eye of the Storm', 'sk p.39'],
   ['Gilded Statue', 'sk p.42'],
   ['Sorcerous Blessing', 'sk p.14'],
+  ['Tidal Summons', 'sk p.45 (chosen on the Reinforcement screen)'],
+  ['On Soaring Winds', 'sk p.36'],
   // Core Draw Events (p.94–95)
   ['Bastion', 'core p.94'],
   ['Biotic Renewal', 'core p.94'],

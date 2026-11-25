@@ -6,6 +6,7 @@ import { stat, charStat } from './combat';
 import { ev, rollTest, type Ctx } from './dice';
 import { layout } from './formation';
 import { rectPoly, type Poly } from './geometry/polygon';
+import { piecePoly, terrainOf } from './terrain';
 import { TOL } from './geometry/vec';
 import type { CharacterState, GameState, PlayerId, PowerPool, RegimentState } from './model/types';
 import { attachedCharacter, distancePolys, formationInput, isEngaged, regimentPolys, regimentStandCount } from './queries';
@@ -163,8 +164,10 @@ export const SPELLS: Record<string, SpellDef> = {
     hits: false,
     target: 'self',
     check: (s, t) => (isEngaged(s, t) ? 'Translocation cannot be used while Engaged.' : null),
-    apply: (ctx, _c, t) =>
-      ev(ctx, { type: 'manual', text: `Translocation: move ${t.name} up to 8″ in any direction, ignoring other Regiments and terrain, to a legal position (use "Move by hand").`, regimentId: t.id }),
+    apply: (ctx, _c, t) => {
+      ctx.s.pendingMove = { regimentId: t.id, kind: 'translocation', max: 8 };
+      ev(ctx, { type: 'spell', text: `Translocation: ${t.name} may now move up to 8″ in any direction, ignoring other Regiments and terrain, to a legal position (od p.23).`, regimentId: t.id });
+    },
   },
   Immolation: {
     range: 'self',
@@ -218,7 +221,7 @@ function casterPolys(s: GameState, c: Caster): Poly[] {
 }
 
 /** Enemy spellcasters within 10″ of the caster or the target: −1 Attunement (core p.80). */
-function interference(s: GameState, c: Caster, t: RegimentState): boolean {
+function interference(s: GameState, c: Caster, t: RegimentState | null): boolean {
   const near = (polys: Poly[]) =>
     Object.values(s.regiments).some((e) => {
       if (e.owner === c.owner || e.location !== 'table') return false;
@@ -226,7 +229,7 @@ function interference(s: GameState, c: Caster, t: RegimentState): boolean {
       if (!isCasterRules(e.rules) && !(ec && isCasterRules(ec.rules))) return false;
       return distancePolys(regimentPolys(s, e), polys) <= 10 + TOL;
     });
-  return near(casterPolys(s, c)) || near(regimentPolys(s, t));
+  return near(casterPolys(s, c)) || (!!t && near(regimentPolys(s, t)));
 }
 
 export function scalingExtra(s: GameState, t: RegimentState, extraStands = 0): number {
@@ -271,6 +274,14 @@ export function spellProblems(s: GameState, casterId: string, name: string, targ
     if ((st.spellCount[spellKey(name)] ?? 0) >= 3) return [`${name} has already been cast three times this Round (Omnipotence, sk p.6).`];
   }
   if (c.regiment.location !== 'table') return ['The caster must be on the Battlefield.'];
+  const area = spellDef(name);
+  if (area && (area.target === 'zone' || area.target === 'terrain')) {
+    const polys = areaPolys(s, targetId);
+    if (!polys || !targetId.startsWith(`${area.target}:`)) return [area.target === 'zone' ? 'Choose an Objective Zone.' : 'Choose a piece of terrain.'];
+    const range = (area.range === 'self' ? 0 : area.range) + rangeBonus(s, c);
+    if (distancePolys(casterPolys(s, c), polys) > range + TOL) return [`It is beyond ${range}″.`];
+    return [];
+  }
   const t = s.regiments[targetId];
   if (!t || t.location !== 'table') return ['Choose a target on the Battlefield.'];
   const def = spellDef(name);
@@ -294,9 +305,57 @@ export function spellProblems(s: GameState, casterId: string, name: string, targ
 }
 
 /** Resolve a Spellcasting Action (core p.80–81). */
+/** A zone or a piece of terrain as polygons (zones as 24-sided circles), or null. */
+export function areaPolys(s: GameState, id: string): Poly[] | null {
+  if (id.startsWith('zone:')) {
+    const z = s.scenario.zones.find((x) => x.id === id.slice(5) && !(s.burnedZones ?? []).includes(x.id));
+    if (!z) return null;
+    const r = z.diameter / 2;
+    return [Array.from({ length: 24 }, (_, i) => ({ x: z.x + r * Math.cos((i * Math.PI) / 12), y: z.y + r * Math.sin((i * Math.PI) / 12) }))];
+  }
+  if (id.startsWith('terrain:')) {
+    const p = terrainOf(s).find((x) => x.id === id.slice(8));
+    return p ? [piecePoly(p)] : null;
+  }
+  return null;
+}
+
+/** A Spell on a zone or a piece of terrain: no target Regiment, no Scaling; interference from the caster only. */
+function castAreaSpell(ctx: Ctx, c: Caster, name: string, def: SpellDef, areaId: string): void {
+  const s = ctx.s;
+  const act = s.activation!;
+  (act.spellsCast ??= []).push(name.toLowerCase());
+  const st = sk(s, c.owner);
+  if (st) {
+    const k = spellKey(name);
+    st.spellCount[k] = (st.spellCount[k] ?? 0) + 1;
+    if (c.character) (st.charSpells[c.character.id] ??= []).push(k);
+  }
+  const penal = interference(s, c, null);
+  const att = Math.max(0, def.attunement - (penal ? 1 : 0));
+  const need = def.minSuccesses ?? 2;
+  const roll = rollTest(ctx, c.dice, { target: att }, `${c.name}: ${name}`);
+  const ok = roll.passes >= need;
+  ev(ctx, { type: 'dice', text: `${c.name} casts ${name} on ${areaLabel(s, areaId)}: ${c.dice} dice at Attunement ${att}${penal ? ' (−1, enemy spellcaster within 10″)' : ''} → ${roll.passes} successes, needs ${need} — ${ok ? 'cast' : 'fails'} (core p.80–81).`, dice: roll.record, player: c.owner });
+  if (!ok) return;
+  def.applyArea?.(ctx, c, areaId, roll.passes);
+  if (st) skAfterCast(ctx, c, def, roll.passes);
+}
+
+export function areaLabel(s: GameState, id: string): string {
+  if (id.startsWith('zone:')) {
+    const z = s.scenario.zones.find((x) => x.id === id.slice(5));
+    return `Objective Zone ${z?.label ?? id.slice(5)}`;
+  }
+  const p = terrainOf(s).find((x) => x.id === id.slice(8));
+  return p ? `${p.kind} ${p.id}` : id;
+}
+
 export function castSpell(ctx: Ctx, casterId: string, name: string, targetId: string, opts: { attunement?: number; pool?: PowerPool } = {}): void {
   const s = ctx.s;
   const c = casterOf(s, casterId)!;
+  const areaDef = spellDef(name);
+  if (areaDef && (areaDef.target === 'zone' || areaDef.target === 'terrain')) return castAreaSpell(ctx, c, name, areaDef, targetId);
   const t = s.regiments[targetId]!;
   const def = spellDef(name);
   const act = s.activation!;
@@ -408,5 +467,10 @@ function skAfterCast(ctx: Ctx, c: Caster, def: SpellDef | undefined, successes: 
 export function castableSpells(s: GameState, casterId: string): { spell: string; targets: string[] }[] {
   const c = casterOf(s, casterId);
   if (!c || c.dice <= 0) return [];
-  return c.spells.map((spell) => ({ spell, targets: Object.values(s.regiments).filter((t) => t.location === 'table' && !spellProblems(s, casterId, spell, t.id).length).map((t) => t.id) }));
+  const areas = [...s.scenario.zones.map((z) => `zone:${z.id}`), ...terrainOf(s).map((p) => `terrain:${p.id}`)];
+  return c.spells.map((spell) => {
+    const d = spellDef(spell);
+    const ids = d && (d.target === 'zone' || d.target === 'terrain') ? areas : Object.values(s.regiments).filter((t) => t.location === 'table').map((t) => t.id);
+    return { spell, targets: ids.filter((id) => !spellProblems(s, casterId, spell, id).length) };
+  });
 }

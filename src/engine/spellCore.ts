@@ -15,7 +15,10 @@ export interface SpellDef {
   scaling: boolean;
   /** Causes Hits (needs Line of Sight; core p.80). */
   hits: boolean;
-  target: 'enemy' | 'friendly' | 'self';
+  /** 'zone' / 'terrain': an Objective Zone or a piece of terrain (target id `zone:<id>` / `terrain:<id>`). */
+  target: 'enemy' | 'friendly' | 'self' | 'zone' | 'terrain';
+  /** Effect on a zone or terrain target. */
+  applyArea?: (ctx: Ctx, caster: Caster, areaId: string, successes: number) => void;
   /** Extra target restrictions. */
   check?: (s: GameState, target: RegimentState) => string | null;
   apply: (ctx: Ctx, caster: Caster, target: RegimentState, successes: number, choice: { pool?: PowerPool }) => void;

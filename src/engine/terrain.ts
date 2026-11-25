@@ -169,7 +169,11 @@ export function terrainPathProblems(s: Pick<GameState, 'scenario'>, polys: Poly[
  * ends within the piece (core p.98).
  */
 export function chargeThroughHindering(s: GameState, standPolysAt: (pose: Pose) => Poly[], from: Pose, to: Pose, flies: boolean): boolean {
-  const hind = terrainOf(s).filter((p) => has(p, 'Hindering')).map(piecePoly);
+  // Sunder (the Land) (sk p.21): Objective Zones that count as Hindering this Round.
+  const zones = s.scenario.zones
+    .filter((z) => (s.hinderingZones ?? []).includes(z.id))
+    .map((z) => Array.from({ length: 24 }, (_, i) => ({ x: z.x + (z.diameter / 2) * Math.cos((i * Math.PI) / 12), y: z.y + (z.diameter / 2) * Math.sin((i * Math.PI) / 12) })));
+  const hind = [...terrainOf(s).filter((p) => has(p, 'Hindering')).map(piecePoly), ...zones];
   if (!hind.length) return false;
   const start = standPolysAt(from);
   const end = standPolysAt(to);

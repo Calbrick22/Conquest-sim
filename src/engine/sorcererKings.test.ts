@@ -332,3 +332,49 @@ describe('Sorcerer Kings: real export details (sk p.4, p.22, p.31)', () => {
     expect(regimentCourts(s, s.regiments[order[1]!.refId]!)).toContain('Fire');
   });
 });
+
+describe('Sorcerer Kings: formerly manual rules (sk p.16–45)', () => {
+  it('Tidal Summons: a Water Elemental arrives automatically with the Marid Apsara (sk p.45)', async () => {
+    const { doReinforcements, tidalChoices } = await import('./round');
+    const { s } = game([{ character: wizard('Tide Raj', 'Water'), regiments: [unit('Marid Apsara', ['Elemental', 'Court of Water'], { type: 'Monster', cls: 'Heavy', stands: 1, commandModels: [] }), unit('Marid Lancers', ['Elemental', 'Court of Water'], { type: 'Cavalry', cls: 'Heavy' })] }]);
+    const ctx = ctxOf(s);
+    for (const r of Object.values(ctx.s.regiments)) if (r.owner === 'P1') r.location = 'reserve';
+    ctx.s.round = 1;
+    const ap = byName(ctx.s, 'Marid Apsara');
+    const ml = byName(ctx.s, 'Marid Lancers');
+    expect(tidalChoices(ctx.s, 'P1', ap.id).map((r) => r.id)).toContain(ml.id);
+    doReinforcements(ctx, 'P1', { regimentId: ap.id, arrive: true, tidalId: ml.id });
+    expect(ctx.s.regiments[ml.id]!.location).toBe('arriving');
+  });
+
+  it('Air Step: a 2″ move without Wheeling straight after the Spell; any other Action skips it (sk p.20)', () => {
+    const { s, rng } = game([{ character: wizard('Wind Raj', 'Air'), regiments: [unit('Rajakur', ['Mortals'])] }]);
+    const raj = byName(s, 'Rajakur');
+    s.pendingMove = { regimentId: raj.id, kind: 'airStep', max: 2 };
+    expect(validate(s, { type: 'specialMove', regimentId: raj.id, kind: 'airStep', moves: [{ kind: 'backward', d: 2.5 }] }).ok).toBe(false);
+    expect(validate(s, { type: 'specialMove', regimentId: raj.id, kind: 'airStep', moves: [{ kind: 'wheel', pivot: 'left', angle: 0.2 }] }).ok).toBe(false);
+    const r = step(s, rng, { type: 'specialMove', regimentId: raj.id, kind: 'airStep', moves: [{ kind: 'backward', d: 2 }] });
+    expect(r.state.regiments[raj.id]!.pose.y).toBeCloseTo(raj.pose.y - 2, 2);
+    expect(r.state.pendingMove).toBeUndefined();
+    s.pendingMove = { regimentId: raj.id, kind: 'airStep', max: 2 };
+    expect(step(s, rng, { type: 'skipMove' }).state.pendingMove).toBeUndefined();
+  });
+
+  it('Sunder (the Land): the Objective Zone counts as Hindering for Charges this Round (sk p.21)', async () => {
+    const { chargeThroughHindering } = await import('./terrain');
+    const { s } = fireArmy();
+    const z = s.scenario.zones[0]!;
+    const sq = (x: number, y: number) => [[{ x: x - 1, y: y - 1 }, { x: x + 1, y: y - 1 }, { x: x + 1, y: y + 1 }, { x: x - 1, y: y + 1 }]];
+    const through = (st: GameState) => chargeThroughHindering(st, (p) => sq(p.x, p.y), { x: z.x, y: z.y - 10, angle: 0 }, { x: z.x, y: z.y, angle: 0 }, false);
+    s.scenario.terrain = [];
+    expect(through(s)).toBe(false);
+    s.hinderingZones = [z.id];
+    expect(through(s)).toBe(true);
+  });
+
+  it('Niyantran: friendly Regiments within 12″ may use the Character’s Resolve (sk p.16)', () => {
+    const { s } = game([{ character: { ...wizard('Ember Raj', 'Fire'), stats: { M: null, V: 2, C: 4, A: 4, W: 4, R: 6, D: 3, E: 0 }, options: { Arcane: ['Niyantran'] } }, regiments: [unit('Rajakur', ['Mortals']), unit('Dhanur Disciples', ['Mortals'])] }]);
+    const ctx = ctxOf(s);
+    expect(resolveValue(ctx, ctx.s.regiments[byName(s, 'Dhanur Disciples').id]!)).toBe(6);
+  });
+});

@@ -133,7 +133,8 @@ export function computeReinforcementLine(s: GameState, p: PlayerId): number {
   const depths = (r: RegimentState) => footprintCorners(s, r).map((c) => depthFrom(s, p, c.y));
   const friends = onTableRegiments(s)
     .filter((r) => r.owner === p && !r.rules.some((x) => x.name === 'Irregular'))
-    .map((r) => ({ front: Math.max(...depths(r)), rear: Math.min(...depths(r)), pathfinders: r.rules.some((x) => x.name === 'Pathfinders') }))
+    // Air Elemental (sk p.36–39): its Line cannot be pushed back either.
+    .map((r) => ({ front: Math.max(...depths(r)), rear: Math.min(...depths(r)), pathfinders: r.rules.some((x) => x.name === 'Pathfinders' || x.name === 'Air Elemental') }))
     .sort((a, b) => b.front - a.front);
   const enemyMin = onTableRegiments(s)
     .filter((r) => r.owner !== p && !r.rules.some((x) => x.name === 'Irregular'))

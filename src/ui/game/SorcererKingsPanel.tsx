@@ -4,7 +4,7 @@ import type { GameState, PlayerId } from '../../engine/model/types';
 import { RITUALS, availableRituals, skUnit } from '../../engine/factions/sorcererKings';
 import { RITUAL_TARGET, ritualTargets } from '../../engine/factions/sorcererKingsRituals';
 import { enemiesInContact } from '../../engine/actions';
-import { distancePolys, isEngaged, regimentPolys } from '../../engine/queries';
+import { canTakeAction, distancePolys, isEngaged, regimentPolys } from '../../engine/queries';
 import { terrainOf } from '../../engine/terrain';
 
 /**
@@ -155,7 +155,7 @@ export function RitualCard({ s, dispatch }: { s: GameState; dispatch: (a: Action
 }
 
 /** Forms, Sorcerer Kings Draw Events with choices, Gilded Statue and Volleys in contact. */
-export function SkActivation({ s, run, onVolleyInContact }: { s: GameState; run: (a: Action) => boolean; onVolleyInContact: (targetId: string) => void }) {
+export function SkActivation({ s, run, onVolleyInContact, onSoaring }: { s: GameState; run: (a: Action) => boolean; onVolleyInContact: (targetId: string) => void; onSoaring?: () => void }) {
   const act = s.activation;
   if (!act || !s.players[s.regiments[act.regimentId]!.owner].sk) return null;
   const r = s.regiments[act.regimentId]!;
@@ -184,7 +184,9 @@ export function SkActivation({ s, run, onVolleyInContact }: { s: GameState; run:
   const forms = !c && first ? (u?.forms ?? []).filter((f) => !(act.drawEvents ?? []).includes(f.group)) : [];
   const gilded = !c && validate(s, { type: 'gildedStatue', regimentId: r.id }).ok;
   const contactVolley = !c && u?.volleyInContact && r.location === 'table' && isEngaged(s, r) ? enemiesInContact(s, r).filter((e) => validate(s, { type: 'volley', regimentId: r.id, targetId: e.id }).ok) : [];
-  if (!draw.length && !forms.length && !gilded && !contactVolley.length) return null;
+  // On Soaring Winds (Steelheart Djinn, sk p.36): a March ignoring what is in the way, even while engaged.
+  const soaring = !c && !!onSoaring && r.name === 'Steelheart Djinn' && r.location === 'table' && !canTakeAction(s, r.id, 'march').length;
+  if (!draw.length && !forms.length && !gilded && !contactVolley.length && !soaring) return null;
   return (
     <div className="sk-activation" data-testid="sk-activation">
       {forms.map((f) => (
@@ -203,8 +205,13 @@ export function SkActivation({ s, run, onVolleyInContact }: { s: GameState; run:
           {draw}
         </div>
       )}
-      {(gilded || contactVolley.length > 0) && (
+      {(gilded || contactVolley.length > 0 || soaring) && (
         <div className="actions wrap">
+          {soaring && (
+            <button type="button" className="secondary" onClick={onSoaring} data-testid="soaring">
+              On Soaring Winds
+            </button>
+          )}
           {gilded && (
             <button type="button" className="secondary" onClick={() => run({ type: 'gildedStatue', regimentId: r.id })}>
               Gilded Statue (terrain gains Earth)

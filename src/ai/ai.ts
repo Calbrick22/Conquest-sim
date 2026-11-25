@@ -32,7 +32,7 @@ import {
   other,
   regimentDistance,
 } from '../engine/queries';
-import { buildCards, cardTargets, flankChoices, reinforcementChoices, reinforcementClass, reinforcementNeed } from '../engine/round';
+import { buildCards, cardTargets, flankChoices, reinforcementChoices, reinforcementClass, reinforcementNeed, tidalChoices } from '../engine/round';
 import { legalFiles } from '../engine/formation';
 import { hasRule, manualRules, ruleX } from '../engine/rules/special/rules';
 import { zoneResults } from '../engine/scoring/victory';
@@ -216,7 +216,9 @@ function decideReinforcements(s: GameState, p: PlayerId): AiDecision {
   // Flank Regiments arrive as soon as they may (core p.98).
   const flank = Object.fromEntries(flankChoices(s, p).map((r) => [r.id, true]));
   const flankNote = Object.keys(flank).length ? `; Flank: ${flankChoices(s, p).map((r) => r.name).join(', ')} arrive` : '';
-  if (best) return { action: { type: 'reinforcements', player: p, choice: { regimentId: best.id, arrive: true }, flank }, reason: `brings ${best.name} on automatically; rolls for the rest${flankNote}` };
+  // Tidal Summons (sk p.45): bring the most valuable Water Elemental with the Marid Apsara.
+  const tidal = best ? tidalChoices(s, p, best.id).sort((a, b) => rank(b) - rank(a))[0] : undefined;
+  if (best) return { action: { type: 'reinforcements', player: p, choice: { regimentId: best.id, arrive: true, ...(tidal ? { tidalId: tidal.id } : {}) }, flank }, reason: `brings ${best.name}${tidal ? ` and ${tidal.name} (Tidal Summons)` : ''} on automatically; rolls for the rest${flankNote}` };
   return { action: { type: 'reinforcements', player: p, choice: null, flank }, reason: `rolls for Reinforcements${flankNote}` };
 }
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Action } from '../../engine/game';
 import type { GameState, PlayerId } from '../../engine/model/types';
-import { flankChoices, reinforcementChoices, reinforcementClass, reinforcementNeed, reserveRegiments } from '../../engine/round';
+import { flankChoices, reinforcementChoices, reinforcementClass, reinforcementNeed, reserveRegiments, tidalChoices } from '../../engine/round';
 import { zoneResults } from '../../engine/scoring/victory';
 import { decisionMaker } from '../../ai/ai';
 import { warlordHas } from '../../engine/factions/oldDominion';
@@ -38,6 +38,8 @@ export function PhasePanel({ s, dispatch, aiPlayer }: { s: GameState; dispatch: 
 function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Action) => boolean; ai: PlayerId | null }) {
   const [auto, setAuto] = useState<Record<PlayerId, string | null>>({ P1: null, P2: null });
   const [flankStay, setFlankStay] = useState<Record<string, boolean>>({});
+  // Tidal Summons (sk p.45): a Water Elemental that arrives with the chosen Marid Apsara.
+  const [tidal, setTidal] = useState<Record<PlayerId, string | null>>({ P1: null, P2: null });
   const needText = (cls: 'Light' | 'Medium' | 'Heavy') => {
     const n = reinforcementNeed(s.round, cls);
     return n === null ? 'not yet' : n === 'auto' ? 'arrives' : `rolls ${n} or less`;
@@ -95,6 +97,19 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
               })}
               {reserve.length === 0 && <li className="meta">Nothing in Reinforcements.</li>}
             </ul>
+            {auto[p] && tidalChoices(s, p, auto[p]!).length > 0 && (
+              <label className="meta tidal">
+                Tidal Summons (sk p.45): also bring{' '}
+                <select value={tidal[p] ?? ''} onChange={(e) => setTidal({ ...tidal, [p]: e.target.value || null })} data-testid={`tidal-${p}`}>
+                  <option value="">none</option>
+                  {tidalChoices(s, p, auto[p]!).map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <button
               type="button"
               className="small"
@@ -102,7 +117,7 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
                 dispatch({
                   type: 'reinforcements',
                   player: p,
-                  choice: auto[p] ? { regimentId: auto[p]!, arrive: true } : null,
+                  choice: auto[p] ? { regimentId: auto[p]!, arrive: true, ...(tidal[p] && tidalChoices(s, p, auto[p]!).some((r) => r.id === tidal[p]) ? { tidalId: tidal[p]! } : {}) } : null,
                   flank: Object.fromEntries([...flank].map((id) => [id, !flankStay[id]])),
                 })
               }

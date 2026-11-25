@@ -4,12 +4,27 @@ import type { Arc } from './geometry/arcs';
 import { polyDistance, rectPoly } from './geometry/polygon';
 import { TOL } from './geometry/vec';
 import type { CharacterState, PlayerId, Profile, RegimentState } from './model/types';
-import { attachedCharacter, formationInput, onTableRegiments, regimentPolys, regimentStandCount } from './queries';
+import { attachedCharacter, distancePolys, formationInput, onTableRegiments, regimentPolys, regimentStandCount } from './queries';
 import { hasRole, sectOf } from './rules/special/grants';
 import { hasRule, ruleX } from './rules/special/rules';
 import { autoPassesResolve, onRegimentDestroyed, onStandLost, rerollsMoraleSuccesses } from './factions/oldDominion';
 import { pheromanticDrive } from './factions/spires';
 import { skUnit } from './factions/sorcererKings';
+
+/**
+ * Niyantran (sk p.16): while its Regiment is not Broken, friendly Regiments within 12″ of that
+ * Character may use the Character's Resolve.
+ */
+function niyantran(s: { characters: Record<string, CharacterState>; regiments: Record<string, RegimentState> } & Parameters<typeof regimentPolys>[0], r: RegimentState): number[] {
+  const out: number[] = [];
+  for (const c of Object.values(s.characters)) {
+    if (c.destroyed || !c.attachedTo || c.profile.R === null || !c.options.some((o) => o.toLowerCase() === 'niyantran')) continue;
+    const host = s.regiments[c.attachedTo];
+    if (!host || host.owner !== r.owner || host.location !== 'table' || host.broken || r.location !== 'table') continue;
+    if (host.id === r.id || distancePolys(regimentPolys(s, host), regimentPolys(s, r)) <= 12 + TOL) out.push(charStat(c, 'R'));
+  }
+  return out;
+}
 
 /** Tenacious (1) against enemy Volleys (Trinavarta, sk p.38–39; Searing Sandstorm, sk p.18). */
 function volleyTenacious(s: { players: Record<PlayerId, { sk?: unknown }> }, t: RegimentState): boolean {
@@ -46,7 +61,7 @@ export function sizeBonus(ctx: Ctx, r: RegimentState): number {
  */
 export function resolveValue(ctx: Ctx, r: RegimentState): number {
   const c = attachedCharacter(ctx.s, r.id);
-  const rs = [stat(r, 'R'), ...(lendsResolve(c) ? [charStat(c, 'R')] : [])];
+  const rs = [stat(r, 'R'), ...(lendsResolve(c) ? [charStat(c, 'R')] : []), ...niyantran(ctx.s, r)];
   // Induced Hypoxia (sk p.19): the lowest unmodified Resolve in the Regiment.
   // RULE-AMBIGUITY: AMB-75 — the size bonus still applies, as for Broken Regiments (AMB-31).
   if (r.flags.hypoxia) return Math.min(r.profile.R ?? 0, ...(lendsResolve(c) ? [c.profile.R ?? 0] : [])) + sizeBonus(ctx, r);

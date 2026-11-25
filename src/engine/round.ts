@@ -2,7 +2,7 @@ import { ev, rollN, type Ctx } from './dice';
 import type { CommandCard, GameState, PlayerId, RegimentState, UnitClass } from './model/types';
 import { computeReinforcementLine, hasFlank, other, regimentStandCount } from './queries';
 import { beginRoundOd } from './factions/oldDominion';
-import { beginRoundSk, placeRituals } from './factions/sorcererKings';
+import { beginRoundSk, elementalKind, placeRituals } from './factions/sorcererKings';
 
 /**
  * Reinforcement table (core p.21): the roll needed this Round per Class, 'auto' when the Class
@@ -40,6 +40,15 @@ export function reinforcementClass(s: GameState, r: RegimentState): UnitClass {
 export interface ReinforcementChoice {
   regimentId: string;
   arrive: boolean;
+  /** Tidal Summons (Marid Apsara, sk p.45): one more Water Elemental Regiment arrives automatically too. */
+  tidalId?: string;
+}
+
+/** Water Elementals in Reinforcements that Tidal Summons may bring with the Marid Apsara (sk p.45). */
+export function tidalChoices(s: GameState, p: PlayerId, apsaraId: string): RegimentState[] {
+  const a = s.regiments[apsaraId];
+  if (!a || a.name !== 'Marid Apsara' || !s.players[p].sk) return [];
+  return reserveRegiments(s, p).filter((r) => r.id !== a.id && elementalKind(r, 'Water'));
 }
 
 /** Flank Regiments that may decide to arrive or stay this Round (core p.98). */
@@ -59,6 +68,9 @@ export function reinforcementChoiceProblems(s: GameState, p: PlayerId, c: Reinfo
   const need = reinforcementNeed(s.round, reinforcementClass(s, r));
   if (need === null) return [`${r.cls} Regiments cannot arrive in Round ${s.round} (core p.21).`];
   if (!c.arrive && need === 'auto') return [`${r.name} must arrive this Round (core p.21).`];
+  if (c.tidalId) {
+    if (!c.arrive || !tidalChoices(s, p, r.id).some((x) => x.id === c.tidalId)) return ['Tidal Summons brings one more friendly Water Elemental Regiment from Reinforcements with the Marid Apsara (sk p.45).'];
+  }
   return [];
 }
 
@@ -82,6 +94,13 @@ export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementCho
     if (choice && r.id === choice.regimentId) {
       r.location = choice.arrive ? 'arriving' : 'reserve';
       ev(ctx, { type: 'reinforcement', text: `${p} chooses ${r.name} to ${choice.arrive ? 'arrive automatically' : 'stay in Reinforcements'}.`, player: p, regimentId: r.id });
+      continue;
+    }
+    // Tidal Summons (sk p.45): arrives automatically with the Marid Apsara.
+    // RULE-AMBIGUITY: AMB-77 — any Class, even one that could not arrive yet this Round.
+    if (choice?.tidalId === r.id && choice.arrive) {
+      r.location = 'arriving';
+      ev(ctx, { type: 'reinforcement', text: `Tidal Summons: ${r.name} arrives automatically with the Marid Apsara (sk p.45).`, player: p, regimentId: r.id });
       continue;
     }
     if (r.flags.autoArrive) {
@@ -250,6 +269,8 @@ export function beginRound(s: GameState): void {
   for (const c of Object.values(s.characters)) c.activatedThisRound = false;
   beginRoundOd(s);
   beginRoundSk(s);
+  delete s.pendingMove;
+  s.hinderingZones = [];
   for (const p of ['P1', 'P2'] as const) {
     s.players[p].stack = [];
     s.players[p].stackSet = false;

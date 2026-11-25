@@ -158,8 +158,10 @@ export const SK_SPELLS: Record<string, SpellDef> = {
   'Air Step': {
     court: 'Air', range: 12, attunement: 3, scaling: false, hits: false, target: 'friendly',
     check: (s, t) => (!ofCourt(s, t, 'Air') ? 'Air Step targets a friendly [Court of Air] Regiment.' : isEngaged(s, t) ? 'Air Step targets an unengaged Regiment.' : null),
-    apply: (ctx, _c, t) =>
-      ev(ctx, { type: 'manual', text: `Air Step: ${t.name} makes an Out of Sequence March of 2″ in any direction, no penalty for moving backward or sideways and no Wheel (use "Move by hand", sk p.20).`, regimentId: t.id }),
+    apply: (ctx, _c, t) => {
+      ctx.s.pendingMove = { regimentId: t.id, kind: 'airStep', max: 2 };
+      ev(ctx, { type: 'spell', text: `Air Step: ${t.name} may now make an Out of Sequence March of 2″ in any direction, without Wheeling (sk p.20).`, regimentId: t.id });
+    },
   },
   Cyclone: {
     court: 'Air', range: 12, attunement: 3, scaling: false, hits: true, target: 'enemy',
@@ -175,11 +177,14 @@ export const SK_SPELLS: Record<string, SpellDef> = {
     apply: (ctx, _c, t) => gain(ctx, t, ['Counter-Attack', 'Parry'], 'Wind Kissed Blades'),
   },
   // ---------------------------------------------------------------- Court of Earth (sk p.21)
-  // RULE-AMBIGUITY: AMB-69 — Sunder targets an Objective Zone, which the engine's Spell targeting
-  // does not support; it is cast on the caster's own Regiment and its effect is manual.
+  // Sunder targets an Objective Zone; it counts as Hindering terrain for Charges this Round.
   'Sunder (the Land)': {
-    court: 'Earth', range: 'self', attunement: 3, scaling: false, hits: false, target: 'self', minSuccesses: 3,
-    apply: (ctx, c) => ev(ctx, { type: 'manual', text: `Sunder (the Land): choose an Objective Zone within 12″ of ${c.name}; it counts as Hindering Zonal Terrain until the end of the Round (manual, sk p.21).` }),
+    court: 'Earth', range: 12, attunement: 3, scaling: false, hits: false, target: 'zone', minSuccesses: 3,
+    apply: () => undefined,
+    applyArea: (ctx, _c, areaId) => {
+      (ctx.s.hinderingZones ??= []).push(areaId.slice(5));
+      ev(ctx, { type: 'spell', text: `Sunder (the Land): Objective Zone ${areaId.slice(5)} counts as Hindering terrain until the end of the Round (sk p.21).` });
+    },
   },
   'Stabilize (the Pattern)': {
     court: 'Earth', range: 'self', attunement: 3, scaling: false, hits: false, target: 'self',

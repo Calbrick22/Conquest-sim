@@ -10,6 +10,7 @@ import { createRng, rollD6, type RngState } from './rng';
 import type { Ctx } from './dice';
 import { applyM4, endActivation, logManualRules, validateM4 } from './gameM4';
 import { initSorcererKings } from './factions/sorcererKings';
+import { applySpecialMove, specialMoveProblems } from './specialMoves';
 import { skActivationStart, skAfterApply } from './factions/sorcererKingsActions';
 import { beginRound, cardTargets, type ReinforcementChoice } from './round';
 import { victoryPhase } from './scoring/victory';
@@ -87,6 +88,9 @@ export type ActionBody =
   | { type: 'ritual'; player: PlayerId; targetId?: string; terrainId?: string; option?: number; order?: string[] }
   | { type: 'skForm'; regimentId: string; group: string; option: string }
   | { type: 'gildedStatue'; regimentId: string }
+  // Moves outside the March rules: Air Step, Translocation, On Soaring Winds (specialMoves.ts)
+  | { type: 'specialMove'; regimentId: string; kind: 'airStep' | 'translocation' | 'soaring'; moves: MoveSeg[] }
+  | { type: 'skipMove' }
   // Flames of Conquest (ns p.5)
   | { type: 'burnZone'; regimentId: string; zoneId: string }
   | { type: 'powerPref'; player: PlayerId; pool: PowerPool }
@@ -149,6 +153,18 @@ export function rollOff(rng: RngState): { winner: PlayerId; rolls: [number, numb
     rolls.push([a, b]);
     if (a !== b) return { winner: a < b ? 'P1' : 'P2', rolls, rng: r };
   }
+}
+
+const hasOption = (c: CharacterState, n: string) => c.options.some((o) => o.toLowerCase() === n.toLowerCase());
+
+/**
+ * May this Character join this Regiment (core p.72)? Same Type, except: Bound to the Elements
+ * (sk p.17) takes the Regiment's Type; the Lost Ancestor (a Brute) may join Infantry (dw p.20).
+ */
+export function attachTypeOk(c: CharacterState, r: RegimentState): boolean {
+  if (r.type === c.type) return true;
+  if (hasOption(c, 'Bound to the Elements')) return true;
+  return c.name === 'Lost Ancestor' && c.type === 'Brute' && r.type === 'Infantry';
 }
 
 /** Default formation width when a Regiment first takes the field. */
@@ -286,6 +302,8 @@ export function createGame(input: SetupInput): SetupResult {
       }
     });
   }
+  // Bound to the Elements (sk p.17): the Character takes the Type of the Regiment it joins.
+  for (const c of Object.values(characters)) if (hasOption(c, 'Bound to the Elements') && c.attachedTo) c.type = regiments[c.attachedTo]!.type;
   // List-building options that change a Character (e.g. Avatar Projection makes it a Brute).
   for (const c of Object.values(characters)) {
     if (c.embodied) continue;
@@ -363,7 +381,7 @@ export function validate(s: GameState, a: Action): Validation {
       if (!c || !r) return fail('Unknown Character or Regiment.');
       if (r.owner !== a.characterId.slice(0, 2)) return fail('Characters join friendly Regiments only.');
       if (r.warband !== c.warband) return fail('A Character joins a Regiment from its own Warband (core p.72).');
-      if (r.type !== c.type) return fail(`A ${c.type} Character can only join a ${c.type} Regiment (core p.72).`);
+      if (!attachTypeOk(c, r)) return fail(`A ${c.type} Character can only join a ${c.type} Regiment (core p.72).`);
       const other = Object.values(s.characters).find((x) => x.attachedTo === r.id && x.id !== c.id);
       if (other) return fail(`${r.name} already has ${other.name} attached (core p.73).`);
       return ok();
@@ -456,6 +474,12 @@ export function validate(s: GameState, a: Action): Validation {
       const problems = positionProblems(s, r, regimentPolys(s, r, { pose: res.pose, files: a.files }), { allowFriendOverlap: false, allowOffTable: false });
       return problems.length ? fail(...problems) : ok();
     }
+    case 'specialMove': {
+      const p = specialMoveProblems(s, a.regimentId, a.moves, a.kind);
+      return p.length ? fail(...p) : ok();
+    }
+    case 'skipMove':
+      return s.pendingMove ? ok() : fail('No move is waiting.');
     case 'pass':
       return s.activation ? (canTakeAction(s, s.activation.regimentId, 'pass').length ? fail('No Actions left to pass.') : ok()) : fail('No Regiment is active.');
     case 'endActivation': {
@@ -567,11 +591,18 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
   const events: GameEvent[] = [];
   const ev = (e: Omit<GameEvent, 'round'>) => events.push({ round: s.round, ...e });
   const ctx: Ctx = { s, rng, events };
+  // A move offered outside the sequence (Air Step, Translocation) lapses when anything else happens.
+  if (s.pendingMove && a.type !== 'specialMove' && !a.type.startsWith('override')) {
+    ev({ type: 'note', text: `${s.regiments[s.pendingMove.regimentId]?.name ?? 'The Regiment'} does not use its ${s.pendingMove.kind === 'airStep' ? 'Air Step' : 'Translocation'} move.` });
+    delete s.pendingMove;
+  }
 
   switch (a.type) {
     case 'attachCharacter': {
       const c = s.characters[a.characterId]!;
       c.attachedTo = a.regimentId;
+      // Bound to the Elements (sk p.17): the Character changes its Type to match its Regiment.
+      if (hasOption(c, 'Bound to the Elements')) c.type = s.regiments[a.regimentId]!.type;
       for (const r of Object.values(s.regiments)) r.files = clampFiles(regimentStandCount(s, r), r.files);
       ev({ type: 'attach', text: `${c.name} joins ${s.regiments[a.regimentId]!.name}.`, regimentId: a.regimentId });
       break;
@@ -662,6 +693,11 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
       ev({ type: 'override', override: true, text: `OVERRIDE: ${r.name} moved by hand${a.reason ? ` (${a.reason})` : ''}.`, player: r.owner, regimentId: r.id });
       break;
     }
+    case 'specialMove':
+      applySpecialMove(ctx, a.regimentId, a.moves, a.kind, describeMoves);
+      break;
+    case 'skipMove':
+      break; // the pending move lapsed above
     default:
       applyM4(ctx, a);
 

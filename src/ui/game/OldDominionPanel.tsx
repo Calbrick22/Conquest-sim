@@ -6,7 +6,7 @@ import { enemiesInContact } from '../../engine/actions';
 import { distancePolys, regimentPolys } from '../../engine/queries';
 import { fallenDivinity, hasMemories, od, pantheonTier, poolTier, roleOf, tierThresholds, warlord, warlordHas } from '../../engine/factions/oldDominion';
 import { isOdDrawEvent, OD_SUPREMACY, odSpendProblems, tokensAvailable } from '../../engine/factions/oldDominionActions';
-import { castableSpells, casterOf, spellDef } from '../../engine/spells';
+import { areaLabel, castableSpells, casterOf, spellDef } from '../../engine/spells';
 import { validate } from '../../engine/game';
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV'];
@@ -181,7 +181,7 @@ export function OdActivation({ s, run }: { s: GameState; run: (a: Action) => boo
                 if (run({ type: 'spell', casterId, spell, targetId: id, ...(spellDef(spell) ? {} : { attunement: att }) })) setSpell(null);
               }}
             >
-              {spell} → {s.regiments[id]!.name}
+              {spell} → {s.regiments[id]?.name ?? areaLabel(s, id)}
             </button>
           ))}
           {spellDef(spell) && !(spells.find((x) => x.spell === spell)?.targets.length) && <span className="meta">No legal target in range.</span>}

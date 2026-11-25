@@ -429,6 +429,10 @@ export interface GameState {
   warlordScored: Record<PlayerId, boolean>;
   /** Zones Burned and removed from the game (Flames of Conquest, ns p.5). */
   burnedZones?: string[];
+  /** A move granted outside the normal sequence, waiting to be made or skipped (Air Step, Translocation). */
+  pendingMove?: { regimentId: string; kind: 'airStep' | 'translocation'; max: number };
+  /** Objective Zones that count as Hindering this Round (Sunder (the Land), sk p.21). */
+  hinderingZones?: string[];
   /** Terrain keywords to restore at the end of the Round (Sorcerer Kings Rituals change them). */
   terrainRestore?: Record<string, string[]>;
 }

@@ -34,6 +34,7 @@ import { ActionCallout, UnitCallout } from './Callouts';
 import { DrawDeck, StackBuilder } from './CommandDeck';
 import { OdActivation, PowerBar } from './OldDominionPanel';
 import { RitualBar, SkActivation } from './SorcererKingsPanel';
+import { SPECIAL_MOVE_LABEL, specialMoveAllowance, type SpecialMoveKind } from '../../engine/specialMoves';
 import { isOdDrawEvent } from '../../engine/factions/oldDominionActions';
 import { canInduceAggression, strainFor } from '../../engine/factions/spires';
 import { PractitionerButtons } from './SpiresPanel';
@@ -74,7 +75,7 @@ import { useGame, type GameSession } from './useGame';
 
 export type { GameSession };
 
-type Mode = 'select' | 'march' | 'enter' | 'reform' | 'ruler' | 'override' | 'withdraw' | 'target' | 'placeCharge';
+type Mode = 'select' | 'march' | 'enter' | 'reform' | 'ruler' | 'override' | 'withdraw' | 'target' | 'placeCharge' | 'special';
 type TargetKind = 'charge' | 'volley' | 'clash' | 'Snapshot' | 'Mighty Swing';
 
 const deg = (d: number) => (d * Math.PI) / 180;
@@ -87,6 +88,14 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
   const s = session.state;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('select');
+  /** Which out-of-sequence move the 'special' mode makes (Air Step, Translocation, On Soaring Winds). */
+  const [specialKind, setSpecialKind] = useState<SpecialMoveKind>('airStep');
+  const beginSpecial = (kind: SpecialMoveKind, regimentId: string) => {
+    setSelectedId(regimentId);
+    setSpecialKind(kind);
+    setMoves([]);
+    setMode('special');
+  };
   const [moves, setMoves] = useState<MoveSeg[]>([]);
   const [moveText, setMoveText] = useState('');
   const [entry, setEntry] = useState<{ edge: Edge; along: number; files: number }>({ edge: 'bottom', along: 36, files: 2 });
@@ -257,6 +266,12 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
       const action: Action = { type: 'march', regimentId: sel.id, moves };
       return { action, ghost: { polys: regimentPolys(s, sel, { pose }), valid: moves.length > 0 && validate(s, action).ok }, cost: pathCost(moves, width), allowance: marchAllowance(s, sel) };
     }
+    if (mode === 'special') {
+      const width = footprint(formationInput(s, sel)).halfWidth * 2;
+      const pose = applyPath(sel.pose, moves, width);
+      const action: Action = { type: 'specialMove', regimentId: sel.id, kind: specialKind, moves };
+      return { action, ghost: { polys: regimentPolys(s, sel, { pose }), valid: moves.length > 0 && validate(s, action).ok }, cost: pathCost(moves, width), allowance: specialMoveAllowance(s, sel.id, specialKind) };
+    }
     if (mode === 'enter') {
       const files = clampFiles(regimentStandCount(s, sel), entry.files);
       const startPose = entryPose(s, entry.edge, entry.along);
@@ -286,7 +301,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
       return { action, ghost: { polys: regimentPolys(s, sel, { pose: overridePose }), valid: validate(s, action).ok } };
     }
     return null;
-  }, [s, sel, mode, moves, entry, reform, overridePose, withdrawTurn]);
+  }, [s, sel, mode, moves, entry, reform, overridePose, withdrawTurn, specialKind]);
 
   // Outcome previews for each legal target while choosing a Charge, Volley or Clash (roadmap 2.1).
   const previewKind = settings.previews && mode === 'target' && sel && s.activation?.regimentId === sel.id && (targetKind === 'charge' || targetKind === 'volley' || targetKind === 'clash') ? targetKind : null;
@@ -437,7 +452,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
   /** Sideways (dir −1 left / +1 right) or backward, in steps, capped at half the March (core p.28). */
   const nudgeLateral = (kind: 'sideways' | 'backward', dir: number, k: number) => {
     if (!sel) return;
-    const cap = Math.floor((marchAllowance(s, sel) / 2) * 10) / 10;
+    const cap = Math.floor((mode === 'special' ? specialMoveAllowance(s, sel.id, specialKind) : marchAllowance(s, sel) / 2) * 10) / 10;
     const last = moves.length === 1 ? moves[0]! : null;
     const cur = last && last.kind === kind ? (kind === 'sideways' ? (last as { d: number }).d : (last as { d: number }).d) : 0;
     const signed = kind === 'sideways' ? cur * dir : cur;
@@ -548,6 +563,16 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
         </div>
       );
     };
+    const pm = s.pendingMove;
+    const pendingBanner = pm ? (
+      <div className="actions wrap pending-move" data-testid="pending-move">
+        <span className="meta">
+          {pm.kind === 'airStep' ? 'Air Step' : 'Translocation'}: {s.regiments[pm.regimentId]?.name} may move up to {pm.max}″ now.
+        </span>
+        <button type="button" onClick={() => beginSpecial(pm.kind, pm.regimentId)} data-testid="pending-move-go">Move it</button>
+        <button type="button" className="secondary" onClick={() => run({ type: 'skipMove' })}>Skip</button>
+      </div>
+    ) : null;
     const tail = (
       <>
         <button type="button" className="secondary" onClick={() => run({ type: 'pass' })}>Pass</button>
@@ -559,6 +584,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
       const targets = duelTargets(s, c);
       return (
         <div>
+          {pendingBanner}
           <p><strong>{c.name}</strong> is active: one Character Action (core p.74). {status}</p>
           {drawEventButtons(c.drawEvents)}
           <OdActivation key={`od-${c.id}`} s={s} run={run} />
@@ -599,10 +625,11 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
     };
     return (
       <div>
+        {pendingBanner}
         <p className="meta">Actions used {used}/2{status ? ` · ${status}` : ''}{act.entourage ? ' · Entourage Activation' : ''}</p>
         {drawEventButtons(r.drawEvents)}
         <OdActivation key={`od-${r.id}`} s={s} run={run} />
-        <SkActivation key={`sk-${r.id}`} s={s} run={run} onVolleyInContact={(id) => run({ type: 'volley', regimentId: r.id, targetId: id })} />
+        <SkActivation key={`sk-${r.id}`} s={s} run={run} onVolleyInContact={(id) => run({ type: 'volley', regimentId: r.id, targetId: id })} onSoaring={() => beginSpecial('soaring', r.id)} />
         <div className="actions wrap">
           {!act.ended && r.location === 'arriving' && <button type="button" onClick={() => beginEnter(r)} data-testid="march-on">March on</button>}
           {!act.ended && r.location === 'table' && !engaged && (
@@ -850,8 +877,9 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
           )}
           {s.phase === 'play' && <ManualTools s={s} r={sel} dispatch={dispatch} onMoveByHand={() => { setOverridePose(sel.pose); setMode('override'); }} />}
 
-          {(mode === 'march' || mode === 'enter' || mode === 'withdraw') && draft && (
+          {(mode === 'march' || mode === 'enter' || mode === 'withdraw' || mode === 'special') && draft && (
             <div className="move-panel">
+              {mode === 'special' && <p><strong>{SPECIAL_MOVE_LABEL[specialKind]}</strong> <span className="meta">{specialKind === 'soaring' ? 'ignores Regiments and terrain in the way; sideways and backward at full distance' : specialKind === 'airStep' ? 'any direction, no Wheel' : 'any direction, ignoring Regiments and terrain, no Wheel'}</span></p>}
               {mode === 'enter' && (
                 <>
                   <p className="meta">Tap near a table edge to choose where the front edge starts, then set the move.</p>
@@ -876,11 +904,15 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
                 <button type="button" className="secondary small" onClick={() => nudgeForward(-0.1)}>−0.1″</button>
                 <button type="button" className="secondary small" onClick={() => nudgeForward(0.1)}>+0.1″</button>
                 <button type="button" className="secondary small" onClick={() => nudgeForward(1)}>+1″</button>
-                <button type="button" className="secondary small" onClick={() => addWheel('left', 15)}>↺ wheel L 15°</button>
-                <button type="button" className="secondary small" onClick={() => addWheel('right', 15)}>↻ wheel R 15°</button>
-                <button type="button" className="secondary small" onClick={() => addWheel('left', -5)}>L −5°</button>
-                <button type="button" className="secondary small" onClick={() => addWheel('right', -5)}>R −5°</button>
-                {mode === 'march' && (
+                {!(mode === 'special' && specialKind !== 'soaring') && (
+                  <>
+                    <button type="button" className="secondary small" onClick={() => addWheel('left', 15)}>↺ wheel L 15°</button>
+                    <button type="button" className="secondary small" onClick={() => addWheel('right', 15)}>↻ wheel R 15°</button>
+                    <button type="button" className="secondary small" onClick={() => addWheel('left', -5)}>L −5°</button>
+                    <button type="button" className="secondary small" onClick={() => addWheel('right', -5)}>R −5°</button>
+                  </>
+                )}
+                {(mode === 'march' || mode === 'special') && (
                   <>
                     {/* Sideways or backward: up to half the March, in one direction only (core p.28). */}
                     <button type="button" className="secondary small" onClick={() => nudgeLateral('sideways', -1, 0.5)}>← side ½″</button>
@@ -910,7 +942,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
               <Problems v={draftProblems} />
               <div className="actions">
                 <button type="button" disabled={mode !== 'withdraw' && !draft.ghost.valid} onClick={() => run(draft.action)} data-testid="commit-move">
-                  {mode === 'enter' ? 'March on' : mode === 'withdraw' ? 'Roll and Withdraw' : 'March'}
+                  {mode === 'enter' ? 'March on' : mode === 'withdraw' ? 'Roll and Withdraw' : mode === 'special' ? 'Move' : 'March'}
                 </button>
                 <button type="button" className="secondary" onClick={resetModes}>Cancel</button>
               </div>

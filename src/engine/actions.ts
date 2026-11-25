@@ -25,7 +25,7 @@ import {
 } from './queries';
 import { barrageOf, flatRules, hasRule, ruleX } from './rules/special/rules';
 import { magnanimity, poolMods } from './rules/special/effects';
-import { elementalKind, isElemental, ofCourt, skUnit, warlordCourts, warlordHas } from './factions/sorcererKings';
+import { elementalKind, isElemental, ofCourt, skUnit, warlordCourts, warlordHas, waterPieces, within } from './factions/sorcererKings';
 import { volleyInContact } from './factions/sorcererKingsActions';
 import { autoPassesResolve, markOnce, takeGlimmers, xhiliarchChargeBonus } from './factions/oldDominion';
 import { chargeThroughHindering, coverHalves, standLosSize, terrainBlocks, terrainPathProblems, terrainPositionProblems } from './terrain';
@@ -719,7 +719,9 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
     if (effective) shots += 1;
     // Cover (core p.86) halves Barrage like Loose Formation; the two do not stack (core p.99).
     // Hypersynaptic Bonding ignores Cover too (sp p.28).
-    const cover = hasRule(r.rules, 'Hypersynaptic Bonding') ? null : coverHalves(s, from, closestPointOnPoly(from, clearTo!), regimentPolys(s, r), tPolys, t.type);
+    // Gifted Mortals, Court of Water (Mahabharati Initiates, sk p.27): within 3″ of Water terrain, all its Stands count as in Cover.
+    const tidal = t.name === 'Mahabharati Initiates' && !!s.players[t.owner].sk && ofCourt(s, t, 'Water') && within(s, t, waterPieces(s), 3) ? 'Water, Gifted Mortals' : null;
+    const cover = hasRule(r.rules, 'Hypersynaptic Bonding') ? null : tidal ?? coverHalves(s, from, closestPointOnPoly(from, clearTo!), regimentPolys(s, r), tPolys, t.type);
     if (loose || cover) shots = Math.ceil(shots / 2);
     const arc = majorityArc(tfp, rectPoly(sl.rect)) ?? 'front';
     plans.push({ label: `${label}${effective ? ' (Effective Range +1)' : ''}${loose ? ' (Loose Formation: halved)' : cover ? ` (Cover, ${cover}: halved)` : ''}`, shots, arc, skill: vAimed, ap, deadly, effective });
