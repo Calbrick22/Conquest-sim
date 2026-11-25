@@ -36,7 +36,7 @@ import { buildCards, cardTargets, flankChoices, reinforcementChoices, reinforcem
 import { legalFiles } from '../engine/formation';
 import { hasRule, manualRules, ruleX } from '../engine/rules/special/rules';
 import { zoneResults } from '../engine/scoring/victory';
-import { aiContactVolley, aiRitual, aiSkActivation, skSpellValue } from './sorcererKingsAi';
+import { aiContactVolley, aiRitual, aiSkActivation, placeRituals, skSpellValue } from './sorcererKingsAi';
 
 export interface AiDecision {
   action: Action;
@@ -242,7 +242,8 @@ function decideStack(s: GameState, p: PlayerId): AiDecision {
     out.push(rc);
   }
   for (const c of cards) if (!out.includes(c)) out.push(c);
-  return { action: { type: 'setStack', player: p, order: out.map((c) => c.id) }, reason: 'orders the Command Stack: ranged and fast first, chargers later' };
+  const final = placeRituals(s, out);
+  return { action: { type: 'setStack', player: p, order: final.map((c) => c.id) }, reason: 'orders the Command Stack: ranged and fast first, chargers later' };
 }
 
 function decideFirst(s: GameState, p: PlayerId): AiDecision {

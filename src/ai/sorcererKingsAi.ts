@@ -49,7 +49,11 @@ export function aiRitual(s: GameState, p: PlayerId): SkAiDecision {
       }
       return v;
     };
-    const best = [...pieces].sort((a, b) => score(b.id) - score(a.id))[0]!;
+    // A piece that already has the keyword the Ritual adds gains nothing.
+    const adds = name === 'Call forth the Deep' ? 'Water' : 'Earth';
+    // Water on an Impassable piece helps nobody: no Regiment can be within it.
+    const useful = pieces.filter((x) => !x.keywords.includes(adds) && !(adds === 'Water' && x.keywords.includes('Impassable')));
+    const best = [...(useful.length ? useful : pieces)].sort((a, b) => score(b.id) - score(a.id))[0]!;
     return done({ type: 'ritual', player: p, terrainId: best.id }, `${best.kind} ${best.id}`);
   }
   return done({ type: 'ritual', player: p }, '');
@@ -146,3 +150,5 @@ export function skSpellValue(s: GameState, owner: PlayerId, spell: string, t: Re
   }
   return null;
 }
+
+export { placeRituals } from '../engine/factions/sorcererKings';

@@ -31,7 +31,7 @@ const TIER_RE = /^(.+?)\s*\(Tier\s+(I|II|III|IV)\)$/;
 const ROMAN: Record<string, string> = { I: '1', II: '2', III: '3', IV: '4' };
 const SENTENCE_START_RE = /^(This|Should|If|Each|Only|When|While|Up to|May|Must|A|An|Your)\b/;
 /** Option groups whose names have more than one word (the group is otherwise the first word). */
-const MULTI_WORD_GROUPS = ['Dark Blessings'];
+const MULTI_WORD_GROUPS = ['Dark Blessings', "Patron's Gifts", 'Patron’s Gifts'];
 
 function startsWithLabel(line: string): Label | null {
   for (const l of LABELS) if (line === l || line.startsWith(l + ' ') || line.startsWith(l + ':')) return l;
@@ -299,7 +299,9 @@ export function parseArmyList(text: string): ArmyList {
         continue;
       }
     }
-    if (isSentence(line) && (label !== 'Options' || /[.!?]$/.test(line) || SENTENCE_START_RE.test(line))) {
+    // A sentence that starts with the entry's own name, e.g. "Marid Apsara may perform …" (Sorcerer Kings export).
+    const ownName = !!entry && line.startsWith(`${(entry as ListEntry).name} `) && /^\s*(may|can|counts|gains|must|is|has|adds)\b/.test(line.slice((entry as ListEntry).name.length));
+    if ((isSentence(line) || ownName) && (label !== 'Options' || /[.!?]$/.test(line) || SENTENCE_START_RE.test(line) || ownName)) {
       flushLabel();
       flushNote();
       tierBlock = null;

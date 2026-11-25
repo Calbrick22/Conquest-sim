@@ -2,7 +2,7 @@ import { ev, rollN, type Ctx } from './dice';
 import type { CommandCard, GameState, PlayerId, RegimentState, UnitClass } from './model/types';
 import { computeReinforcementLine, hasFlank, other, regimentStandCount } from './queries';
 import { beginRoundOd } from './factions/oldDominion';
-import { beginRoundSk } from './factions/sorcererKings';
+import { beginRoundSk, placeRituals } from './factions/sorcererKings';
 
 /**
  * Reinforcement table (core p.21): the roll needed this Round per Class, 'auto' when the Class
@@ -139,14 +139,14 @@ export function defaultStackOrder(s: GameState, p: PlayerId): CommandCard[] {
     return (r.rules.some((x) => x.name === 'Barrage') ? -10 : 0) - (r.profile.M ?? 0);
   };
   regs.sort((a, b) => score(a) - score(b));
-  // Rituals first: their effects and the same-Court follow-up come early.
-  const out: CommandCard[] = cards.filter((c) => c.kind === 'ritual');
+  const out: CommandCard[] = [];
   for (const rc of regs) {
     const ch = cards.find((c) => c.kind === 'character' && s.characters[c.refId]!.attachedTo === rc.refId);
     if (ch) out.push(ch);
     out.push(rc);
   }
-  return out;
+  // Rituals first, each followed by a Regiment of its Court (sk p.22).
+  return placeRituals(s, [...cards.filter((c) => c.kind === 'ritual'), ...out]);
 }
 
 export function stackProblems(s: GameState, p: PlayerId, order: string[]): string[] {

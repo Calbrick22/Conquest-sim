@@ -78,7 +78,7 @@ export function afterRitualDraw(ctx: Ctx, p: PlayerId, follow: string | null, la
   if (!cardCourtOk(s, card, follow)) {
     s.players[p].stack.unshift(card);
     s.drawn = null;
-    ev(ctx, { type: 'draw', text: `${card.name} is not of the Court of ${follow}: it goes back on top of the Command Stack and play passes (sk p.22).`, player: p });
+    ev(ctx, { type: 'draw', text: `${card.name} ${card.kind === 'ritual' ? 'is another Ritual card, not' : 'is not'} a [Court of ${follow}] Regiment: it goes back on top of the Command Stack and play passes (sk p.22).`, player: p });
     passTurn(s, p);
     return;
   }

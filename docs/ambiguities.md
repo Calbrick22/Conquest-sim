@@ -85,3 +85,4 @@ Each entry gives the source, the question, and the reading the code uses. In cod
 | AMB-73 | sk p.28 | Elemental Prowess: "Blessed until the end of its next Activation", but it is a Draw Event resolved at the start of an Activation. | Blessed until the end of the Round (it covers this Activation). | chosen |
 | AMB-74 | sk p.6 | The Raj's Elemental Dominion (Court of Fire) grants a "Fan the Flames" Draw Event that the list does not define. | Offered as a manual Draw Event. | chosen |
 | AMB-75 | sk p.19 | Induced Hypoxia: "the lowest unmodified Resolve Characteristic in the Regiment". Is the size bonus still added? | Yes, as for Broken Regiments (AMB-31). | chosen |
+| AMB-76 | sk p.16–17 | Prijm Khanjar and Bound to the Elements change a Character's profile. Does the export already show the change? | Yes, a real export shows the raised Attacks and Wounds and the gained rules, so the engine does not add them again (as with AMB-55). | chosen |

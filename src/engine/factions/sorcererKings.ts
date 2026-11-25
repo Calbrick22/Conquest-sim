@@ -3,7 +3,7 @@ import type { RuleRef } from '../../import/types';
 import { ev, type Ctx } from '../dice';
 import { overlaps, type Poly } from '../geometry/polygon';
 import { TOL } from '../geometry/vec';
-import type { CharacterState, Court, GameState, PlayerId, RegimentState, SkPlayerState, StatMod } from '../model/types';
+import type { CharacterState, CommandCard, Court, GameState, PlayerId, RegimentState, SkPlayerState, StatMod } from '../model/types';
 import { attachedCharacter, distancePolys, enemiesTouching, regimentPolys } from '../queries';
 import { hasRule } from '../rules/special/rules';
 import { piecePoly, terrainOf } from '../terrain';
@@ -141,7 +141,8 @@ export function sk(s: GameState, p: PlayerId): SkPlayerState | undefined {
 
 const ref = (raw: string): RuleRef => parseRuleRef(raw);
 const lc = (x: string) => x.toLowerCase();
-const hasOpt = (c: CharacterState, n: string) => c.options.some((o) => lc(o) === lc(n));
+const norm = (x: string) => lc(x).replace(/[’]/g, "'");
+const hasOpt = (c: CharacterState, n: string) => c.options.some((o) => norm(o) === norm(n));
 const roleList = (r: RegimentState) => [...r.roles, ...(r.roundRoles ?? []), ...(r.grantRoles ?? [])].map((x) => x.replace(/[[\]]/g, '').trim().toLowerCase());
 
 export function isElemental(r: RegimentState): boolean {
@@ -196,7 +197,8 @@ export function warlordCourts(s: GameState, p: PlayerId): Court[] {
  * their Warband Character's Court.
  */
 export function regimentCourts(s: GameState, r: RegimentState): Court[] {
-  const own = courtsIn(r.roles);
+  // The export shows a Regiment's chosen Court as a role or as a "Courts" option (Ghols).
+  const own = courtsIn([...r.roles, ...(r.options ?? [])]);
   if (own.length) return own;
   const u = skUnit(r);
   if (u?.court === 'warlord') {
@@ -261,17 +263,10 @@ export function initSorcererKings(s: GameState): void {
         const cs = characterCourts(s, c);
         if (cs.length) c.spells = cs.flatMap((x) => COURT_SPELLS[x]);
       }
-      // Character upgrades that change the profile (count as unmodified, core p.15).
-      if (hasOpt(c, 'Prijm Khanjar')) {
-        if (c.profile.A !== null) c.profile.A += 2;
-        c.baseRules.push(ref('Flawless Strikes'));
-      }
-      if (hasOpt(c, 'Bound to the Elements')) {
-        if (c.profile.A !== null) c.profile.A += 2;
-        if (c.profile.W !== null) c.profile.W += 2;
-        if (!hasRule(c.baseRules, 'Impact')) c.baseRules.push(ref('Impact (3)'));
-      }
-      if (hasOpt(c, 'Dancing Scimitar')) c.baseDrawEvents = [...(c.baseDrawEvents ?? c.drawEvents), 'Dancing Scimitar'];
+      // Prijm Khanjar and Bound to the Elements change the profile; the export already shows the
+      // changed Attacks, Wounds and rules (RULE-AMBIGUITY: AMB-76), so nothing is added here.
+      const des = c.baseDrawEvents ?? c.drawEvents;
+      if (hasOpt(c, 'Dancing Scimitar') && !des.includes('Dancing Scimitar')) c.baseDrawEvents = [...des, 'Dancing Scimitar'];
     }
     for (const r of Object.values(s.regiments)) {
       if (r.owner !== p) continue;
@@ -545,4 +540,26 @@ export function checkShattered(ctx: Ctx): void {
 export function attachedSardarOrNull(s: GameState, r: RegimentState): CharacterState | undefined {
   const c = attachedCharacter(s, r.id);
   return c && isSardar(c) ? c : undefined;
+}
+
+/**
+ * Command Stack order for Ritual cards (sk p.22): each Ritual just before a Regiment card of its
+ * Court, so that Regiment can Activate straight after it.
+ */
+export function placeRituals(s: GameState, order: CommandCard[]): CommandCard[] {
+  const rituals = order.filter((c) => c.kind === 'ritual');
+  if (!rituals.length) return order;
+  const rest = order.filter((c) => c.kind !== 'ritual');
+  const out: CommandCard[] = [];
+  const used = new Set<string>();
+  for (const rc of rituals) {
+    const court = RITUALS[rc.refId]?.court;
+    const follower = rest.find((c) => !used.has(c.id) && c.kind === 'regiment' && !!court && regimentCourts(s, s.regiments[c.refId]!).includes(court));
+    out.push(rc);
+    if (follower) {
+      out.push(follower);
+      used.add(follower.id);
+    }
+  }
+  return [...out, ...rest.filter((c) => !used.has(c.id))];
 }

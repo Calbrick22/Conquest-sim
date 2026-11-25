@@ -316,3 +316,19 @@ describe('Sorcerer Kings: unit rules (sk p.27–46)', () => {
     expect(r.events.some((e) => /Last Word: .* suffers 8 automatic Hits/.test(e.text))).toBe(true);
   });
 });
+
+describe('Sorcerer Kings: real export details (sk p.4, p.22, p.31)', () => {
+  it('Ghols read their Court from the "Courts" option (Denizens of the Upper Planes, sk p.31)', () => {
+    const { s } = game([{ character: wizard('Ember Sorcerer', 'Fire'), regiments: [unit('Ghols', ['Elemental'], { options: { Courts: ['Court of Water'] } })] }]);
+    expect(regimentCourts(s, byName(s, 'Ghols'))).toEqual(['Water']);
+  });
+  it('the default Command Stack puts each Ritual just before a Regiment of its Court (sk p.22)', async () => {
+    const { defaultStackOrder } = await import('./round');
+    const { s } = fireArmy();
+    s.step = 'command';
+    s.players.P1.sk!.completed = ['Intrusive Thoughts'];
+    const order = defaultStackOrder(s, 'P1');
+    expect(order[0]!.kind).toBe('ritual');
+    expect(regimentCourts(s, s.regiments[order[1]!.refId]!)).toContain('Fire');
+  });
+});

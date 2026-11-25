@@ -387,7 +387,7 @@ function skAfterCast(ctx: Ctx, c: Caster, def: SpellDef | undefined, successes: 
   const s = ctx.s;
   const act = s.activation!;
   if (def?.court) addMarkers(ctx, c.owner, 1, def.court, `${c.name} casts a ${def.court} Spell`);
-  const opt = (n: string) => !!c.character?.options.some((o) => o.toLowerCase() === n);
+  const opt = (n: string) => !!c.character?.options.some((o) => o.toLowerCase().replace(/[’]/g, "'") === n);
   if (opt("shu'laat") && !act.shulaat && sk(s, c.owner)?.preparing) {
     act.shulaat = true;
     addMarkers(ctx, c.owner, 1, 'any', "Shu'laat (sk p.16)");

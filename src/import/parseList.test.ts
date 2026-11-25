@@ -91,3 +91,48 @@ describe('army list parser (synthetic fixture)', () => {
     expect(e.warnings.length).toBeGreaterThan(0);
   });
 });
+
+describe('Sorcerer Kings export layout (synthetic, seen in a real export)', () => {
+  const text = [
+    'Tide Host 1000 / 1000',
+    'Sorcerer Kings',
+    'Warband 1',
+    'Raj 1 130',
+    'M V C A W R D E Type Infantry',
+    '- 2 3 7 6 4 3 2 Class -',
+    'Special Rules Flurry, Wizard (7)',
+    'Battlefield Role Character, Court of Water',
+    'Options',
+    "Patron's Gifts Silver Blade",
+    'Courts Court of Water',
+    'Masteries Far Reach',
+    'Marid Apsara Restricted 1 240',
+    'M V C A W R D E Type Monster',
+    '8 1 3 9 14 4 3 1 Class Heavy',
+    'Special Rules Impact (4), Wizard (6)',
+    'Battlefield Role Elemental, Court of Water',
+    'Marid Apsara may perform a Spellcasting Action during its Activation as if it were a',
+    '[Character].',
+    'Ghols Mainstay 3 110',
+    'M V C A W R D E Type Infantry',
+    '5 1 2 5 4 2 2 1 Class Light',
+    'Special Rules Unstoppable',
+    'Battlefield Role Elemental',
+    'Options',
+    'Courts Court of Water',
+  ].join('\n');
+  it("reads the two-word option group Patron's Gifts", () => {
+    const l = parseArmyList(text);
+    expect(l.warbands[0]!.character!.options).toEqual({ "Patron's Gifts": ['Silver Blade'], Courts: ['Court of Water'], Masteries: ['Far Reach'] });
+  });
+  it('keeps a sentence that starts with the entry name out of the Battlefield Role', () => {
+    const l = parseArmyList(text);
+    const ap = l.warbands[0]!.regiments[0]!;
+    expect(ap.battlefieldRoles).toEqual(['Elemental', 'Court of Water']);
+    expect(ap.notes[0]).toMatch(/^Marid Apsara may perform .*\[Character\]\.$/);
+  });
+  it('reads a Regiment’s Court option (Ghols)', () => {
+    const l = parseArmyList(text);
+    expect(l.warbands[0]!.regiments[1]!.options).toEqual({ Courts: ['Court of Water'] });
+  });
+});

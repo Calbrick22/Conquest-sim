@@ -665,7 +665,9 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
   const obs = obstacles(s, [r.id, t.id]);
   const c = attachedCharacter(s, r.id);
   const plans: VolleyStandPlan[] = [];
-  const front = layout(formationInput(s, r)).filter((x) => x.rank === 0);
+  // Marid Sahar (sk p.44): with 4 or fewer Stands, every Stand Volleys regardless of rank.
+  const allRanks = r.name === 'Marid Sahar' && !!s.players[r.owner].sk && r.stands.length <= 4;
+  const front = layout(formationInput(s, r)).filter((x) => x.rank === 0 || allRanks);
   // Longshot: Effective Range equals the full Barrage range (core p.99).
   const longshot = hasRule(r.rules, 'Longshot');
   // Loose Formation (target): each Stand's Barrage X is halved, rounding up (core p.99).

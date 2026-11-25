@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.1.1] - 2026-11-25 (Sorcerer Kings: tested with a real list)
+
+### Fixed
+- **List import:**
+  - "Patron's Gifts" is read as one option group, so Shu'laat and Prijm Khanjar now apply;
+  - a rule sentence that starts with the unit's name (the Marid Apsara's) no longer leaks into its Battlefield Role;
+  - Ghols take their Court from the list's "Courts" option.
+- **Prijm Khanjar and Bound to the Elements** are no longer added twice: the export already shows the changed Attacks and Wounds (AMB-76).
+- **Marid Sahar** with 4 or fewer Stands Volleys with every Stand, whatever its rank (sk p.44).
+- **No longer flagged as manual**, since the engine handles them: the Forms, Tidecaller, Dread Tide and Denizens of the Upper Planes, which the export lists by name. Tidal Summons is still manual.
+- **Command Stack:** the default order and the computer place each Ritual card just before a Regiment of its Court, so that Regiment can Activate straight after it.
+- **Computer Ritual targets:** it no longer casts Call forth the Deep on terrain that is already Water or is Impassable.
+
 ## [2.1.0] - 2026-11-25 (Sorcerer Kings)
 
 ### Added
