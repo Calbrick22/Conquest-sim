@@ -200,7 +200,7 @@ button.menu-item { background: linear-gradient(180deg, var(--panel-2), var(--pan
 .game-screen > .game-left { grid-area: left; }
 @media (min-width: 1000px) {
   .game-screen {
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+    grid-template-columns: minmax(0, 1fr) var(--side-w, 440px);
     grid-template-areas: 'hud hud' 'table side';
     align-items: start;
   }
@@ -210,7 +210,7 @@ button.menu-item { background: linear-gradient(180deg, var(--panel-2), var(--pan
 }
 @media (min-width: 1280px) {
   .game-screen {
-    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(320px, 380px);
+    grid-template-columns: var(--left-w, 300px) minmax(0, 1fr) var(--side-w, 440px);
     grid-template-areas: 'hud hud hud' 'left table side';
   }
   .game-left { position: sticky; top: 8px; max-height: calc(100vh - 110px); overflow-y: auto; padding: 12px; }
@@ -461,3 +461,19 @@ button.menu-item { background: linear-gradient(180deg, var(--panel-2), var(--pan
 .ritual-pips .pip.ember { border-color: #d0624d; }
 .ritual-pips .pip.ember.on { background: radial-gradient(circle at 35% 35%, #ffd3a1, #e0703d 60%, #7d2d14); box-shadow: 0 0 6px rgba(224, 112, 61, 0.7); }
 .dw-activation { margin: 4px 0; }
+
+/* ---------------------------------------------------------------- resizable side panels (desktop) */
+.game-side, .game-left { position: relative; }
+.panel-resizer { display: none; }
+@media (min-width: 1000px) {
+  .panel-resizer {
+    display: block; position: absolute; top: 0; bottom: 0; width: 10px; z-index: 6; cursor: col-resize; touch-action: none;
+    background: linear-gradient(90deg, transparent 4px, var(--line) 4px, var(--line) 6px, transparent 6px);
+  }
+  /* Inside the panel edge: the panels scroll, which clips anything outside their box. */
+  .panel-resizer.left { left: 0; }
+  .panel-resizer.right { right: 0; }
+  .game-side { padding-left: 10px; }
+  .game-left { padding-right: 14px; }
+  .panel-resizer:hover, .panel-resizer:focus-visible { background: linear-gradient(90deg, transparent 3px, var(--gold) 3px, var(--gold) 7px, transparent 7px); outline: none; }
+}

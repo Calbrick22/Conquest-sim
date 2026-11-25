@@ -96,6 +96,12 @@ button.on { background: var(--accent); color: #fff; }
 .map .stand.character { stroke: #e2b13c; stroke-width: 0.25; }
 .map .regiment .front { stroke: #fff6d8; stroke-width: 0.3; }
 .map .regiment.selected .stand { stroke: #ffd34d; stroke-width: 0.2; }
+/* The Regiment an Activate button refers to, while hovered or focused. */
+.map .regiment.hovered .stand { stroke: #fff6c8; stroke-width: 0.35; filter: drop-shadow(0 0 0.6px #ffd34d) drop-shadow(0 0 1.2px #ffd34d); }
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-reduce-motion='true']) .map .regiment.hovered .stand { animation: hover-pulse 1s ease-in-out infinite alternate; }
+}
+@keyframes hover-pulse { from { stroke-opacity: 0.6; } to { stroke-opacity: 1; } }
 .map .regiment.done .stand { fill-opacity: 0.5; }
 .map .rlabel { font-size: 1.1px; font-weight: 600; fill: #fff; paint-order: stroke; stroke: #1f1712; stroke-width: 0.25px; }
 .map .ghost polygon { fill: none; stroke-width: 0.15; stroke-dasharray: 0.4 0.25; }
@@ -215,6 +221,7 @@ select, input, textarea { max-width: 100%; }
 .map .area.reach text { font-size: 0.9px; font-weight: 700; fill: #14532d; paint-order: stroke; stroke: #fff; stroke-width: 0.2px; }
 .map .area.threat polygon { fill: #b91c1c; fill-opacity: 0.1; stroke: #b91c1c; stroke-opacity: 0.6; stroke-dasharray: 0.5 0.3; }
 .map .area.threat.spent polygon { fill-opacity: 0.03; stroke-opacity: 0.25; }
+.map .area.threat.volley polygon { fill: #7c3aed; stroke: #7c3aed; stroke-dasharray: 0.2 0.3; }
 /* Table buttons sit in a strip below the table, so they never cover a Regiment. */
 .table-wrap .zoom { position: static; justify-content: flex-end; flex-wrap: wrap; padding: 4px 6px; border-top: 1px solid var(--line); }
 /* Modal dialogs (end-of-battle summary, confirmations). */

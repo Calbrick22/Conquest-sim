@@ -35,6 +35,7 @@ import { DrawDeck, StackBuilder } from './CommandDeck';
 import { OdActivation, PowerBar } from './OldDominionPanel';
 import { RitualBar, SkActivation } from './SorcererKingsPanel';
 import { DwActivation, ElementalPowerBar } from './DweghomPanel';
+import { PanelResizer } from '../shell/PanelResizer';
 import { SPECIAL_MOVE_LABEL, specialMoveAllowance, type SpecialMoveKind } from '../../engine/specialMoves';
 import { isOdDrawEvent } from '../../engine/factions/oldDominionActions';
 import { canInduceAggression, strainFor } from '../../engine/factions/spires';
@@ -109,7 +110,12 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
   const [withdrawTurn, setWithdrawTurn] = useState(true);
   // Roadmap 2.2: the selected Regiment's Charge reach, and enemy threat ranges.
   const [showReach, setShowReach] = useState(false);
-  const [showThreats, setShowThreats] = useState(false);
+  // Enemy threat ranges (roadmap 2.2): off → Charge reach → Volley range (Barrage) → off.
+  const [threatMode, setThreatMode] = useState<'off' | 'charge' | 'volley'>('off');
+  const showThreats = threatMode !== 'off';
+  /** Regiment highlighted on the table while its Activate button is hovered. */
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const cycleThreats = () => setThreatMode(threatMode === 'off' ? 'charge' : threatMode === 'charge' ? 'volley' : 'off');
 
   // With nothing selected, the active Regiment is shown (e.g. after an Entourage Activation).
   const sel: RegimentState | null = selectedId ? (s.regiments[selectedId] ?? null) : s.activation ? (s.regiments[s.activation.regimentId] ?? null) : null;
@@ -317,6 +323,17 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
       const me = human ?? (s.activation ? s.regiments[s.activation.regimentId]?.owner : undefined) ?? sel?.owner ?? 'P1';
       for (const e of Object.values(s.regiments)) {
         if (e.location !== 'table' || e.owner === me) continue;
+        if (threatMode === 'volley') {
+          // Volley: the front arc out to the longest Barrage range in the Regiment (core p.38).
+          const c = attachedCharacter(s, e.id);
+          const range = Math.max(barrageOf(e.rules)?.range ?? 0, c ? barrageOf(c.rules)?.range ?? 0 : 0);
+          if (range > 0) {
+            const fp = footprint(formationInput(s, e));
+            const fwd = { x: Math.cos(e.pose.angle), y: Math.sin(e.pose.angle) };
+            out.push({ points: frontReachPolygon(s, e, range), cls: `threat volley ${e.activatedThisRound ? 'spent' : ''}`, label: `${range}″`, labelAt: { x: fp.c.x + fwd.x * (fp.halfDepth + range - 0.8), y: fp.c.y + fwd.y * (fp.halfDepth + range - 0.8) } });
+          }
+          continue;
+        }
         const d = maxReach(s, e);
         out.push({ points: frontReachPolygon(s, e, d), cls: `threat ${e.activatedThisRound ? 'spent' : ''}` });
       }
@@ -335,7 +352,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
       });
     }
     return out;
-  }, [s, sel, showReach, showThreats, mode, targetKind, aiPlayer]);
+  }, [s, sel, showReach, showThreats, threatMode, mode, targetKind, aiPlayer]);
 
   const draftProblems = draft && mode !== 'override' && mode !== 'withdraw' ? validate(s, draft.action) : null;
 
@@ -720,7 +737,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
   const characters = Object.values(s.characters);
 
   return (
-    <section className="game-screen">
+    <section className="game-screen" style={{ '--side-w': `${settings.sideWidth}px`, '--left-w': `${settings.leftWidth}px` } as React.CSSProperties}>
       <Hud s={s} you={game.you} mode={game.mode}>
         <Tooltip tip="Measure (R)">
           <button type="button" className={`icon-btn ${mode === 'ruler' ? 'on' : ''}`} onClick={toggleRuler} data-testid="ruler" aria-label="Ruler">
@@ -732,9 +749,10 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
             ⤳<span className="btn-label">Reach</span>
           </button>
         </Tooltip>
-        <Tooltip tip="How far each enemy could Charge (T)">
-          <button type="button" className={`icon-btn ${showThreats ? 'on' : ''}`} onClick={() => setShowThreats(!showThreats)} data-testid="threats" aria-label="Threats">
-            ⚠<span className="btn-label">Threats</span>
+        <Tooltip tip={threatMode === 'off' ? 'Enemy Charge reach (T); press again for Volley ranges' : threatMode === 'charge' ? 'Showing Charge reach; press for Volley ranges (T)' : 'Showing Volley ranges; press to hide (T)'}>
+          <button type="button" className={`icon-btn ${showThreats ? 'on' : ''}`} onClick={cycleThreats} data-testid="threats" aria-label={`Threats: ${threatMode}`} aria-pressed={showThreats}>
+            {threatMode === 'volley' ? '➶' : '⚠'}
+            <span className="btn-label">{threatMode === 'off' ? 'Threats' : threatMode === 'charge' ? 'Charge' : 'Volley'}</span>
           </button>
         </Tooltip>
         {aiPlayer && (
@@ -760,6 +778,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
       <TableView
         state={s}
         selectedId={selectedId}
+        hoverId={hoverId}
         ghost={draft?.ghost ?? null}
         ruler={ruler?.result ?? (ruler?.a ? { a: ruler.a, b: ruler.a, label: 'tap a second point or Regiment' } : null)}
         highlightEdges={highlightEdges}
@@ -776,16 +795,18 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
         lines={mode === 'target' && targetKind === 'volley' && sel ? volleyLines(s, sel).map((l) => ({ a: l.a, b: l.b, cls: l.kind, ...(l.label ? { label: l.label } : {}) })) : undefined}
         overlays={overlays}
       >
-        {s.phase === 'play' && !needsAck && <DrawDeck s={s} dispatch={dispatch} onSelect={setSelectedId} aiPlayer={paused ? null : aiPlayer} />}
+        {s.phase === 'play' && !needsAck && <DrawDeck s={s} dispatch={dispatch} onSelect={setSelectedId} aiPlayer={paused ? null : aiPlayer} onHover={setHoverId} />}
         {!auto.running && <Toasts events={session.last?.events ?? []} stamp={session.actions.length} />}
       </TableView>
       </div>
       {wide && (
         <aside className="game-left panel" aria-label="Selected Regiment">
+          <PanelResizer edge="right" width={settings.leftWidth} min={220} max={520} reset={300} label="Regiment panel width" onChange={(w) => updateSettings({ leftWidth: w })} />
           {sel ? <UnitCallout s={s} r={sel} variant="panel" onClose={() => setSelectedId(null)} /> : <p className="meta empty-hint">Tap a Regiment on the table to see its profile, rules and status here.</p>}
         </aside>
       )}
       <div className="game-side">
+        <PanelResizer edge="left" width={settings.sideWidth} min={320} max={760} reset={440} label="Side panel width" onChange={(w) => updateSettings({ sideWidth: w })} />
       {s.phase === 'play' && s.step === 'command' && stackPlayer && !needsAck && (
         <StackBuilder key={`${s.round}-${stackPlayer}`} s={s} p={stackPlayer} dispatch={dispatch} onPreview={(id) => { setSelectedId(id); setShowUnit(true); }} />
       )}

@@ -28,6 +28,8 @@ export interface Ruler {
 interface Props {
   state: GameState;
   selectedId: string | null;
+  /** A Regiment to highlight, e.g. while hovering its Activate button. */
+  hoverId?: string | null;
   ghost: Ghost | null;
   ruler: Ruler | null;
   /** Edge segments to highlight as legal entry areas. */
@@ -274,10 +276,11 @@ export function TableView(props: Props) {
             const slots = layout(formationInput(s, r));
             const polys = regimentPolys(s, r);
             const sel = r.id === props.selectedId;
+            const hov = r.id === props.hoverId;
             return (
               <g
                 key={r.id}
-                className={`regiment ${sel ? 'selected' : ''} ${r.activatedThisRound ? 'done' : ''}`}
+                className={`regiment ${sel ? 'selected' : ''} ${hov ? 'hovered' : ''} ${r.activatedThisRound ? 'done' : ''}`}
                 onPointerDown={(e) => {
                   if (!props.onRegimentDown) return;
                   e.stopPropagation();

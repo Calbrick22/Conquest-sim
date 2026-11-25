@@ -66,7 +66,14 @@ export function StackBuilder({ s, p, dispatch, onPreview }: { s: GameState; p: P
 }
 
 /** The deck during the Action Phase: draw, then activate with the drawn card. */
-export function DrawDeck({ s, dispatch, onSelect, aiPlayer }: { s: GameState; dispatch: (a: Action) => boolean; onSelect: (id: string) => void; aiPlayer: PlayerId | null }) {
+export function DrawDeck({ s, dispatch, onSelect, aiPlayer, onHover }: { s: GameState; dispatch: (a: Action) => boolean; onSelect: (id: string) => void; aiPlayer: PlayerId | null; onHover?: (regimentId: string | null) => void }) {
+  // Hovering or focusing an Activate button highlights that Regiment on the table.
+  const hover = (regimentId: string | null) => ({
+    onMouseEnter: () => onHover?.(regimentId),
+    onMouseLeave: () => onHover?.(null),
+    onFocus: () => onHover?.(regimentId),
+    onBlur: () => onHover?.(null),
+  });
   if (s.step !== 'action' || s.activation) return null;
   if (s.drawn) {
     const { player, card } = s.drawn;
@@ -97,8 +104,10 @@ export function DrawDeck({ s, dispatch, onSelect, aiPlayer }: { s: GameState; di
               <button
                 key={id}
                 type="button"
+                {...hover(s.characters[id]!.attachedTo)}
                 onClick={() => {
                   const reg = s.characters[id]!.attachedTo;
+                  onHover?.(null);
                   if (reg) onSelect(reg);
                   dispatch({ type: 'activateCharacter', characterId: id });
                 }}
@@ -110,7 +119,9 @@ export function DrawDeck({ s, dispatch, onSelect, aiPlayer }: { s: GameState; di
               <button
                 key={id}
                 type="button"
+                {...hover(id)}
                 onClick={() => {
+                  onHover?.(null);
                   onSelect(id);
                   dispatch({ type: 'activate', regimentId: id });
                 }}

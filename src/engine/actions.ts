@@ -428,6 +428,8 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
   let die = 0;
   let total: number;
   const notes: string[] = [];
+  /** The first roll, when a failed Charge Roll was re-rolled (Unstoppable, Standard Bearer). */
+  let firstRoll: number | null = null;
   if (rule.fixed !== null) {
     total = rule.fixed;
     const fire = isFireJuggernaut(r, t);
@@ -448,20 +450,21 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
     total = die + M + rule.bonus;
     if (total < d - TOL && dice.reroll) {
       const first = die;
+      firstRoll = first;
       if (dice.twoDice) {
         // Fear (dw p.28): re-rolling a Charge re-rolls both dice.
         const [a, b] = rollN(ctx, 2) as [number, number];
         die = dice.lowest ? Math.min(a, b) : Math.max(a, b);
       } else [die] = rollN(ctx, 1) as [number];
       total = die + M + rule.bonus;
-      notes.push(`Unstoppable re-roll ${first}→${die} (core p.101)`);
+      notes.push(`${hasRule(r.rules, 'Unstoppable') ? 'Unstoppable' : 'Standard Bearer'} re-roll ${first}→${die} (core p.69, p.101)`);
     }
   }
   const success = total >= d - TOL;
   ev(ctx, {
     type: 'dice',
-    text: `${r.name} charges ${t.name} (${facing}): ${rule.fixed !== null ? `fixed ${total}″` : `rolled ${die} + ${M}${rule.bonus ? ` + ${rule.bonus}` : ''} = ${total}″`} against ${d.toFixed(2)}″ — ${success ? 'success' : 'failed'}.`,
-    dice: { purpose: `${r.name}: Charge Roll`, seed: ctx.rng.seed, index: idx, values: rule.fixed !== null ? [] : [die], notes },
+    text: `${r.name} charges ${t.name} (${facing}): ${rule.fixed !== null ? `fixed ${total}″` : `${firstRoll !== null ? `rolled ${firstRoll} (${firstRoll + M + rule.bonus}″, short), ${hasRule(r.rules, 'Unstoppable') ? 'Unstoppable' : 'Standard Bearer'} re-roll ${die}: ` : 'rolled '}${die} + ${M}${rule.bonus ? ` + ${rule.bonus}` : ''} = ${total}″`} against ${d.toFixed(2)}″ — ${success ? 'success' : 'failed'}.`,
+    dice: { purpose: `${r.name}: Charge Roll`, seed: ctx.rng.seed, index: idx, values: rule.fixed !== null ? [] : firstRoll !== null ? [firstRoll, die] : [die], notes },
     player: r.owner,
     regimentId: r.id,
   });
@@ -839,17 +842,18 @@ export function applyWithdraw(ctx: Ctx, r: RegimentState, moves: MoveSeg[], turn
   const s = ctx.s;
   const R = highestR(ctx, r);
   // Animate Vessel (od p.5) always passes; no die is rolled.
-  const auto = autoPassesResolve(r);
+  // Swift Retreat (Spires rule text): always a Clean Withdrawal, so no die is rolled either.
+  const swift = hasRule(r.rules, 'Swift Retreat');
+  const auto = autoPassesResolve(r) || swift;
   const t = auto ? { passes: 1, values: ['auto'] } : rollTest(ctx, 1, { target: R }, `${r.name}: Withdraw`);
-  // Swift Retreat (Spires): always a Clean Withdrawal.
-  const clean = t.passes === 1 || hasRule(r.rules, 'Swift Retreat');
+  const clean = t.passes === 1;
   const contacts = layout(formationInput(s, r)).filter((sl) => !sl.isCharacter && enemiesInContact(s, r).some((e) => distancePolys([rectPoly(sl.rect)], regimentPolys(s, e)) <= TOL)).length;
   const idx = ctx.rng.index;
   const [d] = rollN(ctx, 1) as [number];
   const wounds = clean ? d : d * contacts;
   ev(ctx, {
     type: 'dice',
-    text: `${r.name} Withdraws: ${auto ? 'Animate Vessel passes automatically' : `rolled ${t.values[0]} against ${R}`} — ${clean ? `Clean Withdrawal, suffers D6 = ${d} Wounds` : `Fighting Withdrawal, suffers ${d} × ${contacts} Stands in contact = ${wounds} Wounds`} (core p.51).`,
+    text: `${r.name} Withdraws: ${swift ? 'Swift Retreat makes it a Clean Withdrawal (no roll)' : auto ? 'Animate Vessel passes automatically' : `rolled ${t.values[0]} against ${R}`} — ${clean ? `Clean Withdrawal, which still suffers D6 = ${d} Wounds, no Morale` : `Fighting Withdrawal, suffers ${d} × ${contacts} Stands in contact = ${wounds} Wounds`} (core p.51).`,
     dice: { purpose: `${r.name}: Withdraw Wounds`, seed: ctx.rng.seed, index: idx, values: [d], notes: [] },
     player: r.owner,
     regimentId: r.id,
@@ -873,7 +877,7 @@ export function applyWithdraw(ctx: Ctx, r: RegimentState, moves: MoveSeg[], turn
     return;
   }
   r.pose = pose;
-  ev(ctx, { type: 'withdraw', text: `${r.name} turns away and marches off.`, player: r.owner, regimentId: r.id });
+  ev(ctx, { type: 'withdraw', text: `${r.name} ${turn ? 'turns away and marches off' : 'marches off without turning (Swift Retreat)'}.`, player: r.owner, regimentId: r.id });
 }
 
 export function applyCombatReform(ctx: Ctx, r: RegimentState, files: number): void {

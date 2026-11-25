@@ -12,9 +12,12 @@ export interface Settings {
   portraitTable: boolean;
   /** Show the odds while choosing a Charge, Volley or Clash target. */
   previews: boolean;
+  /** Desktop panel widths in CSS pixels (resizable). */
+  sideWidth: number;
+  leftWidth: number;
 }
 
-export const DEFAULT_SETTINGS: Settings = { textScale: 1, reduceMotion: false, confirmEarlyEnd: true, standIcons: true, portraitTable: false, previews: true };
+export const DEFAULT_SETTINGS: Settings = { textScale: 1, reduceMotion: false, confirmEarlyEnd: true, standIcons: true, portraitTable: false, previews: true, sideWidth: 440, leftWidth: 300 };
 
 const KEY = 'conquest-settings';
 

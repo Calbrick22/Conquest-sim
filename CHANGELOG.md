@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.2.1] - 2026-11-25 (play feedback)
+
+### Added
+- **Resizable side panels on desktop:** drag the edge of the right-hand panel, or of the left-hand Regiment panel. Arrow keys also work, and a double-click resets the width. Each panel's width is remembered on this device. The default side panel is wider (440px, previously at most 380px).
+- **Threats cycle** Charge reach → Volley range → off. Volley shows each enemy's front arc out to its Barrage range, for enemies that have a Barrage.
+- **Activate button highlight:** hovering or focusing an Activate button outlines that Regiment on the table.
+
+### Fixed
+- **Unstoppable re-rolls are shown in full:** the Charge log now shows the first roll and the re-roll, and the dice tray shows both dice. The engine already re-rolled; only the second die was visible.
+- **Swift Retreat:** no Resolve roll is made any more, and the log says it is a Clean Withdrawal. A Clean Withdrawal still suffers D6 Wounds (core p.51).
+
 ## [2.2.0] - 2026-11-25 (Dweghom; Sorcerer Kings manual rules automated)
 
 ### Added
