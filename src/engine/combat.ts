@@ -9,6 +9,12 @@ import { hasRole, sectOf } from './rules/special/grants';
 import { hasRule, ruleX } from './rules/special/rules';
 import { autoPassesResolve, onRegimentDestroyed, onStandLost, rerollsMoraleSuccesses } from './factions/oldDominion';
 import { pheromanticDrive } from './factions/spires';
+import { skUnit } from './factions/sorcererKings';
+
+/** Tenacious (1) against enemy Volleys (Trinavarta, sk p.38–39; Searing Sandstorm, sk p.18). */
+function volleyTenacious(s: { players: Record<PlayerId, { sk?: unknown }> }, t: RegimentState): boolean {
+  return !!t.flags.searing || (!!s.players[t.owner].sk && !!skUnit(t)?.volleyTenacious);
+}
 
 /** A characteristic including Round modifiers (manual tool, Draw Events), never below 0 (core p.15). */
 export function stat(r: RegimentState, k: keyof Profile): number {
@@ -41,6 +47,9 @@ export function sizeBonus(ctx: Ctx, r: RegimentState): number {
 export function resolveValue(ctx: Ctx, r: RegimentState): number {
   const c = attachedCharacter(ctx.s, r.id);
   const rs = [stat(r, 'R'), ...(lendsResolve(c) ? [charStat(c, 'R')] : [])];
+  // Induced Hypoxia (sk p.19): the lowest unmodified Resolve in the Regiment.
+  // RULE-AMBIGUITY: AMB-75 — the size bonus still applies, as for Broken Regiments (AMB-31).
+  if (r.flags.hypoxia) return Math.min(r.profile.R ?? 0, ...(lendsResolve(c) ? [c.profile.R ?? 0] : [])) + sizeBonus(ctx, r);
   const base = r.broken || r.flags.declinedDuel ? Math.min(...rs) : Math.max(...rs);
   return base + sizeBonus(ctx, r);
 }
@@ -64,6 +73,8 @@ export interface AttackPool {
   rerollSixes?: boolean;
   /** Relentless Blows / Rapid Volley: each natural 1 adds a Hit (core p.40, p.46, p.100). */
   extraOnOne?: boolean;
+  /** With extraOnOne: the highest natural roll that adds a Hit (2 for Fury of the Tempest, Intrusive Thoughts; sk p.22, p.38). */
+  onesUpTo?: number;
   /** Cleave / Armor Piercing / Brutal Impact: lowers the target's Defense (core p.97). */
   reduceD?: number;
   ignoreShield?: boolean;
@@ -146,9 +157,11 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
       const ones = hit.values.filter((v) => v === 1).length;
       naturalOnes += ones;
       onesHits = pool.noDefenseOnOnes ? ones : 0;
-      if (pool.extraOnOne && ones) {
-        hits += ones;
-        hit.record.notes?.push(`+${ones} Hit${ones > 1 ? 's' : ''} from natural 1s`);
+      const low = pool.onesUpTo ?? 1;
+      const extra = hit.values.filter((v) => v <= low).length;
+      if (pool.extraOnOne && extra) {
+        hits += extra;
+        hit.record.notes?.push(`+${extra} Hit${extra > 1 ? 's' : ''} from natural ${low > 1 ? `1s and ${low}s` : '1s'}`);
       }
       if (pool.torrential && hit.passes) {
         const extra = Math.ceil(hit.passes / 2);
@@ -199,7 +212,8 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
         }
       // Tenacious (X): X failed Defense rolls count as successes (core p.101).
       // Some entries gain Tenacious (1) when targeted by a Volley (Athanatoi, Fallen Divinity; od p.13, p.25).
-      const volleyTen = kind === 'volley' && (target.notes ?? []).some((n) => /target of a Volley Action.*Tenacious\s*\(?1/i.test(n)) ? 1 : 0;
+      // Trinavarta and Searing Sandstorm (sk p.18, p.38–39) do the same.
+      const volleyTen = kind === 'volley' && ((target.notes ?? []).some((n) => /target of a Volley Action.*Tenacious\s*\(?1/i.test(n)) || volleyTenacious(s, target)) ? 1 : 0;
       const ten = ruleX(target.rules, 'Tenacious') + volleyTen;
       let saves = 0;
       for (let i = 0; i < passed.length && saves < ten; i++)
@@ -222,6 +236,11 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
     wounds += w;
   }
   const res: AttackResult = { hits: totalHits, wounds, moraleWounds: 0, standsLost: 0, destroyed: false, naturalOnes };
+  // Searing Sandstorm (sk p.18): targeted by an enemy Volley, it becomes Inflamed.
+  if (kind === 'volley' && target.flags.searing && !target.flags.inflamed) {
+    target.flags.inflamed = true;
+    ev(ctx, { type: 'note', text: `Searing Sandstorm: ${target.name} becomes "Inflamed" (sk p.18).`, regimentId: target.id });
+  }
   if (wounds) {
     // Designate Target (Spires rule text): the Regiment that suffers the Wound is Marked until the end of the Round.
     if (attacker && hasRule(attacker.rules, 'Designate Target') && (kind === 'clash' || kind === 'impact' || kind === 'volley') && !target.flags.marked) {

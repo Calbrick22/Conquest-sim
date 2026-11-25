@@ -588,3 +588,41 @@ Mechanics are in `src/engine/factions/spires.ts`.
 - **Consumption Beast:** starts with 8 Wounds.
 - **Still manual:** Field Studies, Tricks of the Trade, Master Manipulator, Ruthless Competence, Catabolic Nodes, Spined Descent, Indiscriminate Omnivore, Gorged, Endless Hunger, and the remaining upgrades.
 
+
+## 24. Sorcerer Kings (Sorcerer Kings army list, 2026 "Tainted Earth" update; cited as sk p.N)
+
+Mechanics in our own words. The code is in `src/engine/factions/sorcererKings*.ts`.
+
+- **Courts (sk p.4, p.8–15).** A Character picks a Court (Fire, Air, Water or Earth) and knows all of its Spells and Rituals. [Mortals] take the Court of their Warband's Character. Mahabharati Initiates, Sorcerer Saints and Ghols take the Warlord's Court. The Mahabharati Sardar has the Warlord's Court. Elementals keep their own. The Court shows as a [Court of …] role. Reading the Court from the export is AMB-65; the list review screen has a Court picker.
+- **Rituals (sk p.5, p.22–25).**
+  - At the end of each Supremacy Phase a player keeps or replaces the Ritual Being Prepared. Only one is Prepared at a time, and only from Courts of living spellcasting Characters. Losing every such Character removes it.
+  - Markers come from three places: each successfully cast Spell of the same Court adds one (AMB-70); Elemental Conduit adds one, even while arriving; and Elemental Discharge gives the first new Ritual of each Round Markers equal to the Round number, at most 5.
+  - At its Threshold the Ritual is completed and its Markers removed. Its Command Card joins the next Command Stack, and drawing that card resolves the Ritual.
+  - The same player then draws again. A card of the Ritual's Court Activates at once; any other card goes back on top and play passes (AMB-71). Far Sight lets any card follow.
+  - A completed Water Ritual, or any Ritual under Elemental Confluence, starts another of an allowed Court straight away. It can be changed while it has no Markers.
+- **Inflamed (sk p.18).** A status until the end of the Round. Fire Elementals gain Juggernaut while Inflamed, or when charging an Inflamed enemy, and still add Charge Distance bonuses. Infernal Branding gives Rapid Volley in the same cases.
+- **Court Spells (sk p.18–21).** All 24 are automated, except Air Step's 2″ move and Sunder's zone, which are manual (AMB-69).
+  - Hit Spells check Line of Sight. Lightning Bolt adds the target's Defense in Hits, and Blood to Water its Resolve, when the target is engaged with a friendly Regiment of that Court.
+  - Ignite inflames every other Regiment within 6″ (AMB-68).
+  - Cauterize and Earthquake stop Healing. Induced Hypoxia uses the lowest unmodified Resolve (AMB-75).
+  - Cyclone makes the target count as 0 Stands in the Victory Phase if it is engaged with an Air Regiment.
+  - Reinforce stops Charges and Reforms and blocks Impact and Trample Hits.
+  - Stabilize protects Elementals within 8″ from Aura of Death and Decay.
+- **Supremacy (sk p.6).**
+  - Elemental Confluence: Conduit Markers go to any Ritual, and a completed Ritual chains to another Court.
+  - Omnipotence: 4 or more successes give a free Spellcasting Action once per Activation. A Character attempts each Spell once per Round, and each Spell is cast at most three times per Round.
+  - Elemental Dominion: Fire grants "Fan the Flames", which is manual (AMB-74). Air gives Opportunists. Water gives +2 Impact and Terrifying (1) on flank and rear Charges. Earth gives Regeneration (2).
+- **Unit rules (sk p.27–46).**
+  - Gifted Mortals: a friendly Character's Spell on them is cast automatically. Eminence: +2 Evasion and +5 Stands for Scaling against enemy Spells.
+  - Air Elemental: +1 Evasion, to at most 3, after the first March of an Activation. Water Elemental: no Water penalty, and re-rolls failed Hit Rolls of 6 in Water. Earth Elemental: Untouchable within 3″ of Earth terrain (AMB-67).
+  - Earthen Aegis: Regeneration (+4) near Earth terrain. Shattered Perfection and Raging Elements apply the first time the Regiment is below its starting strength.
+  - Arrogance and Hubris: +3″ Charge Distance. Last Word: 8 flank Hits on an enemy, chosen by the engine (AMB-72).
+  - Trinavarta: Tenacious (1) against Volleys. Elemental Tether lets Air spellcasters target near the Sabhagrih. Fury of the Tempest and Eye of the Storm apply after an Air Ritual.
+  - Mahut: a free Volley, at most one Volley, Volleys in contact, and Gilded Statue.
+  - The Marid Forms are chosen when Activating. Dread Tide and Tidecaller apply. Aqueous Branding adds one success to Water Spells. Marid Sahar has a free Spellcasting Action.
+- **Character upgrades (sk p.16–17).** Automated:
+  - Banner of Elemental Dominion, Dancing Scimitar, Prijm Khanjar, Jadoo Kavach and Shu'laat;
+  - Recorder of all Deeds, Prince of the Setting Moon and Vizier of the Morning Star;
+  - Best Money can Buy, Elemental Feedback, Bound to the Elements (the change of Type is manual) and Elemental Projection.
+
+  Niyantran and Favored of Hormus are manual.

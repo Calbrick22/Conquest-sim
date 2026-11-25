@@ -33,6 +33,7 @@ import { PhasePanel } from './PhasePanel';
 import { ActionCallout, UnitCallout } from './Callouts';
 import { DrawDeck, StackBuilder } from './CommandDeck';
 import { OdActivation, PowerBar } from './OldDominionPanel';
+import { RitualBar, SkActivation } from './SorcererKingsPanel';
 import { isOdDrawEvent } from '../../engine/factions/oldDominionActions';
 import { canInduceAggression, strainFor } from '../../engine/factions/spires';
 import { PractitionerButtons } from './SpiresPanel';
@@ -54,7 +55,7 @@ import { decisionMaker } from '../../ai/ai';
 const CALLOUT_ACTIONS = new Set([
   'enter', 'march', 'reform', 'charge', 'volley', 'clash', 'withdraw', 'rally', 'combatRally', 'combatReform', 'takeAim', 'inspire',
   'placeCharge', 'failCharge', 'duel', 'reinforcements', 'supremacyRollOff', 'chooseFirst', 'pickZone', 'endRound', 'override.move',
-  'drawEvent', 'spell', 'memories', 'odSpend', 'characterAbility', 'useSupremacy',
+  'drawEvent', 'spell', 'memories', 'odSpend', 'characterAbility', 'useSupremacy', 'ritual', 'skForm', 'gildedStatue',
 ]);
 /** Routine events that do not by themselves need a callout. */
 const ROUTINE = new Set(['activate', 'deactivate', 'draw', 'ai', 'phase', 'stack', 'manual', 'attach']);
@@ -484,11 +485,17 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
     const used = act.actions.length;
     const status = [act.inspired ? 'Inspired' : '', volleyAimed(s, r) ? 'Aimed Shot' : '', r.broken ? 'Broken' : '', act.ended ? 'Activation over' : ''].filter(Boolean).join(' · ');
     const drawEventButtons = (names: string[]) => {
-      if (used !== 0 || !names.length || s.regiments[act.regimentId]!.location !== 'table') return null;
+      const loc = s.regiments[act.regimentId]!.location;
+      // Elemental Conduit (sk p.5) may be used while arriving from Reinforcements.
+      if (used !== 0 || !names.length || (loc !== 'table' && !(loc === 'arriving' && names.includes('Elemental Conduit')))) return null;
       const done = act.drawEvents ?? [];
       // Strain Expression and Memories of Old may be used in addition to another Draw Event.
       const extraDe = (d: string) => d === 'Strain Expression' || d === 'Memories of Old';
-      const avail = names.filter((n) => !isOdDrawEvent(baseName(n)) && !done.includes(baseName(n)) && (extraDe(baseName(n)) || !done.some((d) => !extraDe(d))));
+      // Sorcerer Kings Draw Events with choices are offered by SkActivation.
+      const withChoice = ['Elemental Prowess', 'Elemental Assault', 'Dancing Scimitar'];
+      const avail = names.filter(
+        (n) => !isOdDrawEvent(baseName(n)) && !withChoice.includes(baseName(n)) && (loc === 'table' || baseName(n) === 'Elemental Conduit') && !done.includes(baseName(n)) && (extraDe(baseName(n)) || !done.some((d) => !extraDe(d))),
+      );
       if (!avail.length) return null;
       const friendsNear = Object.values(s.regiments).filter((x) => x.owner === r.owner && x.location === 'table' && distancePolys(regimentPolys(s, r), regimentPolys(s, x)) <= 12);
       return (
@@ -555,6 +562,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
           <p><strong>{c.name}</strong> is active: one Character Action (core p.74). {status}</p>
           {drawEventButtons(c.drawEvents)}
           <OdActivation key={`od-${c.id}`} s={s} run={run} />
+          <SkActivation key={`sk-${c.id}`} s={s} run={run} onVolleyInContact={() => undefined} />
           <PractitionerButtons key={`pr-${c.id}`} s={s} c={c} run={run} />
           <div className="actions wrap">
             {used === 0 && targets.map((t) => (
@@ -594,6 +602,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
         <p className="meta">Actions used {used}/2{status ? ` · ${status}` : ''}{act.entourage ? ' · Entourage Activation' : ''}</p>
         {drawEventButtons(r.drawEvents)}
         <OdActivation key={`od-${r.id}`} s={s} run={run} />
+        <SkActivation key={`sk-${r.id}`} s={s} run={run} onVolleyInContact={(id) => run({ type: 'volley', regimentId: r.id, targetId: id })} />
         <div className="actions wrap">
           {!act.ended && r.location === 'arriving' && <button type="button" onClick={() => beginEnter(r)} data-testid="march-on">March on</button>}
           {!act.ended && r.location === 'table' && !engaged && (
@@ -801,6 +810,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
         </div>
       )}
       <PowerBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
+      <RitualBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
       <PhasePanel s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
 
       {s.phase === 'setup' && (

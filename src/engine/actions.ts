@@ -25,6 +25,8 @@ import {
 } from './queries';
 import { barrageOf, flatRules, hasRule, ruleX } from './rules/special/rules';
 import { magnanimity, poolMods } from './rules/special/effects';
+import { elementalKind, isElemental, ofCourt, skUnit, warlordCourts, warlordHas } from './factions/sorcererKings';
+import { volleyInContact } from './factions/sorcererKingsActions';
 import { autoPassesResolve, markOnce, takeGlimmers, xhiliarchChargeBonus } from './factions/oldDominion';
 import { chargeThroughHindering, coverHalves, standLosSize, terrainBlocks, terrainPathProblems, terrainPositionProblems } from './terrain';
 
@@ -120,6 +122,7 @@ export function chargeProblems(s: GameState, r: RegimentState, t: RegimentState 
   if (r.location !== 'table') return ['The Regiment is not on the Battlefield.'];
   if (r.arrivedRound === s.round) return ['A Regiment cannot Charge in the Round it arrives from Reinforcements (core p.31).'];
   if (r.broken) return ['Broken Regiments cannot Charge (core p.60).'];
+  if (r.flags.reinforced) return ['Reinforce (the Pattern): it cannot Charge this Round (sk p.21).'];
   if (isEngaged(s, r)) return ['A Regiment in contact with an enemy cannot Charge (core p.24).'];
   if (!hasLineOfSight(s, r, t)) return [`${t.name} is not in the front arc and Line of Sight (core p.31).`];
   const d = distancePolys(regimentPolys(s, r), regimentPolys(s, t));
@@ -304,9 +307,13 @@ export function resolveImpact(ctx: Ctx, r: RegimentState, t: RegimentState, faci
   const s = ctx.s;
   // Loose Formation: the Regiment cannot inflict Impact Attacks (core p.99).
   if (hasRule(r.rules, 'Loose Formation')) return;
+  // Reinforce (the Pattern) (sk p.21): the target suffers no Hits from Impact.
+  if (t.flags.reinforced) return void ev(ctx, { type: 'note', text: `${t.name} is Reinforced: no Hits from Impact (sk p.21).`, regimentId: t.id });
   const pools: AttackPool[] = [];
   const blessed = takeBlessed(r);
-  const impact = ruleX(r.rules, 'Impact');
+  // Elemental Dominion, Court of Water (Raj Warlord, sk p.6): Water Elementals charging a flank or rear gain Impact (+2) and Terrifying (1).
+  const rajWater = facing !== 'front' && elementalKind(r, 'Water') && isElemental(r) && warlordHas(s, r.owner, 'Elemental Dominion') && warlordCourts(s, r.owner).includes('Water') && ofCourt(s, r, 'Water');
+  const impact = ruleX(r.rules, 'Impact') + (rajWater ? 2 : 0);
   // Glorious Charge: Impact Attacks at +1 Clash (core p.99).
   const glorious = hasRule(r.rules, 'Glorious Charge') ? 1 : 0;
   if (impact > 0) {
@@ -324,7 +331,7 @@ export function resolveImpact(ctx: Ctx, r: RegimentState, t: RegimentState, faci
     pools.push({ label: `${c.name} Impact (${ci})`, dice: ci, skill, ...poolMods(c.rules, t, 'impact', facing, skill), extraWoundOnSix: !!opts.resounding });
   }
   if (!pools.length) return;
-  resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: t.id, arc: facing, pools, morale: true, terrifying: ruleX(r.rules, 'Terrifying'), what: `${r.name} Impact Attacks`, kind: 'impact' });
+  resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: t.id, arc: facing, pools, morale: true, terrifying: rajWater ? Math.max(1, ruleX(r.rules, 'Terrifying')) : ruleX(r.rules, 'Terrifying'), what: `${r.name} Impact Attacks`, kind: 'impact' });
 }
 
 /** Blessed (core p.97): once per Round, re-roll failed Hit Rolls in a Clash or Charge (RULE-AMBIGUITY: AMB-37). */
@@ -363,11 +370,29 @@ export function chargeDistanceRule(s: GameState, r: RegimentState, t: RegimentSt
   const M = marchValue(s, r);
   // Induce Lethargy (sp p.16): no Unstoppable or Juggernaut when Charging that Character's Regiment.
   const lethargy = !!t && !!attachedCharacter(s, t.id)?.options.some((o) => o.toLowerCase() === 'induce lethargy');
-  if (hasRule(r.rules, 'Juggernaut') && !lethargy) return { fixed: M + 5, bonus: 0 };
-  // Adrenal Hysteria (Onslaught Drones Strain, sp p.26): +2″ Charge Distance.
-  const bonus = (t?.flags.marked ? 2 : 0) + xhiliarchChargeBonus(s, r) + (hasRule(r.rules, 'Adrenal Hysteria') ? 2 : 0);
+  // Adrenal Hysteria (Onslaught Drones Strain, sp p.26): +2″ Charge Distance. Sorcerer Kings bonuses (sk p.34–40).
+  const bonus = (t?.flags.marked ? 2 : 0) + xhiliarchChargeBonus(s, r) + (hasRule(r.rules, 'Adrenal Hysteria') ? 2 : 0) + skChargeBonus(s, r, t);
+  // Fire Elemental (sk p.32–35): Juggernaut against an "Inflamed" enemy, and it may still add Charge Distance bonuses.
+  const fire = !!t && isFireJuggernaut(r, t);
+  if ((hasRule(r.rules, 'Juggernaut') || fire) && !lethargy) return { fixed: M + 5 + (fire || elementalKind(r, 'Fire') ? bonus : 0), bonus: 0 };
   if (hasRule(r.rules, 'Phalanx')) return { fixed: M + 3 + bonus, bonus };
   return { fixed: null, bonus };
+}
+
+/** Fire Elemental (sk p.32–35): charging an "Inflamed" enemy gives Juggernaut. */
+function isFireJuggernaut(r: RegimentState, t: RegimentState): boolean {
+  return elementalKind(r, 'Fire') && !!t.flags.inflamed;
+}
+
+/** Arrogance, Hubris (sk p.34–35): +3″; Shattered Perfection (sk p.40): +2″. */
+function skChargeBonus(s: GameState, r: RegimentState, t: RegimentState | null): number {
+  const u = skUnit(r);
+  if (!u || !s.players[r.owner].sk) return 0;
+  let b = 0;
+  if (t && u.chargeVs === 'character' && ((t.type === 'Monster' && !!t.embodies) || !!attachedCharacter(s, t.id))) b += 3;
+  if (t && u.chargeVs === 'monster' && t.type === 'Monster') b += 3;
+  if (u.shattered === 'perfection' && r.flags.shattered) b += 2;
+  return b;
 }
 
 /** Furthest a failed Charge can move straight forward: up to the die, halting 1″ from enemies (core p.36). */
@@ -398,7 +423,10 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
   const notes: string[] = [];
   if (rule.fixed !== null) {
     total = rule.fixed;
-    notes.push(hasRule(r.rules, 'Juggernaut') ? 'Juggernaut: March + 5″ (core p.99)' : 'Phalanx: March + 3″ (core p.100)');
+    const fire = isFireJuggernaut(r, t);
+    // Fire Elemental: Juggernaut until the end of the Round (sk p.32).
+    if (fire && !hasRule(r.rules, 'Juggernaut')) r.roundRules.push({ name: 'Juggernaut', raw: 'Juggernaut' });
+    notes.push(hasRule(r.rules, 'Juggernaut') || fire ? `Juggernaut: March + 5″${fire ? ' (Fire Elemental vs "Inflamed", sk p.32)' : ''} (core p.99)` : 'Phalanx: March + 3″ (core p.100)');
   } else {
     const dice = chargeDice(s, r, t);
     if (dice.twoDice) {
@@ -456,6 +484,8 @@ export function applyCharge(ctx: Ctx, r: RegimentState, t: RegimentState): void 
 
 /** Did at least half the charger's Stands pass through Hindering terrain (core p.86)? */
 export function chargeHindered(s: GameState, r: RegimentState, from: Pose, to: Pose): boolean {
+  // Flowing Stride (sk p.19): ignores Hindering terrain.
+  if (r.flags.flowingStride) return false;
   const flies = hasRule(r.rules, 'Fly') && !attachedCharacter(s, r.id);
   return chargeThroughHindering(s, (pose) => regimentPolys(s, r, { pose }), from, to, flies);
 }
@@ -624,7 +654,9 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
   const problems: string[] = [];
   if (r.location !== 'table' || t.location !== 'table') problems.push('Both Regiments must be on the Battlefield.');
   if (t.owner === r.owner) problems.push('Choose an enemy Regiment.');
-  if (isEngaged(s, r)) problems.push('An engaged Regiment cannot Volley (core p.38).');
+  // Eye of the Storm, Mahut (sk p.39, p.42): may Volley in contact, at the enemy in contact.
+  const inContact = isEngaged(s, r) ? volleyInContact(s, r, t) : 'no';
+  if (isEngaged(s, r) && inContact !== 'ok') problems.push(inContact === 'wrong' ? 'In contact, it must Volley at the enemy it is in contact with (sk p.39, p.42).' : 'An engaged Regiment cannot Volley (core p.38).');
   const fp = footprintOf(s, r);
   const tfp = footprintOf(s, t);
   const tPolys = regimentPolys(s, t);

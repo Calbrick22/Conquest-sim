@@ -48,7 +48,8 @@ export function regimentPolys(s: GameState, r: RegimentState, override?: Partial
 /** Lowest March Characteristic in the Regiment; Characters with "-" are ignored (core p.28; AMB-21). */
 export function marchValue(s: GameState, r: RegimentState): number {
   const vals = [r.profile.M, attachedCharacter(s, r.id)?.profile.M].filter((m): m is number => typeof m === 'number');
-  return vals.length ? Math.min(...vals) : 0;
+  // Kiss of the Earth (sk p.25): −2 March on its first March or Charge this Round.
+  return vals.length ? Math.max(0, Math.min(...vals) - (r.flags.kissOfEarth ? 2 : 0)) : 0;
 }
 
 export function onTableRegiments(s: GameState): RegimentState[] {
@@ -251,7 +252,10 @@ export function canTakeAction(s: GameState, regimentId: string, kind: ActionKind
   if (s.pendingCharge) return ['Finish placing the Charge first.'];
   if (a.ended) return ['The Activation has ended (core p.36).'];
   // Free Spellcasting or Character abilities (Theokrator, Divinity Grace, Practitioner Warlord…).
-  const freeSpell = (kind === 'spell' || kind === 'ability') && a.extra?.some((e) => !e.used && e.kind === kind && e.free);
+  const freeSpell =
+    ((kind === 'spell' || kind === 'ability') && a.extra?.some((e) => !e.used && e.kind === kind && e.free)) ||
+    // Free "anytime" or first-Action extras (Mahut, Eye of the Storm, Far Sight; sk p.24, p.39, p.42).
+    a.extra?.some((e) => !e.used && e.kind === kind && e.free && (e.anytime || (e.first && a.actions.length === 0)));
   if (a.characterId) {
     if (kind !== 'duel' && kind !== 'ability' && kind !== 'pass' && kind !== 'spell') return ["During a Character's own Activation it can only use its own Actions (core p.74)."];
     if (a.actions.length >= 1 && !freeSpell) return ['A Character performs a single Action each Round (core p.74).'];
@@ -261,7 +265,7 @@ export function canTakeAction(s: GameState, regimentId: string, kind: ActionKind
   if (freeSpell) return [];
   const extraUsed = a.extra?.filter((e) => e.used).length ?? 0;
   if (a.actions.length + extraUsed >= 3) return ['A Regiment never performs more than 3 Actions in an Activation (core p.25).'];
-  const extra = a.extra?.find((e) => !e.used && e.kind === kind);
+  const extra = a.extra?.find((e) => !e.used && e.kind === kind && !e.first);
   if (a.actions.length >= 2 && !extra) return ['The Regiment has used both of its Actions (core p.23).'];
   // Only March (and Reform, core p.37) may be repeated in one Activation (core p.23).
   if (!extra && kind !== 'march' && kind !== 'reform' && kind !== 'pass' && a.actions.includes(kind)) return [`A Regiment cannot repeat ${kind} in one Activation (core p.23).`];

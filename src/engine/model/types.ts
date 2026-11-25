@@ -66,6 +66,8 @@ export interface CharacterState {
    * Its Regiment is `attachedTo`; it adds no Stand to it and has no Command Card of its own.
    */
   embodied?: boolean;
+  /** Battlefield Roles from the list (Sorcerer Kings: the chosen Court, e.g. "Court of Fire"). */
+  roles?: string[];
   /** Unholy Sacrament: Priest (+3) for the first Spellcasting this Round. */
   sacrament?: boolean;
   wounds: number;
@@ -188,6 +190,41 @@ export interface RegimentFlags {
   epigenetic?: boolean;
   /** Spells already cast on this Regiment this Round (core p.80: once per spell, except Hits). */
   spellsOn?: string[];
+  // Sorcerer Kings (sk = Sorcerer Kings army list, 2026 Tainted Earth update), until the end of the Round:
+  /** "Inflamed" status (sk p.12). */
+  inflamed?: boolean;
+  /** Cauterize: cannot be Healed. */
+  cauterized?: boolean;
+  /** Induced Hypoxia: uses the lowest unmodified Resolve in the Regiment. */
+  hypoxia?: boolean;
+  /** Flowing Stride: ignores Hindering terrain. */
+  flowingStride?: boolean;
+  /** Cyclone: counts as 0 Stands for Seizing if engaged with a [Court of Air] Regiment in the Victory Phase. */
+  cyclone?: boolean;
+  /** Stabilize (the Pattern): no Aura of Death or Decay. */
+  stabilized?: boolean;
+  /** Reinforce (the Pattern): no Charge or Reform; no Hits from Impact or Trample. */
+  reinforced?: boolean;
+  /** Searing Sandstorm: Tenacious (1) and Inflamed when targeted by an enemy Volley. */
+  searing?: boolean;
+  /** Earthquake: cannot Heal; enemies cannot Rally or Combat Rally. */
+  quake?: boolean;
+  /** Kiss of the Earth: −2 March on its first March or Charge this Round. */
+  kissOfEarth?: boolean;
+  /** Form chosen when Activating this Round (Marid and Asura forms). */
+  form?: string;
+  /** Tidecaller choice this Round: 'aura' or 'engaged'. */
+  tidecaller?: string;
+  /** Sorcerous Blessing: Cleave (+1) and Fearless this Round. */
+  blessing?: boolean;
+  /** Aqueous Branding: a Marid Sahar or Apsara of this player cast a Spell at it this Round (sk p.44). */
+  aqueousBy?: PlayerId;
+  /** Earthquake: enemies within cannot Rally or Combat Rally. */
+  noRally?: boolean;
+  /** Last Word resolved (Rakshasa). */
+  lastWordDone?: boolean;
+  /** Permanent: the first time below its starting strength (Shattered Perfection, Raging Elements). */
+  shattered?: boolean;
 }
 
 export type ActionKind =
@@ -225,7 +262,19 @@ export interface ActivationState {
   /** A failed Charge ends the Activation (core p.36). */
   ended: boolean;
   /** Free or additional Actions earned this Activation (Double Time, Fire and Advance, Fluid Formation…). */
-  extra?: { kind: ActionKind; reason: string; forwardOnly?: boolean; free?: boolean; used?: boolean }[];
+  extra?: {
+    kind: ActionKind;
+    reason: string;
+    forwardOnly?: boolean;
+    free?: boolean;
+    used?: boolean;
+    /** Free whenever it is taken, without using a normal Action (Mahut, Eye of the Storm). */
+    anytime?: boolean;
+    /** Only as the first Action (Far Sight). */
+    first?: boolean;
+    /** Extras sharing a group: using one uses all (a choice of one). */
+    group?: string;
+  }[];
   /** Draw Events resolved this Activation. */
   drawEvents?: string[];
   /** Spells cast this Activation (core p.76: never the same Spell twice). */
@@ -236,6 +285,13 @@ export interface ActivationState {
   powerSpent?: boolean;
   /** Unholy Mastery used this Activation. */
   unholyMastery?: boolean;
+  /** Sorcerer Kings: Omnipotence, Jadoo Kavach, Shu'laat and Elemental Feedback used this Activation. */
+  omnipotence?: boolean;
+  kavach?: boolean;
+  shulaat?: boolean;
+  feedback?: boolean;
+  /** Conflagration / Far Sight / an Air Ritual drawn just before this Activation. */
+  afterRitual?: string;
   /** Actions taken so far this Activation (core p.23: two Actions, only March may repeat). */
   actions: ActionKind[];
   /** True while the Regiment is entering from Reinforcements this Activation (core p.31). */
@@ -247,7 +303,8 @@ export interface ActivationState {
 /** A Command Card (core p.16, p.21). Regiment cards activate any same-named Regiment (core p.22). */
 export interface CommandCard {
   id: string;
-  kind: 'regiment' | 'character';
+  /** 'ritual': a completed Sorcerer Kings Ritual (sk p.6); refId is the Ritual's name. */
+  kind: 'regiment' | 'character' | 'ritual';
   name: string;
   /** Put back by Lobotomytic Override (Directorate): top or bottom of the stack. */
   lobotomy?: 'top' | 'bottom';
@@ -282,6 +339,30 @@ export interface PlayerState {
   od?: OdPlayerState;
   /** Profiles by Tier entered by the owner for Characters whose profile changes (Fallen Divinity). */
   tierProfiles?: Record<string, Record<string, TierProfileDef>>;
+  /** Sorcerer Kings Rituals (sk p.6). */
+  sk?: SkPlayerState;
+}
+
+export type Court = 'Fire' | 'Air' | 'Water' | 'Earth';
+
+export interface SkPlayerState {
+  /** The Ritual Being Prepared and its Ritual Markers. */
+  preparing: { name: string; markers: number } | null;
+  /** Ritual chosen during this Supremacy Phase (applied at its end). */
+  choice: string | null;
+  /** Completed Rituals: their Command Cards join the next Command Stack. */
+  completed: string[];
+  /** Round in which Elemental Discharge was used. */
+  dischargeRound: number;
+  /** A Ritual completed this Round may be followed by another (Water, Elemental Confluence): allowed Courts. */
+  chain: Court[] | null;
+  /** After a Ritual is resolved: the Court whose Regiment may Activate straight away ('any' for Far Sight). */
+  follow: string | null;
+  /** The Ritual resolved just before the current draw (Fury of the Tempest, Eye of the Storm, Conflagration). */
+  lastRitual: string | null;
+  /** Spell attempts this Round: by Spell, and by Character (Omnipotence). */
+  spellCount: Record<string, number>;
+  charSpells: Record<string, string[]>;
 }
 
 export type PowerPool = 'dark' | 'pantheon';
@@ -332,7 +413,7 @@ export interface GameState {
   /** Whose turn it is to draw a Command Card. */
   turn: PlayerId | null;
   /** The card just drawn, waiting to be used to Activate (core p.22). */
-  drawn: { player: PlayerId; card: CommandCard } | null;
+  drawn: { player: PlayerId; card: CommandCard; afterRitual?: string } | null;
   /** A successful Charge waiting for the player to place the Regiment by hand. */
   pendingCharge: { regimentId: string; targetId: string; facing: string } | null;
   /** Dice forced by the manual "set next dice" tool; consumed before the RNG. */
@@ -348,6 +429,8 @@ export interface GameState {
   warlordScored: Record<PlayerId, boolean>;
   /** Zones Burned and removed from the game (Flames of Conquest, ns p.5). */
   burnedZones?: string[];
+  /** Terrain keywords to restore at the end of the Round (Sorcerer Kings Rituals change them). */
+  terrainRestore?: Record<string, string[]>;
 }
 
 export interface MarkerState {

@@ -349,6 +349,7 @@ export function TableView(props: Props) {
                 {r.broken ? ' (Broken)' : ''}
                 {r.flags.marked ? ' ◎Marked' : ''}
                 {r.flags.decay ? ' ☣' : ''}
+                {r.flags.inflamed ? ' 🔥' : ''}
               </text>
             );
           })}

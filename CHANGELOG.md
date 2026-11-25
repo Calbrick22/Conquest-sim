@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.1.0] - 2026-11-25 (Sorcerer Kings)
+
+### Added
+- **Sorcerer Kings** (2026 Tainted Earth update; rules digest §24):
+  - **Courts:** Characters know every Spell and Ritual of their Court. [Mortals] take their Warband's Court, Gifted Mortals and Ghols take the Warlord's, and Elementals keep their own. The list review screen has a Court picker for each Character.
+  - **All 24 Court Spells** are automated, with the "Inflamed" status (🔥 on the table). Air Step's move and Sunder's zone are manual.
+  - **Rituals:**
+    - choose one to Prepare at the end of the Supremacy Phase, in the new Rituals panel, which shows its Markers;
+    - Ritual Markers come from Spells, Elemental Conduit and Elemental Discharge;
+    - a completed Ritual's Command Card joins the next Command Stack, and drawing it resolves the effect;
+    - a card of the same Court can then Activate at once;
+    - Water Rituals and Elemental Confluence chain into a new Ritual.
+
+    All 12 Ritual effects are automated, including Far Sight's re-ordering of the Command Stack.
+  - **Supremacy Abilities:** Elemental Confluence, Omnipotence (free Spell on 4+ successes; Spell limits each Round) and Elemental Dominion.
+  - **Unit rules:**
+    - Fire, Air, Water and Earth Elemental; Infernal Branding; Gifted Mortals and Eminence;
+    - Earthen Aegis, Shattered Perfection and Raging Elements; Arrogance and Hubris; Last Word;
+    - Trinavarta Tenacious, Elemental Tether, Fury of the Tempest and Eye of the Storm;
+    - the Mahut's free Volley, Volleys in contact and Gilded Statue;
+    - the Marid Forms, Dread Tide, Tidecaller and Aqueous Branding;
+    - Elemental Prowess and Elemental Assault with Sorcerous Blessing.
+  - **Character upgrades:** most Patron's Gifts and Masteries are automated. Niyantran and Favored of Hormus are manual.
+  - **The computer plays Sorcerer Kings:** it resolves Rituals with sensible targets, chooses Forms, feeds Elemental Conduit only into a Ritual of the same Court, and values the new Spells.
+
+### Fixed
+- **The black bar on the battlefield after an Activation** (phones and narrow windows): the floating Regiment card collapsed into an empty bar, because it was styled twice. It now opens at full size.
+- **Relentless Blows and Rapid Volley on a profile** now add a Hit for each natural 1 in a Clash or Volley (core p.100). Before, only the Clash or Volley 6+ case worked.
+
 ## [2.0.0] - 2026-11-24 (interface overhaul)
 
 The interface was redesigned to look and work like a strategy game. The rules engine is unchanged, and the interface only displays the game state. The plan is in `docs/ui-design.md`.

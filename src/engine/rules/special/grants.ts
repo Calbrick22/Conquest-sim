@@ -5,6 +5,7 @@ import { odCharacterGrants, odRegimentGrants } from '../../factions/oldDominion'
 import { spiresCharacterMods, spiresGrants, strainFor } from '../../factions/spires';
 import { distancePolys, regimentPolys } from '../../queries';
 import { waterMods } from '../../terrain';
+import { elementalKind, skRegimentGrants } from '../../factions/sorcererKings';
 import { TOL } from '../../geometry/vec';
 
 /**
@@ -89,11 +90,17 @@ export function refreshRules(s: GameState): void {
     r.grantRoles = og.roles;
     rules.push(...og.rules);
     drawEvents.push(...og.drawEvents);
+    // Sorcerer Kings: Courts, Elementals, Forms and upgrades (sk p.4–46).
+    const kg = skRegimentGrants(s, r);
+    r.grantRoles = [...og.roles, ...kg.roles];
+    rules.push(...kg.rules);
+    drawEvents.push(...kg.drawEvents);
     let eff = dedupe(rules);
     if (og.removeBrittle) eff = eff.filter((x) => x.name !== 'Brittle');
     r.rules = eff;
-    // Water (core p.87): −1 Clash with at least half the Stands within it.
-    r.grantMods = r.location === 'table' ? [...og.mods, ...waterMods(s, regimentPolys(s, r), r.profile.C ?? 0)] : og.mods;
+    // Water (core p.87): −1 Clash with at least half the Stands within it; not for a Water Elemental (sk p.43).
+    const water = r.location === 'table' && !elementalKind(r, 'Water') ? waterMods(s, regimentPolys(s, r), r.profile.C ?? 0) : [];
+    r.grantMods = [...og.mods, ...kg.mods, ...water];
     r.drawEvents = [...new Set(drawEvents)];
   }
   // Strains that change enemies in contact (e.g. "enemy -1 Clash"), while the Strain is active.

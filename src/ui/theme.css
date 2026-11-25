@@ -439,3 +439,16 @@ button.menu-item { background: linear-gradient(180deg, var(--panel-2), var(--pan
   .shell-home span { font-size: 1.2rem; }
   .shell-bar .tabs a { padding: 8px 10px; white-space: nowrap; }
 }
+
+/* ---------------------------------------------------------------- Sorcerer Kings: Rituals */
+.ritual-bar h3 { margin-top: 0; }
+.ritual-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0; }
+.ritual-row + .ritual-row { border-top: 1px solid var(--line); }
+.ritual-row > .meta { flex-basis: 100%; }
+.ritual-pips { display: inline-flex; gap: 3px; }
+.ritual-pips .pip { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--gold); background: transparent; }
+.ritual-pips .pip.on { background: radial-gradient(circle at 35% 35%, #ffe7a8, var(--gold) 60%, #8a6a2c); box-shadow: 0 0 6px rgba(212, 174, 98, 0.7); }
+.ritual-choose select { margin-left: 4px; }
+.ccard.ritual { background: linear-gradient(160deg, #3b1f4a, #1d1026); border-color: #b48cd8; color: #f2e6ff; }
+.ritual-card .far-sight ol { margin: 4px 0; padding-left: 20px; }
+.sk-activation { margin: 4px 0; }

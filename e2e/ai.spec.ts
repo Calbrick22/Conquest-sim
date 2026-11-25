@@ -41,6 +41,9 @@ test('play against the computer: it takes its own decisions and explains them', 
         await page.getByTestId('commit-move').click();
       }
       await endActivation(page);
+      // Regression: the floating unit card must not collapse into an empty bar after an Activation.
+      const card = page.getByTestId('unit-callout');
+      if (await card.count()) expect((await card.locator('..').boundingBox())!.height).toBeGreaterThan(60);
     } else await page.waitForTimeout(400);
   }
   await page.getByTestId('end-round').click();

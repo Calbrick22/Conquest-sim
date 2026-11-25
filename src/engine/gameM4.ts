@@ -4,6 +4,9 @@ import { activateMemories, blasphemousSoma, warlordHas } from './factions/oldDom
 import { applyOdSpend, applyOdSupremacy, isOdSupremacy, memoriesProblems, odActivationStartSpells, odSpendProblems, odSupremacyProblems } from './factions/oldDominionActions';
 import { castSpell, casterOf, spellProblems } from './spells';
 import { shrouded, spiresActivationStart } from './factions/spires';
+import { endOfSupremacy, prepareProblems, sk, skUnit } from './factions/sorcererKings';
+import { afterRitualDraw, applyForm, applyGilded, applyRitualCard, formProblems, gildedProblems, ritualActionProblems, skActivationEnd, skActivationStart } from './factions/sorcererKingsActions';
+import { startPreparing } from './factions/sorcererKings';
 import { hasRule } from './rules/special/rules';
 import {
   applyCharge,
@@ -158,6 +161,21 @@ export function validateM4(s: GameState, a: Action): Validation {
     }
     case 'memories':
       return act(s, a.regimentId, 'memories', () => memoriesProblems(s.regiments[a.regimentId]!));
+    // Sorcerer Kings (sk p.5, p.42–46)
+    case 'prepareRitual': {
+      const p = prepareProblems(s, a.player, a.ritual);
+      return p.length ? fail(...p) : ok();
+    }
+    case 'ritual': {
+      const p = ritualActionProblems(s, a.player, { ...(a.targetId ? { targetId: a.targetId } : {}), ...(a.terrainId ? { terrainId: a.terrainId } : {}), ...(a.option ? { option: a.option } : {}), ...(a.order ? { order: a.order } : {}) });
+      return p.length ? fail(...p) : ok();
+    }
+    case 'skForm': {
+      const p = formProblems(s, a.regimentId, a.group, a.option);
+      return p.length ? fail(...p) : ok();
+    }
+    case 'gildedStatue':
+      return act(s, a.regimentId, 'ability', () => gildedProblems(s, s.regiments[a.regimentId]!));
     case 'burnZone':
       return act(s, a.regimentId, 'burn', () => burnProblems(s, s.regiments[a.regimentId]!, a.zoneId));
     case 'powerPref':
@@ -196,6 +214,8 @@ export function validateM4(s: GameState, a: Action): Validation {
         if (isMarkerTarget(a.targetId)) return markerVolleyPlan(s, r, markerId(a.targetId), !!s.activation?.aimed).problems;
         const t = s.regiments[a.targetId];
         if (!t) return ['Unknown target.'];
+        // Mahut (sk p.42): never more than one Volley in an Activation.
+        if (skUnit(r)?.freeVolley && sk(s, r.owner) && (s.activation?.actions.includes('volley') || s.activation?.extra?.some((e) => e.used && e.kind === 'volley'))) return ['A Mahut may not Volley more than once in its Activation (sk p.42).'];
         return planVolley(s, r, t, volleyAimed(s, r)).problems;
       });
     case 'clash':
@@ -229,6 +249,7 @@ export function validateM4(s: GameState, a: Action): Validation {
         const r = s.regiments[a.regimentId]!;
         if (isEngaged(s, r)) return ['In contact with an enemy, use Combat Rally (core p.47).'];
         if (shrouded(s, r)) return [`Within 8″ of ${shrouded(s, r)}'s Microbial Shroud: no Rally (sp p.32).`];
+        if (r.flags.noRally) return ['Earthquake: it cannot Rally this Round (sk p.25).'];
         return r.broken ? [] : ['Only a Broken Regiment can Rally (core p.36).'];
       });
     case 'combatRally':
@@ -236,6 +257,7 @@ export function validateM4(s: GameState, a: Action): Validation {
         const r = s.regiments[a.regimentId]!;
         if (!isEngaged(s, r)) return ['Combat Rally needs an enemy in contact (core p.47).'];
         if (shrouded(s, r)) return [`Within 8″ of ${shrouded(s, r)}'s Microbial Shroud: no Combat Rally (sp p.32).`];
+        if (r.flags.noRally) return ['Earthquake: it cannot Combat Rally this Round (sk p.25).'];
         return r.broken ? [] : ['Only a Broken Regiment can Combat Rally (core p.47).'];
       });
     case 'combatReform':
@@ -291,6 +313,8 @@ function startActivation(ctx: Ctx, r: RegimentState, extra: Partial<NonNullable<
 function startActionPhase(ctx: Ctx): void {
   const s = ctx.s;
   const first = s.firstPlayer!;
+  // Rituals start Being Prepared at the end of the Supremacy Phase (sk p.5).
+  endOfSupremacy(ctx);
   s.step = 'action';
   ev(ctx, { type: 'phase', text: `Action Phase: ${first} is the First Player (core p.22).` });
   if (s.players[first].stack.length) s.turn = first;
@@ -307,6 +331,7 @@ export function endActivation(ctx: Ctx, entourage: boolean): void {
   const a = s.activation!;
   const r = s.regiments[a.regimentId]!;
   const owner = r.owner;
+  skActivationEnd(ctx, a, r);
   onActivationEnd(ctx, a, r);
   if (a.characterId) {
     const c = s.characters[a.characterId]!;
@@ -357,6 +382,8 @@ export function applyM4(ctx: Ctx, a: Action): void {
       const cards = buildCards(s, a.player);
       s.players[a.player].stack = a.order.map((id) => cards.find((c) => c.id === id)!);
       s.players[a.player].stackSet = true;
+      const skp = sk(s, a.player);
+      if (skp) skp.completed = [];
       ev(ctx, { type: 'stack', text: `${a.player} sets a Command Stack of ${a.order.length} cards.`, player: a.player });
       if (s.players.P1.stackSet && s.players.P2.stackSet) {
         // Blasphemous Soma (od p.6): +1 Power Token before the Supremacy Phase.
@@ -397,17 +424,47 @@ export function applyM4(ctx: Ctx, a: Action): void {
       } else ev(ctx, { type: 'manual', text: `${a.player} activates the Supremacy Ability of ${w.name} (${w.supremacyAbilities.join(', ')}) until the end of the Round. Its effects are manual.`, player: a.player });
       break;
     }
-    case 'drawCard':
+    case 'drawCard': {
+      const skp = sk(s, a.player);
+      const follow = skp?.follow ?? null;
+      const last = skp?.lastRitual ?? null;
+      if (skp) {
+        skp.follow = null;
+        skp.lastRitual = null;
+      }
       if (!drawCard(ctx, a.player)) {
         ev(ctx, { type: 'draw', text: `${a.player} has no usable cards left.`, player: a.player });
         passTurn(s, a.player);
-      }
+      } else afterRitualDraw(ctx, a.player, follow, last);
       break;
+    }
+    case 'prepareRitual': {
+      const skp = sk(s, a.player)!;
+      if (s.step === 'supremacy') {
+        skp.choice = a.ritual;
+        ev(ctx, { type: 'ritual', text: `${a.player} will Prepare ${a.ritual} at the end of the Supremacy Phase.`, player: a.player });
+      } else startPreparing(ctx, a.player, a.ritual, 'chosen instead');
+      break;
+    }
+    case 'ritual':
+      applyRitualCard(ctx, a.player, { ...(a.targetId ? { targetId: a.targetId } : {}), ...(a.terrainId ? { terrainId: a.terrainId } : {}), ...(a.option ? { option: a.option } : {}), ...(a.order ? { order: a.order } : {}) });
+      break;
+    case 'skForm':
+      applyForm(ctx, a.regimentId, a.group, a.option);
+      break;
+    case 'gildedStatue': {
+      const r = s.regiments[a.regimentId]!;
+      recordAction(s.activation!, 'ability');
+      applyGilded(ctx, r);
+      break;
+    }
     case 'activateCharacter': {
       const c = s.characters[a.characterId]!;
       const r = s.regiments[c.attachedTo!]!;
+      const afterRitual = s.drawn?.afterRitual;
       s.drawn = null;
       startActivation(ctx, r, { characterId: c.id });
+      skActivationStart(ctx, r, afterRitual);
       ev(ctx, { type: 'activate', text: `${r.owner} activates the Character ${c.name}${r.location !== 'table' ? ' (not on the Battlefield yet: no Draw Event, core p.23)' : ''}.`, player: r.owner });
       odActivationStartSpells(ctx);
       spiresActivationStart(ctx);

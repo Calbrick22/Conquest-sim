@@ -9,6 +9,8 @@ import type { CharacterState, GameState, PlayerId, Pose, PowerPool, Profile, Reg
 import { createRng, rollD6, type RngState } from './rng';
 import type { Ctx } from './dice';
 import { applyM4, endActivation, logManualRules, validateM4 } from './gameM4';
+import { initSorcererKings } from './factions/sorcererKings';
+import { skActivationStart, skAfterApply } from './factions/sorcererKingsActions';
 import { beginRound, cardTargets, type ReinforcementChoice } from './round';
 import { victoryPhase } from './scoring/victory';
 import './rules/special/rules';
@@ -80,6 +82,11 @@ export type ActionBody =
   // Spellcasting (core p.80–81) and Old Dominion faction Actions (od p.5–8)
   | { type: 'spell'; casterId: string; spell: string; targetId: string; attunement?: number; pool?: PowerPool }
   | { type: 'memories'; regimentId: string }
+  // Sorcerer Kings (sk p.5, p.22–25, p.42–46)
+  | { type: 'prepareRitual'; player: PlayerId; ritual: string }
+  | { type: 'ritual'; player: PlayerId; targetId?: string; terrainId?: string; option?: number; order?: string[] }
+  | { type: 'skForm'; regimentId: string; group: string; option: string }
+  | { type: 'gildedStatue'; regimentId: string }
   // Flames of Conquest (ns p.5)
   | { type: 'burnZone'; regimentId: string; zoneId: string }
   | { type: 'powerPref'; player: PlayerId; pool: PowerPool }
@@ -266,6 +273,7 @@ export function createGame(input: SetupInput): SetupResult {
           baseDrawEvents: embodied ? [] : c.drawEvents,
           supremacyAbilities: c.supremacyAbilities,
           options: Object.values(c.options).flat(),
+          ...(c.battlefieldRoles.length ? { roles: c.battlefieldRoles } : {}),
           ...(c.spells?.length && !embodied ? { spells: c.spells } : {}),
           ...(embodied ? { embodied: true } : {}),
           wounds: 0,
@@ -337,6 +345,7 @@ export function createGame(input: SetupInput): SetupResult {
     if (m && r.stands[0]) r.stands[0].wounds = Math.min(Number(m[1]), Math.max(0, (r.profile.W ?? 1) - 1));
   }
   initOldDominion(state);
+  initSorcererKings(state);
   refreshRules(state);
   const events: GameEvent[] = [{ type: 'setup', text: `Game created on ${input.scenario.name} (seed ${input.seed}).`, round: 1 }];
   for (const w of warnings) events.push({ type: 'warning', text: w, round: 1 });
@@ -437,6 +446,7 @@ export function validate(s: GameState, a: Action): Validation {
       if (pre.length) return fail(...pre);
       if (r.location !== 'table') return fail('That Regiment is not on the Battlefield.');
       if (isEngaged(s, r)) return fail('A Regiment in contact with an enemy uses Combat Reform instead (core p.37, p.48).');
+      if (r.flags.reinforced) return fail('Reinforce (the Pattern): it cannot Reform this Round (sk p.21).');
       if (Math.abs(a.rotation) > Math.PI + 1e-9) return fail('A Reform rotates at most 180° (core p.37).');
       const n = regimentStandCount(s, r);
       if (clampFiles(n, a.files) !== a.files) return fail(`${a.files} files is not a legal formation for ${n} Stands (core p.13).`);
@@ -580,10 +590,12 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
     case 'activate': {
       const r = s.regiments[a.regimentId]!;
       const card = s.drawn?.card ?? null;
+      const afterRitual = s.drawn?.afterRitual;
       s.drawn = null;
       s.activation = { regimentId: r.id, actions: [], entering: r.location === 'arriving', startPose: r.pose, drawEventDone: false, aimed: false, inspired: false, ended: false };
       ev({ type: 'activate', text: `${r.owner} activates ${r.name}.`, player: r.owner, regimentId: r.id });
       if (onActivationStart(ctx, r, card)) {
+        skActivationStart(ctx, r, afterRitual);
         odActivationStartSpells(ctx);
         logManualRules(ctx, r);
       }
@@ -655,6 +667,9 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
 
   }
   if (ctx.s.activation) grantExtras(ctx, ctx.s.activation);
+  refreshRules(ctx.s);
+  // Sorcerer Kings: Ritual access, Shattered Perfection, Air Elemental, Last Word (sk p.5–46).
+  skAfterApply(ctx);
   refreshRules(ctx.s);
   // Power Tokens earned during the Action are added at its end (od p.6).
   if (ctx.power?.length) {

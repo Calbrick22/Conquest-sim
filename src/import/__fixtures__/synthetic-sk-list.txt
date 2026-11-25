@@ -1,0 +1,58 @@
+Ember Court 2000 / 2000
+Sorcerer Kings
+Warband 1
+Sorcerer 1 90
+M V C A W R D E Type Infantry
+- 3 2 4 4 3 2 0 Class -
+Supremacy Abilities Omnipotence
+Special Rules Barrage (2) [14"], Wizard (6)
+Battlefield Role Character, Court of Fire
+Rajakur Mainstay 4 150
+M V C A W R D E Type Infantry
+5 1 2 4 4 3 2 0 Class Medium
+Special Rules Hardened (1), Shield
+Command Models Leader, Standard Bearer
+Battlefield Role Mortals
+Efreet Flamecasters Restricted 3 170
+M V C A W R D E Type Brute
+6 2 2 4 5 3 3 1 Class Medium
+Draw Events Elemental Conduit
+Special Rules Barrage (4) [14"], Impact (3)
+Command Models Leader
+Battlefield Role Elemental, Court of Fire
+Rakshasa Ravanar Restricted 1 210
+M V C A W R D E Type Monster
+7 1 3 10 14 4 3 1 Class Heavy
+Draw Events Elemental Conduit
+Special Rules Aura of Death (4), Cleave (2), Fearless, Impact (4), Terrifying (1)
+Battlefield Role Elemental, Court of Fire
+Warband 2
+Raj 1 100
+M V C A W R D E Type Infantry
+- 2 3 5 4 4 3 2 Class -
+Special Rules Flurry, Wizard (5)
+Battlefield Role Character, Court of Fire
+Mahabharati Initiates Mainstay 3 150
+M V C A W R D E Type Infantry
+6 1 3 4 4 4 2 2 Class Medium
+Draw Events Elemental Conduit
+Special Rules Cleave (1), Tenacious (1)
+Command Models Leader, Standard Bearer
+Battlefield Role Mortals, Mahabharati
+Marid Shaytan Restricted 1 240
+M V C A W R D E Type Monster
+8 1 3 9 14 4 3 1 Class Heavy
+Draw Events Elemental Conduit
+Special Rules Water Elemental, Impact (5), Terrifying (1), Cleave (1), Flurry
+Battlefield Role Elemental, Court of Water
+Mahut Restricted 1 240
+M V C A W R D E Type Monster
+6 2 2 8 16 3 3 2 Class Heavy
+Draw Events Elemental Conduit
+Special Rules Barrage (8) [18"], Cleave (1), Impact (4), Trample (4)
+Battlefield Role Elemental, Court of Earth
+Rules
+Wizard
+Synthetic placeholder: this unit casts spells.
+Hardened
+Synthetic placeholder: tougher armour.

@@ -34,7 +34,7 @@ export function UnitCallout({ s, r, onClose, variant = 'callout' }: { s: GameSta
     [...r.roundMods, ...(r.grantMods ?? [])].length ? [...r.roundMods, ...(r.grantMods ?? [])].map((m) => `${m.stat}${m.delta > 0 ? '+' : ''}${m.delta} (${m.source})`).join(' ') : '',
   ].filter(Boolean);
   return (
-    <div data-testid={variant === 'panel' ? 'selection-panel' : 'unit-callout'} className={`unit-card ${variant}`}>
+    <div data-testid={variant === 'panel' ? 'selection-panel' : 'unit-callout'} className={`unit-card ${variant === 'panel' ? 'panel' : 'floating'}`}>
       {variant === 'callout' && <button type="button" className="secondary small close" onClick={onClose} aria-label="Close">✕</button>}
       <h4>
         <span className="swatch" style={{ background: OWNER_COLOR[r.owner] }} /> {r.name}
@@ -140,6 +140,12 @@ export function actionTitle(s: GameState, a: Action): string {
       return 'End of Activation';
     case 'memories':
       return `${name(a.regimentId)}: Memories of Old`;
+    case 'ritual':
+      return `Ritual: ${s.players[a.player].sk?.lastRitual ?? 'resolved'}`;
+    case 'skForm':
+      return `${name(a.regimentId)}: ${a.group}`;
+    case 'gildedStatue':
+      return `${name(a.regimentId)}: Gilded Statue`;
     default:
       return a.type.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
   }

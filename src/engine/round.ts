@@ -2,6 +2,7 @@ import { ev, rollN, type Ctx } from './dice';
 import type { CommandCard, GameState, PlayerId, RegimentState, UnitClass } from './model/types';
 import { computeReinforcementLine, hasFlank, other, regimentStandCount } from './queries';
 import { beginRoundOd } from './factions/oldDominion';
+import { beginRoundSk } from './factions/sorcererKings';
 
 /**
  * Reinforcement table (core p.21): the roll needed this Round per Class, 'auto' when the Class
@@ -124,6 +125,8 @@ export function buildCards(s: GameState, p: PlayerId): CommandCard[] {
     const r = s.regiments[c.attachedTo];
     if (r && (r.location === 'table' || r.location === 'arriving')) cards.push({ id: `card-${c.id}`, kind: 'character', name: c.name, refId: c.id });
   }
+  // Completed Rituals join the Command Stack in the next Command Phase (sk p.5).
+  for (const name of s.players[p].sk?.completed ?? []) cards.push({ id: `ritual-${name}`, kind: 'ritual', name, refId: name });
   return cards;
 }
 
@@ -136,7 +139,8 @@ export function defaultStackOrder(s: GameState, p: PlayerId): CommandCard[] {
     return (r.rules.some((x) => x.name === 'Barrage') ? -10 : 0) - (r.profile.M ?? 0);
   };
   regs.sort((a, b) => score(a) - score(b));
-  const out: CommandCard[] = [];
+  // Rituals first: their effects and the same-Court follow-up come early.
+  const out: CommandCard[] = cards.filter((c) => c.kind === 'ritual');
   for (const rc of regs) {
     const ch = cards.find((c) => c.kind === 'character' && s.characters[c.refId]!.attachedTo === rc.refId);
     if (ch) out.push(ch);
@@ -178,6 +182,8 @@ export function supremacyRollOff(ctx: Ctx): PlayerId {
 
 /** Can this card Activate something now? Returns the eligible Regiment or Character ids. */
 export function cardTargets(s: GameState, p: PlayerId, card: CommandCard): string[] {
+  // A Ritual card is resolved when drawn (sk p.5).
+  if (card.kind === 'ritual') return [card.refId];
   if (card.kind === 'character') {
     const c = s.characters[card.refId];
     if (!c || c.destroyed || c.embodied || c.activatedThisRound || !c.attachedTo) return [];
@@ -200,7 +206,7 @@ export function drawCard(ctx: Ctx, p: PlayerId): boolean {
     const card = pl.stack.shift()!;
     if (cardTargets(ctx.s, p, card).length) {
       ctx.s.drawn = { player: p, card };
-      ev(ctx, { type: 'draw', text: `${p} draws ${card.name}${card.kind === 'character' ? ' (Character)' : ''}.`, player: p });
+      ev(ctx, { type: 'draw', text: `${p} draws ${card.name}${card.kind === 'character' ? ' (Character)' : card.kind === 'ritual' ? ' (Ritual)' : ''}.`, player: p });
       return true;
     }
     ev(ctx, { type: 'draw', text: `${p} draws ${card.name}, which cannot Activate anything, and discards it (core p.22).`, player: p });
@@ -235,12 +241,15 @@ export function beginRound(s: GameState): void {
     r.flags.hindered = false;
     r.flags.siphoned = false;
     r.flags.epigenetic = false;
+    // Sorcerer Kings effects until the end of the Round (sk p.18–25).
+    for (const k of ['inflamed', 'cauterized', 'hypoxia', 'flowingStride', 'cyclone', 'stabilized', 'reinforced', 'searing', 'quake', 'noRally', 'kissOfEarth', 'form', 'tidecaller', 'blessing', 'aqueousBy'] as const) delete r.flags[k];
     r.standsAtRoundStart = r.stands.length;
     // RULE-AMBIGUITY: AMB-33 — a Regiment still Broken counts Shattering from the start of each new Round.
     if (r.broken) r.standsWhenBroken = r.stands.length;
   }
   for (const c of Object.values(s.characters)) c.activatedThisRound = false;
   beginRoundOd(s);
+  beginRoundSk(s);
   for (const p of ['P1', 'P2'] as const) {
     s.players[p].stack = [];
     s.players[p].stackSet = false;

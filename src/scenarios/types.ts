@@ -71,7 +71,7 @@ export interface ZonePickRule {
 }
 
 /** Terrain keywords (core p.86–87). */
-export type TerrainKeyword = 'Elevated' | 'Obstructing' | 'Cover' | 'Traversable' | 'Hindering' | 'Impassable' | 'Water' | 'Dangerous';
+export type TerrainKeyword = 'Elevated' | 'Obstructing' | 'Cover' | 'Traversable' | 'Hindering' | 'Impassable' | 'Water' | 'Dangerous' | 'Earth';
 export type TerrainKind = 'hill' | 'forest' | 'field' | 'structure' | 'pond' | 'boulder';
 
 /** A piece of Zonal Terrain: a rectangle `w` × `h` inches centred on (x, y), turned by `angle` radians. */

@@ -1,3 +1,4 @@
+import { RitualCard } from './SorcererKingsPanel';
 import { useState } from 'react';
 import type { Action } from '../../engine/game';
 import type { CommandCard, GameState, PlayerId } from '../../engine/model/types';
@@ -33,7 +34,7 @@ export function StackBuilder({ s, p, dispatch, onPreview }: { s: GameState; p: P
             className={`ccard ${c.kind} ${picked === i ? 'picked' : ''} owner-${p}`}
             onClick={() => {
               // Picking a card highlights its Regiment on the table, so the stack is ordered with the battlefield in view.
-              const target = c.kind === 'character' ? s.characters[c.refId]?.attachedTo ?? null : c.refId;
+              const target = c.kind === 'character' ? s.characters[c.refId]?.attachedTo ?? null : c.kind === 'ritual' ? null : c.refId;
               if (picked === null) {
                 setPicked(i);
                 onPreview?.(target && s.regiments[target]?.location === 'table' ? target : null);
@@ -44,6 +45,7 @@ export function StackBuilder({ s, p, dispatch, onPreview }: { s: GameState; p: P
             <span className="pos">{i + 1}</span>
             <span className="cname">{c.name}</span>
             {c.kind === 'character' && <span className="ckind">Character</span>}
+            {c.kind === 'ritual' && <span className="ckind">Ritual</span>}
           </button>
         ))}
         {order.length === 0 && <span className="meta">No cards this Round.</span>}
@@ -69,6 +71,8 @@ export function DrawDeck({ s, dispatch, onSelect, aiPlayer }: { s: GameState; di
   if (s.drawn) {
     const { player, card } = s.drawn;
     if (player === aiPlayer) return null;
+    // A Ritual card is resolved, not Activated (sk p.5).
+    if (card.kind === 'ritual') return <RitualCard s={s} dispatch={dispatch} />;
     const targets = cardTargets(s, player, card);
     return (
       <div className="deck-panel draw">

@@ -10,6 +10,7 @@ import { attachedCharacter, distancePolys, formationInput, isEngaged, regimentPo
 import { hasRole, sectOf } from './rules/special/grants';
 import { barrageOf, hasRule, ruleX } from './rules/special/rules';
 import { OD_DRAW_EVENTS, applyOdDrawEvent, isOdDrawEvent, odDrawEventProblems } from './factions/oldDominionActions';
+import { SK_DRAW_EVENTS, applySkDrawEvent, skDrawEventProblems } from './factions/sorcererKingsActions';
 import { applyPractitioner, canInduceAggression, decayWounds, degenerativeAura, isPractitioner, practitionerProblems, shrouded, strainFor } from './factions/spires';
 
 // ---------------------------------------------------------------- Action bookkeeping
@@ -20,14 +21,19 @@ import { applyPractitioner, canInduceAggression, decayWounds, degenerativeAura, 
  * (core p.25: never more than 3 Actions in total).
  */
 export function recordAction(act: ActivationState, kind: ActionKind): void {
-  const extra = act.extra?.find((e) => !e.used && e.kind === kind);
-  // A free Spellcasting Action (od p.9, p.16, p.23) never uses up a normal Action.
-  if (extra && (kind === 'spell' || kind === 'ability') && extra.free) {
-    extra.used = true;
+  const extra = act.extra?.find((e) => !e.used && e.kind === kind && (!e.first || act.actions.length === 0));
+  // Extras in a group are a choice of one (Far Sight, Eye of the Storm; sk p.24, p.39).
+  const spend = (e: NonNullable<typeof extra>) => {
+    e.used = true;
+    if (e.group) for (const o of act.extra ?? []) if (o.group === e.group) o.used = true;
+  };
+  // A free Spellcasting Action (od p.9, p.16, p.23), and free "anytime" or first-Action extras, never use up a normal Action.
+  if (extra && extra.free && (kind === 'spell' || kind === 'ability' || extra.anytime || extra.first)) {
+    spend(extra);
     return;
   }
   if (extra && (act.actions.length >= 2 || (extra.free && kind === 'reform' && act.actions.length === 0) || (extra.free && kind === 'combatReform'))) {
-    extra.used = true;
+    spend(extra);
     return;
   }
   act.actions.push(kind);
@@ -65,6 +71,8 @@ export function onActivationStart(ctx: Ctx, r: RegimentState, card: CommandCard 
     const myPolys = regimentPolys(s, r);
     let hits = 0;
     for (const e of enemiesInContact(s, r)) {
+      // Stabilize (the Pattern) (sk p.21): no Aura of Death on it.
+      if (r.flags.stabilized) break;
       const x = ruleX(e.rules, 'Aura of Death');
       if (!x) continue;
       const per = e.type === 'Monster' ? x : Math.min(4, x);
@@ -113,13 +121,15 @@ export function onActivationEnd(ctx: Ctx, act: ActivationState, r: RegimentState
   if (tr) {
     const fp = footprintOf(s, r);
     const target = enemiesInContact(s, r).find((e) => regimentPolys(s, e).some((p) => arcsOf(fp, p).includes('front')));
-    if (target) {
+    // Reinforce (the Pattern) (sk p.21): no Hits from Trample.
+    if (target?.flags.reinforced) ev(ctx, { type: 'note', text: `${target.name} is Reinforced: no Hits from Trample (sk p.21).`, regimentId: target.id });
+    else if (target) {
       const hits = tr * r.stands.length;
       ev(ctx, { type: 'note', text: `Trample: ${target.name} suffers ${hits} automatic Hits from ${r.name} (core p.101).` });
       resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: target.id, arc: 'front', pools: [{ label: 'Trample', dice: 0, skill: 0, autoHits: hits }], morale: false, terrifying: 0, what: 'Trample', kind: 'special' });
     }
   }
-  if (hasRule(r.rules, 'Decay') && !r.flags.noDecay && !isDestroyed(r)) {
+  if (hasRule(r.rules, 'Decay') && !r.flags.noDecay && !r.flags.stabilized && !isDestroyed(r)) {
     const { wounds: w, why } = decayWounds(s, r);
     ev(ctx, { type: 'note', text: `Decay: ${r.name} suffers ${w} Wound${w === 1 ? '' : 's'}, no Morale (core p.97${why.length ? `; ${why.join('; ')}` : ''}).`, regimentId: r.id });
     if (w > 0) {
@@ -137,6 +147,8 @@ export function canHeal(s: GameState, r: RegimentState): boolean {
   if (hasRule(r.rules, 'Unhallowed Ground')) return false;
   // Microbial Shroud (sp p.32): enemies within 8″ cannot Heal.
   if (shrouded(s, r)) return false;
+  // Cauterize, Earthquake (sk p.18, p.25): cannot be Healed this Round.
+  if (r.flags.cauterized || r.flags.quake) return false;
   // Broken Regiments cannot be Healed (core p.60), except [Drone] Regiments with Violent Delirium (Underspires).
   return !r.broken || (sectOf(s, r.owner) === 'underspires' && hasRole(r, 'Drone'));
 }
@@ -150,7 +162,7 @@ export function heal(ctx: Ctx, r: RegimentState, points: number, why: string): v
   const s = ctx.s;
   if (!canHeal(s, r)) {
     const sh = shrouded(s, r);
-    ev(ctx, { type: 'note', text: hasRule(r.rules, 'Unhallowed Ground') ? `${r.name} has Unhallowed Ground and cannot be Healed (od p.15).` : sh ? `${r.name} is within 8″ of ${sh}'s Microbial Shroud and cannot be Healed (sp p.32).` : `${r.name} is Broken and cannot be Healed (core p.60).`, regimentId: r.id });
+    ev(ctx, { type: 'note', text: hasRule(r.rules, 'Unhallowed Ground') ? `${r.name} has Unhallowed Ground and cannot be Healed (od p.15).` : sh ? `${r.name} is within 8″ of ${sh}'s Microbial Shroud and cannot be Healed (sp p.32).` : r.flags.cauterized ? `${r.name} is Cauterized and cannot be Healed this Round (sk p.18).` : r.flags.quake ? `${r.name} is in an Earthquake and cannot be Healed this Round (sk p.25).` : `${r.name} is Broken and cannot be Healed (core p.60).`, regimentId: r.id });
     return;
   }
   let left = points;
@@ -181,6 +193,7 @@ export function heal(ctx: Ctx, r: RegimentState, points: number, why: string): v
 
 export const DRAW_EVENTS_AUTOMATED = [
   ...OD_DRAW_EVENTS,
+  ...SK_DRAW_EVENTS.filter((d) => d !== 'Fan the Flames'),
   'Bastion',
   'Biotic Renewal',
   'Double Time',
@@ -234,8 +247,10 @@ export function drawEventProblems(s: GameState, name: string, choice: DrawEventC
   // One Draw Event per Activation (core p.23).
   if (done.includes(baseName(name))) return [`${name} has already been resolved.`];
   if (!isExtra && done.some((d) => !additional(d))) return ['Only one Draw Event per Activation (core p.23).'];
-  if (r.location !== 'table') return ['Draw Events are not resolved while arriving from Reinforcements (core p.23).'];
+  // Elemental Conduit (sk p.5) may be used in a Round in which the Regiment arrives.
+  if (r.location !== 'table' && !(baseName(name) === 'Elemental Conduit' && r.location === 'arriving')) return ['Draw Events are not resolved while arriving from Reinforcements (core p.23).'];
   if (isOdDrawEvent(baseName(name))) return odDrawEventProblems(s, r, baseName(name), choice);
+  if (SK_DRAW_EVENTS.includes(baseName(name))) return skDrawEventProblems(s, r, c, baseName(name), choice);
   if (baseName(name) === 'Suppress Higher Functions' || baseName(name) === 'Epigenetic Trigger') {
     const t = choice.targetId ? s.regiments[choice.targetId] : r;
     if (!t || t.owner !== r.owner || t.location !== 'table') return ['Choose a friendly Regiment on the Battlefield.'];
@@ -334,6 +349,10 @@ export function applyDrawEvent(ctx: Ctx, name: string, choice: DrawEventChoice):
     default:
       if (isOdDrawEvent(bn)) {
         applyOdDrawEvent(ctx, r, bn, choice);
+        return;
+      }
+      if (SK_DRAW_EVENTS.includes(bn)) {
+        applySkDrawEvent(ctx, r, c, bn, choice);
         return;
       }
       ev(ctx, { type: 'manual', text: `Draw Event: ${name} (manual — apply its effect with the manual tools).`, regimentId: r.id });

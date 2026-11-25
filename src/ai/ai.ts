@@ -36,6 +36,7 @@ import { buildCards, cardTargets, flankChoices, reinforcementChoices, reinforcem
 import { legalFiles } from '../engine/formation';
 import { hasRule, manualRules, ruleX } from '../engine/rules/special/rules';
 import { zoneResults } from '../engine/scoring/victory';
+import { aiContactVolley, aiRitual, aiSkActivation, skSpellValue } from './sorcererKingsAi';
 
 export interface AiDecision {
   action: Action;
@@ -223,6 +224,8 @@ function decideReinforcements(s: GameState, p: PlayerId): AiDecision {
 function decideStack(s: GameState, p: PlayerId): AiDecision {
   const cards = buildCards(s, p);
   const score = (c: CommandCard) => {
+    // Ritual cards first (sk p.5): their effect and the same-Court follow-up come early.
+    if (c.kind === 'ritual') return -100;
     const r = c.kind === 'regiment' ? s.regiments[c.refId]! : s.regiments[s.characters[c.refId]!.attachedTo!]!;
     const ranged = r.rules.some((x) => x.name === 'Barrage') ? -20 : 0;
     const arriving = r.location === 'arriving' ? -5 : 0;
@@ -232,7 +235,7 @@ function decideStack(s: GameState, p: PlayerId): AiDecision {
   const order = [...cards].sort((a, b) => score(a) - score(b));
   // Keep each Character just above its own Regiment so Entourage works.
   const regs = order.filter((c) => c.kind === 'regiment');
-  const out: CommandCard[] = [];
+  const out: CommandCard[] = order.filter((c) => c.kind === 'ritual');
   for (const rc of regs) {
     const ch = cards.find((c) => c.kind === 'character' && s.characters[c.refId]!.attachedTo === rc.refId);
     if (ch) out.push(ch);
@@ -397,7 +400,8 @@ function bestSpell(s: GameState, casterId: string): Scored | null {
       if (p < 0.25) continue;
       const engaged = isEngaged(s, t);
       const wounded = t.stands.length < t.startingStands || t.stands.some((x) => x.wounds > 0);
-      const value = def.hits
+      const skv = skSpellValue(s, c.owner, spell, t);
+      const value = skv !== null ? skv : def.hits
         ? expectedWounds(Math.round(c.dice * (def.attunement / 6)) * (spell === 'Insanity' ? 2 : 1), 6, t, { reduceD: spell === 'Unholy Baptism' ? 1 : 0 })
         : spell === "Hazlia's Touch"
           ? wounded ? 2 : 0
@@ -468,6 +472,8 @@ function decideActivation(s: GameState): AiDecision {
     const c = s.characters[act.characterId]!;
     const ode = chooseOdDrawEvent(s, r, c.drawEvents);
     if (ode) return ode;
+    const skc = aiSkActivation(s, r, c.id);
+    if (skc) return { action: { ...skc.action, why: `${c.name} ${skc.reason}` }, reason: skc.reason };
     const sp = bestSpell(s, c.id);
     if (sp && validate(s, sp.action as Action).ok) return { action: { ...sp.action, why: `${c.name} ${sp.reason}` }, reason: sp.reason };
     const pr = bestPractitioner(s, c);
@@ -493,9 +499,13 @@ function decideActivation(s: GameState): AiDecision {
   if (spend) return spend;
   const ode = chooseOdDrawEvent(s, r, r.drawEvents);
   if (ode) return ode;
+  const skd = aiSkActivation(s, r);
+  if (skd) return { action: { ...skd.action, why: `${r.name} ${skd.reason}` }, reason: skd.reason };
   const de = chooseDrawEvent(s, r);
   if (de) return de;
   const cands = regimentCandidates(s, r);
+  const cv = aiContactVolley(s, r);
+  if (cv) cands.push({ action: cv.action, score: 2.5, reason: cv.reason });
   const sp = bestSpell(s, r.id);
   if (sp) cands.push(sp);
   // Memories of Old (od p.5) before a fight.
@@ -643,6 +653,7 @@ function decideInner(s: GameState, p: PlayerId): AiDecision {
       if (pref) return pref;
       if (s.activation) return decideActivation(s);
       if (s.drawn) {
+        if (s.drawn.card.kind === 'ritual') return aiRitual(s, p);
         const ids = cardTargets(s, p, s.drawn.card);
         if (s.drawn.card.kind === 'character') return { action: { type: 'activateCharacter', characterId: ids[0]! }, reason: `activates ${s.drawn.card.name}` };
         // Several same-named Regiments: activate the one with the most to do (closest to the enemy).

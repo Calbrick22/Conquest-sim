@@ -6,6 +6,7 @@ import { standOverlapsZone } from '../geometry/zones';
 import type { GameState, PlayerId, RoundScore } from '../model/types';
 import { attachedCharacter, formationInput, markerPolys, onTableRegiments } from '../queries';
 import { seizeBonusFor, unhallowed } from '../factions/oldDominion';
+import { cycloned, skVictoryStart } from '../factions/sorcererKingsActions';
 import { scoreRound, type RoundFacts } from './scoreRound';
 import { hasRule } from '../rules/special/rules';
 import { resolveZone, type StandInRange, type ZoneSeizeResult } from './seizing';
@@ -34,6 +35,8 @@ export function zoneResults(s: GameState): ZoneResults {
     for (const { r, slots, polys } of slotsByReg) {
       // Pheromantic Compulsion (sp p.15): counts as 0 Stands for Seizing or Contesting.
       if (r.flags.compelled) continue;
+      // Cyclone (sk p.20): engaged with a [Court of Air] Regiment, it counts as 0 Stands.
+      if (cycloned(s, r)) continue;
       let regBonus = r.flags.seizeBonus ?? 0; // Exhortation of Eternal Faith (od p.30): once per Regiment
       polys.forEach((p, i) => {
         if (!standOverlapsZone(p, centre, z.diameter)) return;
@@ -90,6 +93,11 @@ export function scoreGroups(rs: RoundScore, p: PlayerId): { zones: number; kills
 export function victoryPhase(ctx: Ctx): RoundScore {
   const s = ctx.s;
   cursedSanctuaries(ctx);
+  // Prince of the Setting Moon (sk p.17): friendly [Mortals] within range of an Objective Zone Heal 3.
+  skVictoryStart(ctx, (r) => {
+    const polys = layout(formationInput(s, r)).map((sl) => rectPoly(sl.rect));
+    return s.scenario.zones.some((z) => !(s.burnedZones ?? []).includes(z.id) && polys.some((p) => standOverlapsZone(p, { x: z.x, y: z.y }, z.diameter)));
+  });
   const active = s.round >= s.scenario.objectivesFromRound;
   const zr = zoneResults(s);
   const seized: Record<PlayerId, string[]> = { P1: [], P2: [] };

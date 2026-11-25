@@ -71,6 +71,20 @@ describe('computer opponent', () => {
     240_000,
   );
   it(
+    'plays a full game with a synthetic Sorcerer Kings army: Rituals, Court Spells, Elemental Conduit (sk p.5)',
+    () => {
+      const { s, events } = playAiGame(44, 'melee', 'synthetic-sk-list.txt');
+      expect(s.phase).toBe('ended');
+      expect(s.players.P1.sk).toBeDefined();
+      expect(events.some((e) => /starts Preparing/.test(e.text))).toBe(true);
+      expect(events.some((e) => /Elemental Conduit/.test(e.text))).toBe(true);
+      expect(events.some((e) => / casts /.test(e.text))).toBe(true);
+      expect(events.some((e) => /reveals the Ritual/.test(e.text))).toBe(true);
+      expect(events.filter((e) => e.override).map((e) => e.text)).toEqual([]);
+    },
+    240_000,
+  );
+  it(
     'is deterministic for a seed',
     () => {
       const a = playAiGame(77, 'melee');

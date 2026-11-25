@@ -65,6 +65,7 @@ export function ListReview({ list, onChange }: { list: ArmyList; onChange: (l: A
                 })
               }
               glossary={list.glossary}
+              sorcererKings={/sorcerer\s*kings/i.test(list.faction)}
               tiers={list.tierProfiles?.[e.name] ?? {}}
               onTiers={(t) =>
                 update((l) => {
@@ -89,6 +90,33 @@ export function ListReview({ list, onChange }: { list: ArmyList; onChange: (l: A
         </details>
       )}
     </div>
+  );
+}
+
+const COURT_NAMES = ['Fire', 'Air', 'Water', 'Earth'] as const;
+
+/**
+ * Sorcerer Kings: the Court a Character chose (sk p.8–13), kept as a [Court of …] Battlefield
+ * Role. A Maharajah with Elemental Confluence may take a second Court (sk p.6).
+ */
+function CourtPicker({ entry, set }: { entry: ListEntry; set: (mut: (e: ListEntry) => void) => void }) {
+  const has = (c: string) => entry.battlefieldRoles.some((r) => new RegExp(`court of ${c}`, 'i').test(r));
+  const chosen = COURT_NAMES.filter(has);
+  const toggle = (c: string) =>
+    set((x) => {
+      const on = x.battlefieldRoles.some((r) => new RegExp(`court of ${c}`, 'i').test(r));
+      x.battlefieldRoles = on ? x.battlefieldRoles.filter((r) => !new RegExp(`court of ${c}`, 'i').test(r)) : [...x.battlefieldRoles, `Court of ${c}`];
+    });
+  return (
+    <p className="court-picker" data-testid={`court-${entry.name}`}>
+      <span className="meta">Court (sk p.8–13):</span>{' '}
+      {COURT_NAMES.map((c) => (
+        <label key={c} className="inline">
+          <input type="checkbox" checked={has(c)} onChange={() => toggle(c)} /> {c}
+        </label>
+      ))}
+      {chosen.length === 0 && <span className="badge manual"> no Court found in the list: pick one so the Character knows its Spells and Rituals</span>}
+    </p>
   );
 }
 
@@ -169,9 +197,11 @@ function EntryEditor({
   onStrain,
   tiers,
   onTiers,
+  sorcererKings = false,
 }: {
   entry: ListEntry;
   glossary: Record<string, string>;
+  sorcererKings?: boolean;
   onChange: (e: ListEntry) => void;
   strain: string;
   onStrain: (t: string) => void;
@@ -220,6 +250,7 @@ function EntryEditor({
           </tbody>
         </table>
         {entry.warnings.map((w, i) => <p key={i} className="warn">{w}</p>)}
+        {sorcererKings && entry.slot === 'Character' && !/sardar/i.test(entry.name) && <CourtPicker entry={entry} set={set} />}
         {entry.specialRules.length > 0 && <div className="rules">{entry.specialRules.map((r, i) => <RuleChip key={i} r={r} glossary={glossary} />)}</div>}
         {entry.actions.length > 0 && <div className="rules"><span className="meta">Actions:</span>{entry.actions.map((r, i) => <RuleChip key={i} r={r} glossary={glossary} />)}</div>}
         {entry.drawEvents.some((d) => d.startsWith('Strain Expression')) && (

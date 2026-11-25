@@ -29,8 +29,17 @@ export function poolMods(rules: readonly RuleRef[], target: RegimentState, kind:
     noDefenseOnOnes: (clashLike && hasRule(rules, 'Flawless Strikes')) || (kind === 'volley' && hasRule(rules, 'Precise Shot')),
     smite: clashLike && hasRule(rules, 'Smite'),
     torrential: kind === 'volley' && !!opts.effectiveRange && hasRule(rules, 'Torrential Fire'),
-    // Relentless Blows / Rapid Volley at 6 or more (p.40, p.46, p.100); not for Impact Attacks.
-    extraOnOne: kind !== 'impact' && kind !== 'special' && skill >= 6,
+    // Relentless Blows (Clash, Duel) and Rapid Volley (Volley): each Hit Roll of 1 adds a Hit (p.100);
+    // a Clash or Volley of 6 or more gains them (p.40, p.46). Not for Impact Attacks.
+    // Infernal Branding (sk p.32): Rapid Volley against an "Inflamed" target.
+    extraOnOne:
+      (kind !== 'impact' && kind !== 'special' && skill >= 6) ||
+      (clashLike && hasRule(rules, 'Relentless Blows')) ||
+      (kind === 'volley' && (hasRule(rules, 'Rapid Volley') || (hasRule(rules, 'Infernal Branding') && !!target.flags.inflamed))),
+    // Relentless Blows (2): Hit Rolls of 1 and 2 (Intrusive Thoughts, Fury of the Tempest; sk p.22, p.38).
+    ...(clashLike && ruleX(rules.filter((r) => r.name === 'Relentless Blows'), 'Relentless Blows') >= 2 ? { onesUpTo: 2 } : {}),
+    // Homing Winds (sk p.20): Volleys re-roll failed Hit Rolls of 6. Water Elemental in Water (sk p.43–46): all Hit Rolls.
+    ...((kind === 'volley' && hasRule(rules, 'Homing Winds')) || (kind !== 'special' && hasRule(rules, 'Elemental Waters')) ? { rerollSixes: true } : {}),
   };
 }
 
