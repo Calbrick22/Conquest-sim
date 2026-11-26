@@ -14,12 +14,12 @@ import { initDweghom } from './factions/dweghom';
 import { dwActivationStart, dwAfterApply } from './factions/dweghomActions';
 import { applySpecialMove, specialMoveProblems } from './specialMoves';
 import { skActivationStart, skAfterApply } from './factions/sorcererKingsActions';
-import { beginRound, cardTargets, type ReinforcementChoice } from './round';
+import { beginRound, cardTargets, passTurn, type ReinforcementChoice } from './round';
 import { victoryPhase } from './scoring/victory';
 import './rules/special/rules';
 import { applyCharacterOptions, refreshRules } from './rules/special/grants';
 import { flushPower, initOldDominion } from './factions/oldDominion';
-import { odActivationStartSpells } from './factions/oldDominionActions';
+import { odActivationStartSpells, type OdClashOption } from './factions/oldDominionActions';
 import { strainFor } from './factions/spires';
 import { parseRuleRef } from '../import/ruleTokens';
 import {
@@ -100,6 +100,8 @@ export type ActionBody =
   | { type: 'burnZone'; regimentId: string; zoneId: string }
   | { type: 'powerPref'; player: PlayerId; pool: PowerPool }
   | { type: 'odSpend'; regimentId: string; option: 'aod' | 'noBrittle' | 'terrifying' }
+  /** Old Dominion Power Token spends as a Clash or Duel is declared (od p.10, p.20). */
+  | { type: 'odClash'; regimentId: string; option: OdClashOption; amount?: number }
   // Manual tools (always logged as overrides)
   | { type: 'override.move'; regimentId: string; pose: Pose; files?: number; reason?: string }
   | { type: 'override.wounds'; regimentId?: string; characterId?: string; delta: number }
@@ -167,9 +169,33 @@ const hasOption = (c: CharacterState, n: string) => c.options.some((o) => o.toLo
  * (sk p.17) takes the Regiment's Type; the Lost Ancestor (a Brute) may join Infantry (dw p.20).
  */
 export function attachTypeOk(c: CharacterState, r: RegimentState): boolean {
+  // A Rider must ride its mount: a Monster Regiment, the named one for a rider upgrade (core p.100).
+  if (c.rider) {
+    const m = riderMount(c);
+    return r.type === 'Monster' && (!m || r.name === m);
+  }
   if (r.type === c.type) return true;
   if (hasOption(c, 'Bound to the Elements')) return true;
   return c.name === 'Lost Ancestor' && c.type === 'Brute' && r.type === 'Infantry';
+}
+
+/**
+ * Upgrades that make a Character a Rider, and the Monster it must ride: Bergont Raegh (Ironclad
+ * Drake), Hellbringer Sorcerer (Hellbringer Drake), Ferric Throne (Stoneforged) (dw p.24–25) and
+ * Favored of Hormus (Mahut, sk p.17).
+ */
+export const RIDER_MOUNTS: Record<string, string> = {
+  'bergont raegh': 'Ironclad Drake',
+  'hellbringer sorcerer': 'Hellbringer Drake',
+  'ferric throne': 'Stoneforged',
+  'favored of hormus': 'Mahut',
+  'favoured of hormus': 'Mahut',
+};
+
+/** The Monster a Rider must ride, if an upgrade names one. */
+export function riderMount(c: CharacterState): string | undefined {
+  const o = c.options.map((x) => x.toLowerCase().replace(/[’]/g, "'")).find((x) => RIDER_MOUNTS[x]);
+  return o ? RIDER_MOUNTS[o] : undefined;
 }
 
 /** Default formation width when a Regiment first takes the field. */
@@ -321,6 +347,25 @@ export function createGame(input: SetupInput): SetupResult {
       c.attachedTo = wb.find((r) => r.type === c.type)?.id ?? null;
       if (!c.attachedTo) warnings.push(`${c.name}: no ${c.type} Regiment in its Warband to join (core p.72)`);
     }
+  }
+  // Hierotekton (od p.19): the Character must attach to its Warband's Bone Golems (the export
+  // already shows the Brute Type, Impact and Aura of Death on both; AMB-76).
+  for (const c of Object.values(characters)) {
+    if (!hasOption(c, 'Hierotekton')) continue;
+    const bg = Object.values(regiments).find((r) => r.owner === c.id.slice(0, 2) && r.warband === c.warband && r.name === 'Bone Golems');
+    if (bg) c.attachedTo = bg.id;
+  }
+  // Rider (core p.100): the Character has no Stand and rides a Monster of its Warband.
+  for (const c of Object.values(characters)) {
+    if (c.embodied) continue;
+    const mount = riderMount(c);
+    if (!mount && !c.baseRules.some((x) => x.name === 'Rider')) continue;
+    c.rider = true;
+    if (!c.baseRules.some((x) => x.name === 'Rider')) c.baseRules.push(parseRuleRef('Rider'));
+    const wb = Object.values(regiments).filter((r) => r.owner === c.id.slice(0, 2) && r.warband === c.warband && r.type === 'Monster' && (!mount || r.name === mount));
+    const taken = (r: RegimentState) => Object.values(characters).some((x) => x !== c && x.attachedTo === r.id);
+    c.attachedTo = wb.find((r) => !taken(r))?.id ?? null;
+    if (!c.attachedTo) warnings.push(`${c.name}: no ${mount ?? 'Monster'} in its Warband to ride (core p.100)`);
   }
   // Re-default files to include attached Characters.
   for (const r of Object.values(regiments)) r.files = defaultFiles(regimentStandCount({ regiments, characters } as GameState, r));
@@ -640,7 +685,7 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
         dwActivationStart(ctx, r);
         odActivationStartSpells(ctx);
         logManualRules(ctx, r);
-      }
+      } else if (!s.players[r.owner].stack.length) passTurn(s, r.owner); // nothing left to draw again (core p.97)
       break;
     }
     case 'enter': {

@@ -107,7 +107,7 @@ export function OdActivation({ s, run }: { s: GameState; run: (a: Action) => boo
           if (b === 'Exhortation of Eternal Faith')
             return (
               <span key={n} className="actions">
-                {de(n, { option: 'aura-attack' }, 'Exhortation: Command Stands +3 A (manual aura)')}
+                {de(n, { option: 'aura-attack' }, 'Exhortation: Command Stands +3 Attacks, Cleave (1)')}
                 {de(n, { option: 'seize' }, '+6 Stands for Seizing')}
                 {de(n, { option: 'aura-resolve' }, 'Enemies within 12″ −1 Resolve')}
               </span>
@@ -127,9 +127,26 @@ export function OdActivation({ s, run }: { s: GameState; run: (a: Action) => boo
   const spellOk = caster ? validate(s, { type: 'spell', casterId, spell: spells[0]?.spell ?? caster.spells[0] ?? '', targetId: r.id, attunement: 3 }) : null;
   const memOk = !c && hasMemories(r) && validate(s, { type: 'memories', regimentId: r.id }).ok;
   const spendOk = !c && !odSpendProblems(s, r).length;
-  if (!drawButtons.length && !spells.length && !memOk && !spendOk) return null;
+  // Token spends as a Clash or Duel is declared (Soul Reaper, Reign of Terror, Obdurate; od p.10, p.20).
+  const dark = s.players[r.owner].od?.dark ?? 0;
+  const clashSpends: { a: Action; label: string }[] = [
+    ...Array.from({ length: Math.min(dark, 6) }, (_, i) => ({ a: { type: 'odClash', regimentId: r.id, option: 'soulReaper', amount: i + 1 } as Action, label: `Soul Reaper: ${i + 1} Token${i ? 's' : ''} → +${i + 1} Attacks` })),
+    { a: { type: 'odClash', regimentId: r.id, option: 'reignOfTerror' } as Action, label: 'Reign of Terror: 1 Token → Trial of Will for the next Clash' },
+    { a: { type: 'odClash', regimentId: r.id, option: 'obdurate' } as Action, label: 'Obdurate Bone and Stone: +Tier Attacks for the next Clash or Duel' },
+  ].filter((x) => validate(s, x.a).ok);
+  if (!drawButtons.length && !spells.length && !memOk && !spendOk && !clashSpends.length) return null;
   return (
     <div className="od-activation">
+      {clashSpends.length > 0 && (
+        <div className="actions wrap">
+          <span className="meta">Before the Clash:</span>
+          {clashSpends.map((x) => (
+            <button key={x.label} type="button" className="secondary small" onClick={() => run(x.a)}>
+              {x.label}
+            </button>
+          ))}
+        </div>
+      )}
       {spendOk && (
         <div className="actions wrap">
           <span className="meta">Blasphemous Mesa (1 Dark Power Token):</span>

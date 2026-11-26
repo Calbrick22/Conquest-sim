@@ -33,7 +33,15 @@ export function od(s: GameState, p: PlayerId): OdPlayerState | undefined {
 }
 
 export function initOldDominion(s: GameState): void {
-  for (const p of ['P1', 'P2'] as const) if (isOldDominion(s, p)) s.players[p].od = { dark: 0, pantheon: 0, pref: 'dark', pantheonReached: 1, onceUsed: [] };
+  for (const p of ['P1', 'P2'] as const) {
+    if (!isOldDominion(s, p)) continue;
+    s.players[p].od = { dark: 0, pantheon: 0, pref: 'dark', pantheonReached: 1, onceUsed: [] };
+    for (const c of Object.values(s.characters)) {
+      if (!c.id.startsWith(p)) continue;
+      // Implacable (od p.21): the Character gains the Break Their Lines Action.
+      if (has(c.options, 'Implacable') && !c.actions.some((x) => lc(x.name) === 'break their lines')) c.actions = [...c.actions, ref('Break Their Lines')];
+    }
+  }
 }
 
 // ---------------------------------------------------------------- Warlord and Tiers

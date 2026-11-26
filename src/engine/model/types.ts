@@ -70,6 +70,19 @@ export interface CharacterState {
   roles?: string[];
   /** Unholy Sacrament: Priest (+3) for the first Spellcasting this Round. */
   sacrament?: boolean;
+  /**
+   * Rider (core p.100): no Stand of its own; it rides the Monster Regiment it is attached to and
+   * uses that Stand for distances, Line of Sight and contact.
+   */
+  rider?: boolean;
+  /** Cuirass of Hazlia's Shadow (od p.18): its once-per-game survival has been used. */
+  cuirassUsed?: boolean;
+  /** −1 Attacks until the end of the game (declined a Cuirass of Hazlia's Shadow Duel, od p.18). */
+  cursed?: boolean;
+  /** Extra Attacks until the end of the Round (Soul Reaper, od p.20). */
+  roundA?: number;
+  /** Extra Attacks for its next Clash or Duel (Obdurate Bone and Stone, od p.10). */
+  nextA?: number;
   wounds: number;
   isWarlord: boolean;
   /** Index of the Warband the Character leads. */
@@ -164,6 +177,12 @@ export interface RegimentFlags {
   reprocessed?: boolean;
   /** Its Character declined a Duel this Round (core p.76). */
   declinedDuel?: boolean;
+  /** −1 Attacks until the end of the game (its Character declined a Cuirass of Hazlia's Shadow Duel, od p.18). */
+  cursed?: boolean;
+  /** Exhortation of Eternal Faith (od p.30): its [Aura] gives friendly Command Stands within 12″ +3 Attacks and Cleave (1). */
+  exhortAura?: boolean;
+  /** Reign of Terror (od p.10): Trial of Will for its next Clash. */
+  trialNext?: boolean;
   /** Failed to enter from Reinforcements: arrives automatically next Round (core p.31). */
   autoArrive?: boolean;
   /** Old Dominion, until the end of the Round. */
@@ -373,6 +392,8 @@ export interface DwPlayerState {
   raeghChoice: string[];
   /** Forgemaster: Round in which each Character used its free Spellcasting. */
   forgemasterRound: Record<string, number>;
+  /** Forgemaster (dw p.7): the Round each [Forged] Regiment last lent its Command Stand's Line of Sight. */
+  relayUsed?: Record<string, number>;
   /** Thesis/Antithesis/Synthesis [Activated]: the Round it was activated. */
   steelshaperRound: number;
   /** Forgemaster: Spells each Character attempted this Round. */

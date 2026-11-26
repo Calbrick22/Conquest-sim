@@ -257,6 +257,8 @@ export function beginRound(s: GameState): void {
     r.flags.noDecay = false;
     r.flags.reprocessed = false;
     r.flags.declinedDuel = false;
+    r.flags.exhortAura = false;
+    r.flags.trialNext = false;
     r.flags.compelled = false;
     r.flags.hindered = false;
     r.flags.siphoned = false;
@@ -269,7 +271,11 @@ export function beginRound(s: GameState): void {
     // RULE-AMBIGUITY: AMB-33 — a Regiment still Broken counts Shattering from the start of each new Round.
     if (r.broken) r.standsWhenBroken = r.stands.length;
   }
-  for (const c of Object.values(s.characters)) c.activatedThisRound = false;
+  for (const c of Object.values(s.characters)) {
+    c.activatedThisRound = false;
+    delete c.roundA;
+    delete c.nextA;
+  }
   beginRoundOd(s);
   beginRoundSk(s);
   beginRoundDw(s);

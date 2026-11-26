@@ -225,6 +225,13 @@ export function dwPreventBroken(ctx: Ctx, r: RegimentState): boolean {
 }
 
 /** The Unbound (dw p.5): Dweghom Regiments cannot be Shattered. */
+/** Ardent Creed (dw p.6): friendly [Ardent] and [Clan] Command Stands may always Die Fighting! */
+export function dwCommandDiesFighting(s: GameState, r: RegimentState): boolean {
+  if (!dw(s, r.owner) || !creedActive(s, r.owner, 'Ardent')) return false;
+  const roles = [...regRoles(r), ...(r.grantRoles ?? [])];
+  return hasDwRole(roles, 'Ardent') || hasDwRole(roles, 'Clan');
+}
+
 export function dwNoShatter(s: GameState, r: RegimentState): boolean {
   return !!dw(s, r.owner);
 }

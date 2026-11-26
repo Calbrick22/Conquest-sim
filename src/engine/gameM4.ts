@@ -1,7 +1,7 @@
 import { applyCharacterAbility, applyDrawEvent, characterAbilityProblems, drawEventProblems, onActivationEnd, onActivationStart, recordAction } from './activation';
 import { sectOf } from './rules/special/grants';
 import { activateMemories, blasphemousSoma, warlordHas } from './factions/oldDominion';
-import { applyOdSpend, applyOdSupremacy, isOdSupremacy, memoriesProblems, odActivationStartSpells, odSpendProblems, odSupremacyProblems } from './factions/oldDominionActions';
+import { applyOdClash, applyOdSpend, applyOdSupremacy, isOdSupremacy, memoriesProblems, odActivationStartSpells, odClashProblems, odSpendProblems, odSupremacyProblems } from './factions/oldDominionActions';
 import { castSpell, casterOf, spellProblems } from './spells';
 import { shrouded, spiresActivationStart } from './factions/spires';
 import { endOfSupremacy, prepareProblems, sk, skUnit } from './factions/sorcererKings';
@@ -15,6 +15,7 @@ import {
   applyClash,
   applyCombatReform,
   applyDuel,
+  duellist,
   applyVolley,
   applyWithdraw,
   chargeHindered,
@@ -199,6 +200,12 @@ export function validateM4(s: GameState, a: Action): Validation {
       const p = odSpendProblems(s, r);
       return p.length ? fail(...p) : ok();
     }
+    case 'odClash': {
+      const r = s.regiments[a.regimentId];
+      if (!r) return fail('Unknown Regiment.');
+      const p = odClashProblems(s, r, a.option, a.amount);
+      return p.length ? fail(...p) : ok();
+    }
     case 'lobotomy': {
       // Lobotomytic Override (The Directorate, from the list's Army Rules).
       if (!s.drawn || s.drawn.player !== a.player || s.activation) return fail('Use it straight after drawing a Command Card, before Activating.');
@@ -288,8 +295,9 @@ export function validateM4(s: GameState, a: Action): Validation {
         return marchShapeProblems(a.moves.length ? a.moves : [{ kind: 'forward', d: 0 }], marchValue(s, r), footprintWidth(s, r));
       });
     case 'duel': {
-      const c = s.characters[a.characterId];
-      if (!c || s.activation?.characterId !== c.id) return fail('Duel is the active Character’s own Action (core p.76).');
+      const c = duellist(s, a.characterId);
+      const embodiedActive = !!c?.embodied && !!s.activation && c.attachedTo === s.activation.regimentId && !s.activation.characterId;
+      if (!c || !s.activation || (s.activation.characterId !== c.id && !embodiedActive)) return fail('Duel is the active Character’s own Action (core p.76).');
       const p = canTakeAction(s, s.activation.regimentId, 'duel');
       if (p.length) return fail(...p);
       return duelTargets(s, c).some((t) => t.id === a.targetCharacterId) ? ok() : fail('Choose an enemy Character in a Regiment in contact (core p.76).');
@@ -372,6 +380,10 @@ export function endActivation(ctx: Ctx, entourage: boolean): void {
         logManualRules(ctx, r);
         return;
       }
+      // Destroyed by Aura of Death as it activated: the player may draw again (core p.97).
+      if (s.players[owner].stack.length) s.turn = owner;
+      else passTurn(s, owner);
+      return;
     }
     ev(ctx, { type: 'draw', text: `The next card is not ${r.name}; it goes back on top of the Command Stack (core p.75).`, player: owner });
   }
@@ -528,6 +540,9 @@ export function applyM4(ctx: Ctx, a: Action): void {
     case 'odSpend':
       applyOdSpend(ctx, s.regiments[a.regimentId]!, a.option);
       break;
+    case 'odClash':
+      applyOdClash(ctx, s.regiments[a.regimentId]!, a.option, a.amount);
+      break;
     case 'lobotomy': {
       const first = s.drawn!.card;
       s.players[a.player].lobotomyUsed = true;
@@ -610,7 +625,7 @@ export function applyM4(ctx: Ctx, a: Action): void {
       break;
     case 'duel': {
       recordAction(s.activation!, 'duel');
-      applyDuel(ctx, s.characters[a.characterId]!, s.characters[a.targetCharacterId]!, a.accept);
+      applyDuel(ctx, duellist(s, a.characterId)!, s.characters[a.targetCharacterId]!, a.accept);
       break;
     }
     case 'characterAbility': {

@@ -18,8 +18,8 @@ import { clampFiles, footprint, legalFiles } from '../../engine/formation';
 import { dist, dot, type Vec } from '../../engine/geometry/vec';
 import { applyPath, parseMoveText, pathCost, type MoveSeg } from '../../engine/movement';
 import type { Edge, Pose, RegimentState } from '../../engine/model/types';
-import { duelTargets, enemiesInContact, withdrawPose } from '../../engine/actions';
-import { baseName, DRAW_EVENTS_AUTOMATED } from '../../engine/activation';
+import { duellist, duelTargets, enemiesInContact, withdrawPose } from '../../engine/actions';
+import { baseName, CHARACTER_ABILITIES_AUTOMATED, DRAW_EVENTS_AUTOMATED } from '../../engine/activation';
 import { isEngaged } from '../../engine/queries';
 import { barrageOf } from '../../engine/rules/special/rules';
 import { DiceTray } from './DiceTray';
@@ -624,7 +624,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
                     {x.raw}
                   </button>
                 ) : (
-                  <button key={x.raw} type="button" className="secondary" onClick={() => run({ type: 'characterAbility', characterId: c.id, name: x.raw })}>{x.raw} (manual)</button>
+                  <button key={x.raw} type="button" className="secondary" onClick={() => run({ type: 'characterAbility', characterId: c.id, name: x.raw })}>{x.raw}{CHARACTER_ABILITIES_AUTOMATED.includes(x.name) ? '' : ' (manual)'}</button>
                 ),
               )}
             {tail}
@@ -680,6 +680,19 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
           {!act.ended && engaged && (
             <>
               <button type="button" onClick={() => target('clash')} data-testid="clash">Clash</button>
+              {/* The Fallen Divinity may also Duel (od p.8); Arrogance gives a free Duel (sk p.34). */}
+              {(() => {
+                const me = duellist(s, r.embodies ?? r.id);
+                if (!me) return null;
+                return duelTargets(s, me).map((t) =>
+                  validate(s, { type: 'duel', characterId: me.id, targetCharacterId: t.id, accept: true }).ok ? (
+                    <span key={t.id} className="actions">
+                      <button type="button" onClick={() => run({ type: 'duel', characterId: me.id, targetCharacterId: t.id, accept: true })}>Duel {t.name}: accepted</button>
+                      <button type="button" className="secondary" onClick={() => run({ type: 'duel', characterId: me.id, targetCharacterId: t.id, accept: false })}>…declined</button>
+                    </span>
+                  ) : null,
+                );
+              })()}
               <button type="button" className="secondary" onClick={() => run({ type: 'inspire', regimentId: r.id })}>Inspire</button>
               {r.broken && <button type="button" onClick={() => run({ type: 'combatRally', regimentId: r.id })}>Combat Rally</button>}
               {r.cls !== 'Heavy' && <button type="button" className="secondary" onClick={() => { setMoves([]); setMode('withdraw'); }}>Withdraw</button>}

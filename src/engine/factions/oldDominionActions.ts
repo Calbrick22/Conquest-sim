@@ -1,7 +1,7 @@
-import { allocateWounds } from '../combat';
+import { allocateWounds, commandDieFighting } from '../combat';
 import { resolveImpact, enemiesInContact, arcOfAttack } from '../actions';
 import { ev, type Ctx } from '../dice';
-import type { GameState, PlayerId, PowerPool, RegimentState } from '../model/types';
+import type { CharacterState, GameState, PlayerId, PowerPool, RegimentState } from '../model/types';
 import { distancePolys, isEngaged, regimentPolys } from '../queries';
 import { hasRule } from '../rules/special/rules';
 import { TOL } from '../geometry/vec';
@@ -12,6 +12,7 @@ import {
   hasMemories,
   isAnimateVessel,
   od,
+  poolTier,
   regimentDarkTier,
   roleOf,
   spendPower,
@@ -179,7 +180,8 @@ export function applyOdDrawEvent(ctx: Ctx, r: RegimentState, name: string, ch: O
         for (const e of hit) e.roundMods.push({ stat: 'R', delta: -1, source: 'Exhortation of Eternal Faith' });
         ev(ctx, { type: 'draw-event', text: `Enemy Regiments within 12″ suffer −1 Resolve until the end of the Round: ${hit.map((e) => e.name).join(', ') || 'none'}.` });
       } else if (exh) {
-        ev(ctx, { type: 'manual', text: `${r.name} gains the Aura: friendly Command Stands within 12″ add +3 Attacks and gain Cleave (1) until the end of the Round (manual).`, regimentId: r.id });
+        r.flags.exhortAura = true;
+        ev(ctx, { type: 'draw-event', text: `${r.name} gains the Aura until the end of the Round: friendly Command Stands within 12″ add +3 Attacks and gain Cleave (1) (od p.30).`, regimentId: r.id });
       } else if (o === 'aod') {
         r.roundRules.push({ name: 'Aura of Death', x: 10, plus: true, raw: 'Aura of Death (+10)' });
         ev(ctx, { type: 'draw-event', text: `${r.name} gains Aura of Death (+10) until the end of the Round.`, regimentId: r.id });
@@ -235,6 +237,72 @@ export function applyOdSpend(ctx: Ctx, r: RegimentState, option: 'aod' | 'noBrit
   ev(ctx, { type: 'action', text: `${r.name} ${option === 'aod' ? 'gains Aura of Death (+1)' : option === 'terrifying' ? 'gains Terrifying (+1)' : 'loses Brittle'} until the end of the Round (Blasphemous Mesa, od p.8).`, player: r.owner, regimentId: r.id });
 }
 
+// ---------------------------------------------------------------- Spends as a Clash or Duel is declared
+
+/**
+ * Old Dominion Power Token choices made as a Clash (or Duel) is declared:
+ * - soulReaper (od p.20): the Character spends X Dark Power Tokens for +X Attacks until the end of the Round;
+ * - reignOfTerror (Theokrator, od p.10): once per Round, 1 Token gives a [The Creed] or [The Legion]
+ *   Regiment Trial of Will for its next Clash;
+ * - obdurate (Xhiliarch, od p.10): the once-per-Round choice of +X Attacks for the Warlord's next Clash
+ *   or Duel, X being the Dark Power Tier (instead of the Charge bonus; AMB-41).
+ */
+export type OdClashOption = 'soulReaper' | 'reignOfTerror' | 'obdurate';
+
+const hasOptOd = (c: CharacterState | undefined, n: string) => !!c && c.options.some((o) => lc(o).startsWith(n));
+
+export function odClashProblems(s: GameState, r: RegimentState, option: OdClashOption, amount = 0): string[] {
+  const act = s.activation;
+  const o = od(s, r.owner);
+  if (!o) return ['Old Dominion only.'];
+  if (!act || act.regimentId !== r.id || act.ended) return ['Use it in the Regiment’s own Activation.'];
+  if (r.location !== 'table' || !isEngaged(s, r)) return ['Use it as a Clash or Duel is declared: the Regiment must be engaged.'];
+  const c = Object.values(s.characters).find((x) => x.attachedTo === r.id && !x.destroyed && !x.embodied);
+  if (option === 'soulReaper') {
+    if (!hasOptOd(c, 'soul reaper')) return ['Needs a Character with Soul Reaper (od p.20).'];
+    if (c!.roundA) return ['Soul Reaper has already been used this Round.'];
+    if (!Number.isInteger(amount) || amount < 1 || amount > o.dark) return [`Spend 1 to ${o.dark} Dark Power Tokens.`];
+    return [];
+  }
+  if (option === 'reignOfTerror') {
+    if (!warlordHas(s, r.owner, 'Reign of Terror')) return ['Needs a Theokrator Warlord (Reign of Terror).'];
+    if (o.onceUsed.includes('reignOfTerror')) return ['Reign of Terror has already been used this Round (od p.10).'];
+    if (!(roleOf(r, 'Creed') || roleOf(r, 'Legion'))) return ['Only for [The Creed] or [The Legion] Regiments.'];
+    if (r.flags.trialNext) return ['It already has Trial of Will for its next Clash.'];
+    if (o.dark < 1) return ['No Dark Power Tokens to spend.'];
+    return [];
+  }
+  const w = warlord(s, r.owner);
+  if (!warlordHas(s, r.owner, 'Obdurate Bone and Stone') || !w || w.attachedTo !== r.id) return ["Only for the Xhiliarch Warlord's Regiment (od p.10)."];
+  if (o.onceUsed.includes('obdurate')) return ['Obdurate Bone and Stone has already been used this Round.'];
+  if (poolTier(s, r.owner, 'dark') < 1) return ['The Dark Power Pool has no Tier yet.'];
+  return [];
+}
+
+export function applyOdClash(ctx: Ctx, r: RegimentState, option: OdClashOption, amount = 0): void {
+  const s = ctx.s;
+  const o = od(s, r.owner)!;
+  if (option === 'soulReaper') {
+    const c = Object.values(s.characters).find((x) => x.attachedTo === r.id && !x.destroyed && !x.embodied)!;
+    spendPower(ctx, r.owner, amount, 'Soul Reaper');
+    c.roundA = amount;
+    ev(ctx, { type: 'action', text: `Soul Reaper: ${c.name} adds +${amount} Attacks until the end of the Round (od p.20).`, player: r.owner, regimentId: r.id });
+    return;
+  }
+  if (option === 'reignOfTerror') {
+    spendPower(ctx, r.owner, 1, 'Reign of Terror');
+    o.onceUsed.push('reignOfTerror');
+    r.flags.trialNext = true;
+    ev(ctx, { type: 'action', text: `Reign of Terror: ${r.name} gains Trial of Will for its next Clash (od p.10).`, player: r.owner, regimentId: r.id });
+    return;
+  }
+  const w = warlord(s, r.owner)!;
+  const x = poolTier(s, r.owner, 'dark');
+  o.onceUsed.push('obdurate');
+  w.nextA = x;
+  ev(ctx, { type: 'action', text: `Obdurate Bone and Stone: ${w.name} adds +${x} Attacks for its next Clash or Duel (od p.10).`, player: r.owner, regimentId: r.id });
+}
+
 // ---------------------------------------------------------------- Supremacy Abilities [Activated]
 
 export type SupremacyTarget = { id: string; option?: string };
@@ -275,7 +343,9 @@ export function applyOdSupremacy(ctx: Ctx, p: PlayerId, targets: SupremacyTarget
     ev(ctx, { type: 'supremacy', text: `${w.name}: up to 3 Stands of ${t.name} are destroyed to feed the Fallen Pantheon (od p.8).`, player: p });
     for (let i = 0; i < 3 && t.location === 'table' && t.stands.length; i++) {
       const st = [...t.stands].sort((a, b) => Number(a.isCommand) - Number(b.isCommand) || b.wounds - a.wounds)[0]!;
-      if (t.stands.length === 1) ev(ctx, { type: 'manual', text: `${t.name} would be destroyed: its Command Stand performs Die Fighting! (manual).` });
+      // Its Command Stand Dies Fighting! if the sacrifice would destroy the Regiment (od p.8).
+      if (t.stands.length === 1 && st.isCommand) commandDieFighting(ctx, t, 'Surrounded by Fear and Dead Men, od p.8');
+      if (t.location !== 'table') break;
       allocateWounds(ctx, t, W - st.wounds, other(p));
     }
     const lost = before - t.stands.length;
@@ -309,7 +379,7 @@ export function applyOdSupremacy(ctx: Ctx, p: PlayerId, targets: SupremacyTarget
   if (warlordHas(s, p, 'Reign of Terror')) {
     const hit = Object.values(s.regiments).filter((r) => r.owner === p && (roleOf(r, 'Creed') || roleOf(r, 'Legion')));
     for (const r of hit) r.roundRules.push({ name: 'Trial of Will', raw: 'Trial of Will' });
-    ev(ctx, { type: 'supremacy', text: 'Reign of Terror: [The Creed] and [The Legion] Regiments gain Trial of Will until the end of the Round (od p.10; its choice in a Clash is manual).', player: p });
+    ev(ctx, { type: 'supremacy', text: 'Reign of Terror: [The Creed] and [The Legion] Regiments gain Trial of Will until the end of the Round (od p.10).', player: p });
   }
 }
 

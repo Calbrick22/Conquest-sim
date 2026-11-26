@@ -370,7 +370,7 @@ export function applyDrawEvent(ctx: Ctx, name: string, choice: DrawEventChoice):
 
 // ---------------------------------------------------------------- Character abilities from the lists
 
-export const CHARACTER_ABILITIES_AUTOMATED = ['Snapshot', 'Mighty Swing'];
+export const CHARACTER_ABILITIES_AUTOMATED = ['Snapshot', 'Mighty Swing', 'Break Their Lines'];
 
 export function characterAbilityProblems(s: GameState, c: CharacterState, name: string, targetId?: string, target2Id?: string): string[] {
   if (isPractitioner(name)) return practitionerProblems(s, c, name, { ...(targetId ? { targetId } : {}), ...(target2Id ? { target2Id } : {}) });
@@ -395,6 +395,7 @@ export function characterAbilityProblems(s: GameState, c: CharacterState, name: 
     if (!t || !enemiesInContact(s, r).some((e) => e.id === t.id)) return ['Choose an enemy Regiment engaged with the Character’s Regiment.'];
     return [];
   }
+  if (bn === 'Break Their Lines') return hasRule(r.rules, 'Linebreaker') ? [`${r.name} already has Linebreaker.`] : [];
   return [];
 }
 
@@ -410,6 +411,14 @@ export function applyCharacterAbility(ctx: Ctx, c: CharacterState, name: string,
     const owner = s.regiments[c.attachedTo!]!.owner;
     ev(ctx, { type: 'action', text: `${c.name} uses ${bn}: ${t.name} suffers 1 Wound (no Resolve tests).`, player: owner });
     allocateWounds(ctx, t, 1, owner);
+    return;
+  }
+  // Implacable (od p.21): every Stand in the Character's Regiment gains Linebreaker.
+  // RULE-AMBIGUITY: AMB-88 — no duration is given; it lasts until the end of the Round.
+  if (bn === 'Break Their Lines') {
+    const r = s.regiments[c.attachedTo!]!;
+    r.roundRules.push({ name: 'Linebreaker', raw: 'Linebreaker (Break Their Lines)' });
+    ev(ctx, { type: 'action', text: `${c.name} uses Break Their Lines: ${r.name} gains Linebreaker until the end of the Round (od p.21).`, player: r.owner, regimentId: r.id });
     return;
   }
   ev(ctx, { type: 'manual', text: `${c.name} uses ${name} (manual: apply its effect with the manual tools).` });

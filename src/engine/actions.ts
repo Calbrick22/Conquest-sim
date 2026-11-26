@@ -1,5 +1,5 @@
 import { recordAction } from './activation';
-import { type AttackPool, allocateWounds, charStat, highestR, killCharacter, moraleTest, reprocess, resolveAttack, stat } from './combat';
+import { type AttackPool, allocateWounds, charMoraleFlags, charStat, highestR, killCharacter, moraleTest, reprocess, resolveAttack, resolveValue, stat } from './combat';
 import { ev, rollN, rollTest, type Ctx } from './dice';
 import { arcsOf, majorityArc, type Arc } from './geometry/arcs';
 import { STAND_SIZE } from './geometry/bases';
@@ -8,7 +8,9 @@ import { closestPair, intersectionArea, overlaps, polyDistance, rectCorners, rec
 import { add, dist, normalizeAngle, scale, sub, TOL, type Vec } from './geometry/vec';
 import { footprint, layout, poseFrame } from './formation';
 import { applyPath, samplePath, type MoveSeg } from './movement';
-import type { CharacterState, GameState, PlayerId, Pose, RegimentState } from './model/types';
+import type { CharacterState, GameState, PlayerId, Pose, Profile, RegimentState } from './model/types';
+import type { RuleRef } from '../import/types';
+import { parseRuleRef } from '../import/ruleTokens';
 import {
   anyOverlap,
   attachedCharacter,
@@ -578,8 +580,10 @@ export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
   const support = engagedFlankOrRear(s, r) && !hasRule(r.rules, 'Iron Discipline') ? 1 : ruleX(r.rules, 'Support') || 1;
   const leader = r.commandModels.includes('Leader');
   const c = attachedCharacter(s, r.id);
-  const perTarget = new Map<string, { engaged: number; support: number; charAttacks: number; charEngaged: boolean }>();
-  const bucket = (id: string) => perTarget.get(id) ?? (perTarget.set(id, { engaged: 0, support: 0, charAttacks: 0, charEngaged: false }), perTarget.get(id)!);
+  const perTarget = new Map<string, { engaged: number; support: number; charAttacks: number; charEngaged: boolean; cmd: number }>();
+  const bucket = (id: string) => perTarget.get(id) ?? (perTarget.set(id, { engaged: 0, support: 0, charAttacks: 0, charEngaged: false, cmd: 0 }), perTarget.get(id)!);
+  // Exhortation of Eternal Faith (od p.30): [Aura] friendly Command Stands within 12″ add +3 Attacks and gain Cleave (1).
+  const exhorted = r.stands.some((x) => x.isCommand) && Object.values(s.regiments).some((x) => x.owner === r.owner && x.location === 'table' && x.flags.exhortAura && (x.id === r.id || distancePolys(regimentPolys(s, x), regimentPolys(s, r)) <= 12 + TOL));
   for (const sl of slots) {
     const p = rectPoly(sl.rect);
     const touching = enemies.filter((e) => polyDistance(p, fps.get(e.id)!) <= TOL);
@@ -588,7 +592,8 @@ export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
     if (sl.isCharacter) {
       b.charAttacks += touching.length && c ? charStat(c, 'A') : 1;
       b.charEngaged = touching.length > 0;
-    } else if (touching.length) b.engaged += stat(r, 'A') + (sl.isCommand && leader ? 1 : 0) + (sl.isCommand && r.flags.epigenetic ? 2 : 0); // Epigenetic Trigger (sp p.9)
+    } else if (touching.length && sl.isCommand && exhorted) b.cmd += stat(r, 'A') + (leader ? 1 : 0) + (r.flags.epigenetic ? 2 : 0) + 3;
+    else if (touching.length) b.engaged += stat(r, 'A') + (sl.isCommand && leader ? 1 : 0) + (sl.isCommand && r.flags.epigenetic ? 2 : 0); // Epigenetic Trigger (sp p.9)
     else b.support += support;
   }
   for (const [tid, b] of perTarget) {
@@ -611,15 +616,29 @@ export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
     ];
     const glim = takeGlimmers(s, r);
     if (glim) pools[0]!.convertFails = glim;
+    if (b.cmd) pools.push({ label: `${r.name} Command Stand (Exhortation of Eternal Faith: +3 Attacks, Cleave (1))`, dice: b.cmd, skill: ins.skill, rerollSixes: ins.rerollSixes, ...poolMods([...r.rules, parseRuleRef('Cleave (1)')], target, 'clash', arc, ins.skill, {}) });
+    // What we did in Life will Echo in Eternity (od p.21): Flurry when Clashing against a Broken Regiment.
+    if (target.broken && c && optOf(c, 'what we did in life')) {
+      for (const p of pools) p.rerollFailed = true;
+      ev(ctx, { type: 'note', text: `What we did in Life: ${r.name} has Flurry against the Broken ${target.name} (od p.21).` });
+    }
     if (c && b.charAttacks) {
       const cins = inspiredSkill(charStat(c, 'C'), inspired);
-      pools.push({ label: `${c.name} (${b.charEngaged ? 'engaged' : 'support'})`, dice: b.charAttacks, skill: cins.skill, rerollSixes: cins.rerollSixes, ...poolMods(c.rules, target, 'clash', arc, cins.skill) });
+      pools.push({ label: `${c.name} (${b.charEngaged ? 'engaged' : 'support'})`, dice: b.charAttacks, skill: cins.skill, rerollSixes: cins.rerollSixes, ...poolMods(c.rules, target, 'clash', arc, cins.skill), ...charMoraleFlags(c) });
+    }
+    // Trial of Will (od p.10): Defense Rolls against the target's modified Resolve when that is lower.
+    if (hasRule(r.rules, 'Trial of Will') || r.flags.trialNext) {
+      const why = trialOfWill(ctx, r, target, pools);
+      if (why) ev(ctx, { type: 'note', text: `Trial of Will: ${why} (od p.10).`, regimentId: target.id });
     }
     if (inspired) ev(ctx, { type: 'note', text: `${r.name} is Inspired: ${ins.rerollSixes ? 're-rolls natural 6s' : `Clash ${C}→${ins.skill}`} (core p.99).` });
     if (perTarget.size > 1) ev(ctx, { type: 'note', text: `${r.name} directs ${pools.reduce((a, p) => a + p.dice, 0)} Attacks at ${target.name} (core p.45).` });
     resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: target.id, arc, pools, morale: true, terrifying: ruleX(r.rules, 'Terrifying'), what: `${r.name} Clash`, kind: 'clash' });
     if (r.location === 'destroyed') break;
   }
+  // One-Clash effects end with the Clash (Reign of Terror, Obdurate Bone and Stone; od p.10).
+  r.flags.trialNext = false;
+  if (c) delete c.nextA;
   pressTheAttack(ctx, r, enemies.map((e) => e.id));
 }
 
@@ -750,10 +769,10 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
     const effective = longshot || bestD < b.range / 2;
     if (effective) shots += 1;
     // Cover (core p.86) halves Barrage like Loose Formation; the two do not stack (core p.99).
-    // Hypersynaptic Bonding ignores Cover too (sp p.28).
+    // Hypersynaptic Bonding (sp p.28) and Sureshot (core p.100) ignore Cover.
     // Gifted Mortals, Court of Water (Mahabharati Initiates, sk p.27): within 3″ of Water terrain, all its Stands count as in Cover.
     const tidal = t.name === 'Mahabharati Initiates' && !!s.players[t.owner].sk && ofCourt(s, t, 'Water') && within(s, t, waterPieces(s), 3) ? 'Water, Gifted Mortals' : null;
-    const cover = hasRule(r.rules, 'Hypersynaptic Bonding') ? null : tidal ?? coverHalves(s, from, closestPointOnPoly(from, clearTo!), regimentPolys(s, r), tPolys, t.type);
+    const cover = hasRule(r.rules, 'Hypersynaptic Bonding') || hasRule(r.rules, 'Sureshot') ? null : tidal ?? coverHalves(s, from, closestPointOnPoly(from, clearTo!), regimentPolys(s, r), tPolys, t.type);
     if (loose || cover) shots = Math.ceil(shots / 2);
     const arc = majorityArc(tfp, rectPoly(sl.rect)) ?? 'front';
     plans.push({ label: `${label}${effective ? ' (Effective Range +1)' : ''}${loose ? ' (Loose Formation: halved)' : cover ? ` (Cover, ${cover}: halved)` : ''}`, shots, arc, skill: vAimed, ap, deadly, effective });
@@ -924,14 +943,108 @@ function countInContact(s: GameState, r: RegimentState): number {
   return layout(formationInput(s, r)).filter((sl) => !sl.isCharacter && enemies.some((ep) => distancePolys([rectPoly(sl.rect)], ep) <= TOL)).length;
 }
 
+/**
+ * Trial of Will (od p.10): the attacker may have the Defense Rolls made against the target's
+ * modified Resolve (lowered by its Terrifying) instead of its Defense or Evasion; the engine uses
+ * it when that Resolve is lower than the save. A target with no Resolve suffers −1 Defense instead.
+ */
+function trialOfWill(ctx: Ctx, r: RegimentState, t: RegimentState, pools: AttackPool[]): string | null {
+  if (t.profile.R === null || autoPassesResolve(t)) {
+    for (const p of pools) p.reduceD = (p.reduceD ?? 0) + 1;
+    return `${t.name} has no Resolve: −1 Defense for this Clash`;
+  }
+  const fearless = hasRule(t.rules, 'Fearless') || hasRule(t.rules, 'Bravery');
+  const R = Math.max(0, resolveValue(ctx, t) - (fearless ? 0 : ruleX(r.rules, 'Terrifying')));
+  let used = false;
+  for (const p of pools) {
+    const save = Math.max(Math.max(0, stat(t, 'D') - (p.reduceD ?? 0)), p.noEvasion ? 0 : stat(t, 'E'));
+    if (R < save) {
+      p.defenseOverride = R;
+      used = true;
+    }
+  }
+  return used ? `${t.name} makes its Defense Rolls against its Resolve (${R})` : null;
+}
+
 // ---------------------------------------------------------------- Duel (core p.76) — basic automation
 
 export function duelTargets(s: GameState, c: CharacterState): CharacterState[] {
   if (!c.attachedTo) return [];
   const r = s.regiments[c.attachedTo]!;
+  // A Monster Character that is a Regiment by itself (od p.8) can be challenged too (AMB-48).
   return enemiesInContact(s, r)
-    .map((e) => attachedCharacter(s, e.id))
-    .filter((x): x is CharacterState => !!x);
+    .map((e) => attachedCharacter(s, e.id) ?? (e.embodies ? s.characters[e.embodies] : undefined))
+    .filter((x): x is CharacterState => !!x && !x.destroyed);
+}
+
+/** Arrogance (Rakshasa, sk p.34): the Regiment Duels as if it were a Character Stand. */
+export function arrogant(s: GameState, r: RegimentState | undefined): boolean {
+  return !!r && !!s.players[r.owner].sk && skUnit(r)?.chargeVs === 'character';
+}
+
+/**
+ * The Character taking part in a Duel. A Regiment with Arrogance (sk p.34) Duels "as if it was a
+ * Character Stand": it is given a stand-in Character that fights with its Regiment's profile and
+ * rules and takes its Wounds on its own Stand, like a Character that is a Regiment by itself.
+ */
+export function duellist(s: GameState, id: string): CharacterState | undefined {
+  const c = s.characters[id];
+  if (c) return c;
+  const r = s.regiments[id];
+  if (!r || !arrogant(s, r)) return undefined;
+  return {
+    id: r.id, name: r.name, type: r.type, profile: r.profile, rules: r.rules, baseRules: r.baseRules, actions: [], drawEvents: [], supremacyAbilities: [], options: [],
+    wounds: 0, isWarlord: false, warband: r.warband, attachedTo: r.id, destroyed: r.location !== 'table', activatedThisRound: r.activatedThisRound, embodied: true,
+  };
+}
+
+const optOf = (c: CharacterState, n: string) => c.options.some((o) => o.toLowerCase().replace(/[’]/g, "'").startsWith(n));
+
+/** The Regiment a duellist belongs to: its own (od p.8) or the one it is attached to. */
+function duelReg(s: GameState, x: CharacterState): RegimentState | undefined {
+  return x.attachedTo ? s.regiments[x.attachedTo] : undefined;
+}
+
+/** A Monster Character, a Character that is a Monster Regiment by itself, or a Rider (core p.100). */
+export function bigDuellist(x: CharacterState): boolean {
+  return !!x.embodied || x.type === 'Monster' || !!x.rider || hasRule(x.rules, 'Rider');
+}
+
+/** Slain Bigger (Ardent Kerawegh, dw p.11): applies in a Duel against a Monster Character or a Rider. */
+function slainBigger(x: CharacterState, vs: CharacterState): boolean {
+  return hasRule(x.rules, 'Slain Bigger') && bigDuellist(vs);
+}
+
+/**
+ * A duellist's characteristic: a Character that is a Regiment by itself uses its Regiment's profile
+ * (od p.8; RULE-AMBIGUITY: AMB-48). Slain Bigger adds +3 Evasion, to at most 3 (dw p.11).
+ */
+function duelStat(s: GameState, x: CharacterState, k: keyof Profile, vs: CharacterState): number {
+  const r = duelReg(s, x);
+  let v = x.embodied && r ? stat(r, k) : charStat(x, k);
+  if (k === 'E' && slainBigger(x, vs)) v = Math.max(v, Math.min(3, v + 3));
+  return v;
+}
+
+/**
+ * The rules a duellist fights with: its own (its Regiment's, when it is a Regiment by itself), plus
+ * Duel-only ones: Eleutherea gives Parry, Counter-Attack and Cleave (+1) (od p.20); Slain Bigger
+ * gives Fearless (dw p.11).
+ */
+function duelRules(s: GameState, x: CharacterState, vs: CharacterState): RuleRef[] {
+  const r = duelReg(s, x);
+  const base = x.embodied && r ? r.rules : x.rules;
+  const extra: RuleRef[] = [];
+  if (optOf(x, 'eleutherea')) extra.push(parseRuleRef('Parry'), parseRuleRef('Counter-Attack'), parseRuleRef('Cleave (+1)'));
+  if (slainBigger(x, vs)) extra.push(parseRuleRef('Fearless'));
+  return [...base, ...extra];
+}
+
+/** Does this duellist pass Resolve automatically (no Resolve, Animate Vessel; od p.5)? */
+function duelNoResolve(s: GameState, x: CharacterState): boolean {
+  const r = duelReg(s, x);
+  const prof = x.embodied && r ? r.profile : x.profile;
+  return prof.R === null || hasRule(x.embodied && r ? r.rules : x.baseRules, 'Animate Vessel');
 }
 
 /**
@@ -940,51 +1053,62 @@ export function duelTargets(s: GameState, c: CharacterState): CharacterState[] {
  * Hardened, Shield in any arc (core p.100), Linebreaker, Smite, Flawless Strikes, Deadly Blades,
  * Relentless Blows; the defender's Untouchable, Tenacious and Counter-Attack (core p.97, p.101).
  * RULE-AMBIGUITY: AMB-12 — each Wound then needs a Resolve roll; Oblivious halves those Wounds.
+ * Chthonic Flame (dw p.22) re-rolls successful Resolve rolls; Anastegma (od p.20) doubles the dice.
  * Returns [wounds to the defender, wounds to the attacker from Counter-Attack].
  */
 function duelAttack(ctx: Ctx, a: CharacterState, d: CharacterState): [number, number] {
-  const C = charStat(a, 'C');
-  const reroll = hasRule(a.rules, 'Flurry') && !hasRule(d.rules, 'Parry');
-  const hit = rollTest(ctx, charStat(a, 'A'), { target: C, rerollFailed: reroll }, `${a.name}: Duel to hit`);
+  const s = ctx.s;
+  const ar = duelRules(s, a, d);
+  const dr = duelRules(s, d, a);
+  const C = duelStat(s, a, 'C', d);
+  const reroll = hasRule(ar, 'Flurry') && !hasRule(dr, 'Parry');
+  const hit = rollTest(ctx, duelStat(s, a, 'A', d), { target: C, rerollFailed: reroll }, `${a.name}: Duel to hit`);
   let hits = hit.passes;
   const ones = hit.values.filter((v) => v === 1).length;
   if (C >= 6) hits += ones;
-  const counter = hasRule(d.rules, 'Counter-Attack') ? hit.values.filter((v) => v === 6).length : 0;
+  if (hasRule(ar, 'Relentless Blows')) hits += ones;
+  const counter = hasRule(dr, 'Counter-Attack') ? hit.values.filter((v) => v === 6).length : 0;
   ev(ctx, { type: 'dice', text: `${a.name} attacks ${d.name}: ${hits} Hit${hits === 1 ? '' : 's'}.`, dice: hit.record });
   let w = 0;
   if (hits) {
-    const shield = hasRule(d.rules, 'Shield') && !hasRule(a.rules, 'Linebreaker') ? 1 : 0;
-    const reduce = Math.max(0, ruleX(a.rules, 'Cleave') - ruleX(d.rules, 'Hardened'));
-    const dEff = hasRule(a.rules, 'Smite') ? 0 : Math.max(0, charStat(d, 'D') + shield - reduce);
-    const E = charStat(d, 'E');
-    const onesHits = hasRule(a.rules, 'Flawless Strikes') ? Math.min(ones, hits) : 0;
+    const shield = hasRule(dr, 'Shield') && !hasRule(ar, 'Linebreaker') ? 1 : 0;
+    const reduce = Math.max(0, ruleX(ar, 'Cleave') - ruleX(dr, 'Hardened'));
+    const dEff = hasRule(ar, 'Smite') ? 0 : Math.max(0, duelStat(s, d, 'D', a) + shield - reduce);
+    const E = duelStat(s, d, 'E', a);
+    if (slainBigger(d, a)) ev(ctx, { type: 'note', text: `Slain Bigger: ${d.name} has Evasion ${E} and Fearless against ${a.name} (dw p.11).` });
+    const onesHits = hasRule(ar, 'Flawless Strikes') ? Math.min(ones, hits) : 0;
     const roll = (n: number, t: number) => {
       if (n <= 0) return;
       const def = rollTest(ctx, n, { target: t, defense: true }, `${d.name}: Duel Defense`);
       const passed = [...def.passed];
-      if (hasRule(d.rules, 'Untouchable')) {
+      if (hasRule(dr, 'Untouchable')) {
         def.values.forEach((v, i) => {
           if (v === 6 && !passed[i]) passed[i] = rollTest(ctx, 1, { target: t, defense: true }, `${d.name}: Untouchable`).passes === 1;
         });
       }
-      let ten = ruleX(d.rules, 'Tenacious');
+      let ten = ruleX(dr, 'Tenacious');
       for (let i = 0; i < passed.length && ten > 0; i++)
         if (!passed[i]) {
           passed[i] = true;
           ten--;
         }
       passed.forEach((p, i) => {
-        if (!p) w += hasRule(a.rules, 'Deadly Blades') && def.values[i] === 6 ? 2 : 1;
+        if (!p) w += hasRule(ar, 'Deadly Blades') && def.values[i] === 6 ? 2 : 1;
       });
       ev(ctx, { type: 'dice', text: `${d.name} saves on ${t} or less.`, dice: def.record });
     };
     roll(hits - onesHits, Math.max(dEff, E));
     roll(onesHits, E);
   }
-  if (w > 0) {
-    const m = rollTest(ctx, w, { target: charStat(d, 'R') }, `${d.name}: Duel Resolve`);
-    let extra = w - m.passes;
-    if (hasRule(d.rules, 'Oblivious')) extra = Math.ceil(extra / 2);
+  if (w > 0 && duelNoResolve(s, d)) ev(ctx, { type: 'note', text: `${d.name} has no Resolve: no Resolve rolls (od p.5).` });
+  else if (w > 0) {
+    const flags = charMoraleFlags(a);
+    const dice = flags.moraleDouble ? 2 * w : w;
+    const m = rollTest(ctx, dice, { target: duelStat(s, d, 'R', a), rerollSuccesses: !!flags.moraleRerollSuccesses && !hasRule(dr, 'Iron Discipline') }, `${d.name}: Duel Resolve`);
+    let extra = dice - m.passes;
+    if (flags.moraleRerollSuccesses) m.record.notes?.push('Chthonic Flame: successes re-rolled');
+    if (flags.moraleDouble) m.record.notes?.push('Anastegma: two dice per Wound');
+    if (hasRule(dr, 'Oblivious')) extra = Math.ceil(extra / 2);
     if (extra) ev(ctx, { type: 'dice', text: `${d.name} fails Resolve: +${extra} Wound${extra > 1 ? 's' : ''}.`, dice: m.record });
     w += extra;
   }
@@ -992,11 +1116,24 @@ function duelAttack(ctx: Ctx, a: CharacterState, d: CharacterState): [number, nu
   return [w, counter];
 }
 
+/**
+ * May the target decline? Not with Cuirass of Hazlia's Shadow (od p.18), the Fallen Divinity
+ * (od p.8), or after already declining this Round (core p.76); the Dweghom ones are in dwMustAccept.
+ */
+export function mustAcceptDuel(s: GameState, challenger: CharacterState, target: CharacterState): string | null {
+  const tr = duelReg(s, target);
+  if (dwMustAccept(s, challenger, target)) return 'dw p.22, p.28';
+  if (optOf(target, "cuirass of hazlia's shadow")) return "Cuirass of Hazlia's Shadow, od p.18";
+  if (target.embodied && tr && /fallen divinity/i.test(tr.name)) return 'od p.8';
+  if (tr?.flags.declinedDuel) return 'it already declined a Duel this Round, core p.76';
+  return null;
+}
+
 export function applyDuel(ctx: Ctx, c: CharacterState, target: CharacterState, acceptIn: boolean): void {
   const s = ctx.s;
-  // Tempered Goad, Dismay (dw p.22, p.28): the Duel cannot be declined.
-  const accept = acceptIn || dwMustAccept(s, c, target);
-  if (!acceptIn && accept) ev(ctx, { type: 'duel', text: `${target.name} cannot decline the Duel (dw p.22, p.28).` });
+  const forced = mustAcceptDuel(s, c, target);
+  const accept = acceptIn || !!forced;
+  if (!acceptIn && accept) ev(ctx, { type: 'duel', text: `${target.name} cannot decline the Duel (${forced}).` });
   const targetReg = target.attachedTo;
   if (!accept) {
     const tr = s.regiments[target.attachedTo!]!;
@@ -1014,15 +1151,46 @@ export function applyDuel(ctx: Ctx, c: CharacterState, target: CharacterState, a
       }
       tr.flags.declinedDuel = true;
       ev(ctx, { type: 'duel', text: `${target.name} declines the Duel: until the end of the Round ${tr.name} cannot Seize, uses its lowest Resolve and cannot be Inspired (core p.76).` });
+      // Cuirass of Hazlia's Shadow (od p.18): the decliner and its Regiment −1 Attacks for the rest of the game.
+      if (optOf(c, "cuirass of hazlia's shadow") && !target.cursed) {
+        target.cursed = true;
+        tr.flags.cursed = true;
+        ev(ctx, { type: 'duel', text: `Cuirass of Hazlia's Shadow: ${target.name} and ${tr.name} suffer −1 Attacks until the end of the game (od p.18).`, regimentId: tr.id });
+      }
+      // Arrogance (sk p.34): a refused Duel gives the challenging Regiment Flurry until the end of the Round.
+      const cr = s.regiments[c.id];
+      if (cr && !s.characters[c.id] && arrogant(s, cr)) {
+        cr.roundRules.push(parseRuleRef('Flurry'));
+        ev(ctx, { type: 'duel', text: `Arrogance: ${cr.name} gains Flurry until the end of the Round (sk p.34).`, regimentId: cr.id });
+      }
+      // What we did in Life will Echo in Eternity (od p.21): the Regiment re-rolls successful Morale Tests this Round.
+      if (optOf(c, 'what we did in life')) {
+        tr.flags.rerollMoraleSuccesses = true;
+        ev(ctx, { type: 'duel', text: `What we did in Life: ${tr.name} re-rolls successful Morale Tests until the end of the Round (od p.21).`, regimentId: tr.id });
+      }
       return;
     }
   }
   ev(ctx, { type: 'duel', text: `${c.name} duels ${target.name} (core p.76).` });
   const ownerOf = (x: CharacterState) => s.regiments[x.attachedTo!]!.owner;
+  const gone = (x: CharacterState) => x.destroyed || (!!x.embodied && duelReg(s, x)?.location !== 'table');
   const apply = (ch: CharacterState, w: number, by: CharacterState) => {
-    if (!w || ch.destroyed) return;
+    if (!w || gone(ch)) return;
+    // A Character that is a Regiment by itself takes Duel Wounds on its own Stand (od p.8; AMB-48).
+    if (ch.embodied) {
+      const reg = duelReg(s, ch);
+      if (reg && reg.location === 'table') allocateWounds(ctx, reg, w, ownerOf(by));
+      return;
+    }
     ch.wounds += w;
     if (ch.wounds >= charStat(ch, 'W')) {
+      // Cuirass of Hazlia's Shadow (od p.18): once per game it stays in play with 1 Wound remaining.
+      if (optOf(ch, "cuirass of hazlia's shadow") && !ch.cuirassUsed) {
+        ch.cuirassUsed = true;
+        ch.wounds = Math.max(0, charStat(ch, 'W') - 1);
+        ev(ctx, { type: 'duel', text: `Cuirass of Hazlia's Shadow: ${ch.name} stays in play with 1 Wound remaining (od p.18).` });
+        return;
+      }
       const reg = ch.attachedTo;
       killCharacter(ctx, ch, ownerOf(by), 'in a Duel');
       ch.attachedTo = null;
@@ -1030,18 +1198,19 @@ export function applyDuel(ctx: Ctx, c: CharacterState, target: CharacterState, a
     }
   };
   // Quicksilver Strike: a Character with it strikes first; if both have it, simultaneously (core p.100).
-  const qsC = hasRule(c.rules, 'Quicksilver Strike');
-  const qsT = hasRule(target.rules, 'Quicksilver Strike');
+  const qsC = hasRule(duelRules(s, c, target), 'Quicksilver Strike');
+  const qsT = hasRule(duelRules(s, target, c), 'Quicksilver Strike');
   if (qsC !== qsT) {
     const [first, second] = qsC ? [c, target] : [target, c];
     const [w1, back1] = duelAttack(ctx, first, second);
     apply(second, w1, first);
     apply(first, back1, second);
-    if (!second.destroyed && !first.destroyed) {
+    if (!gone(second) && !gone(first)) {
       const [w2, back2] = duelAttack(ctx, second, first);
       apply(first, w2, second);
       apply(second, back2, first);
     }
+    delete c.nextA;
     dwAfterDuel(ctx, c, target, targetReg);
     return;
   }
@@ -1052,8 +1221,9 @@ export function applyDuel(ctx: Ctx, c: CharacterState, target: CharacterState, a
     apply(c, toChallenger + backToC, target);
   };
   exchange();
+  delete c.nextA;
   // To the End (dw p.10–14): keep Duelling until a Character is destroyed (at most 20 exchanges).
-  for (let i = 0; i < 20 && toTheEnd(c) && s.players[s.regiments[c.attachedTo ?? targetReg!]?.owner ?? 'P1'].dw && !c.destroyed && !target.destroyed; i++) {
+  for (let i = 0; i < 20 && toTheEnd(c) && s.players[s.regiments[c.attachedTo ?? targetReg!]?.owner ?? 'P1'].dw && !gone(c) && !gone(target); i++) {
     ev(ctx, { type: 'duel', text: `To the End: ${c.name} and ${target.name} fight on (dw p.10).` });
     exchange();
   }

@@ -421,6 +421,21 @@ export function within(s: GameState, r: RegimentState, pieces: Poly[], d: number
   return pieces.length > 0 && distancePolys(regimentPolys(s, r), pieces) <= d + TOL;
 }
 
+/** A Mahut ridden by a Character with Favored of Hormus (sk p.17). */
+export function hormusMahut(s: GameState, r: RegimentState): boolean {
+  return r.name === 'Mahut' && Object.values(s.characters).some((c) => c.attachedTo === r.id && !c.destroyed && c.options.some((o) => /^favou?red of hormus$/i.test(o.trim())));
+}
+
+/**
+ * Within range of Earth terrain (sk p.40–42): within 3″ of an Earth piece, or within 3″ of a
+ * friendly Favored of Hormus Mahut, whose neighbours count as within range of Earth terrain (sk p.17).
+ */
+export function nearEarth(s: GameState, r: RegimentState): boolean {
+  if (r.location !== 'table') return false;
+  if (within(s, r, earthPieces(s), 3)) return true;
+  return Object.values(s.regiments).some((m) => m.owner === r.owner && m.location === 'table' && hormusMahut(s, m) && (m.id === r.id || distancePolys(regimentPolys(s, m), regimentPolys(s, r)) <= 3 + TOL));
+}
+
 /** Changes a piece's keywords until the end of the Round (or for good), remembering the originals. */
 export function setTerrainKeywords(s: GameState, pieceId: string, kws: string[], permanent = false): void {
   const piece = terrainOf(s).find((x) => x.id === pieceId);
@@ -439,6 +454,8 @@ export interface SkGrants {
   rules: RuleRef[];
   drawEvents: string[];
   mods: StatMod[];
+  /** Rules the Regiment loses (Favored of Hormus: the Mahut's Barrage, sk p.17). */
+  remove?: string[];
 }
 
 const belowStart = (r: RegimentState) => r.stands.length < r.startingStands || r.stands.some((x) => x.wounds > 0);
@@ -472,10 +489,15 @@ export function skRegimentGrants(s: GameState, r: RegimentState): SkGrants {
   const tidecallerAura = onTable && elementalKind(r, 'Water') && Object.values(s.regiments).some((a) => a.owner === r.owner && a.location === 'table' && a.flags.tidecaller === 'aura' && distancePolys(regimentPolys(s, a), regimentPolys(s, r)) <= 8 + TOL);
   if (onTable && elementalKind(r, 'Water') && (inWater(s, r) || tidecallerAura)) add('Elemental Waters');
   // Earth Elemental (sk p.40–42): Untouchable within 3″ of Earth terrain (Earth Markers: AMB-67).
-  const earth = earthPieces(s);
-  if (onTable && elementalKind(r, 'Earth') && within(s, r, earth, 3)) add('Untouchable');
+  const earthy = nearEarth(s, r);
+  if (onTable && elementalKind(r, 'Earth') && earthy) add('Untouchable');
   // Earthen Aegis (sk p.40–41): Regeneration (+4) within 3″ of Earth terrain.
-  if (onTable && u?.earthenAegis && within(s, r, earth, 3)) out.drawEvents.push('Regeneration (+4)');
+  if (onTable && u?.earthenAegis && earthy) out.drawEvents.push('Regeneration (+4)');
+  // Favored of Hormus (sk p.17): the ridden Mahut loses Barrage and gains Terrifying (1).
+  if (hormusMahut(s, r)) {
+    add('Terrifying (1)');
+    out.remove = ['Barrage'];
+  }
   // Shattered Perfection / Raging Elements (sk p.40–41): from the first time below its starting strength.
   if (r.flags.shattered && u?.shattered === 'perfection') ['Smite', 'Fury', 'Oblivious'].forEach(add);
   if (r.flags.shattered && u?.shattered === 'raging') add('Flurry');

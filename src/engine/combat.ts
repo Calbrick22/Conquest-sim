@@ -10,7 +10,7 @@ import { hasRule, ruleX } from './rules/special/rules';
 import { autoPassesResolve, onRegimentDestroyed, onStandLost, rerollsMoraleSuccesses } from './factions/oldDominion';
 import { pheromanticDrive } from './factions/spires';
 import { skUnit } from './factions/sorcererKings';
-import { dwAutoPassesMorale, dwNoShatter, dwOnDestroyed, dwPreventBroken } from './factions/dweghomActions';
+import { dwAutoPassesMorale, dwCommandDiesFighting, dwNoShatter, dwOnDestroyed, dwPreventBroken } from './factions/dweghomActions';
 
 /**
  * Niyantran (sk p.16): while its Regiment is not Broken, friendly Regiments within 12″ of that
@@ -42,6 +42,15 @@ export function stat(r: RegimentState, k: keyof Profile): number {
 export function charStat(c: CharacterState, k: keyof Profile): number {
   const mod = (c.grantMods ?? []).filter((m) => m.stat === k).reduce((a, m) => a + m.delta, 0);
   return Math.max(0, (c.profile[k] ?? 0) + mod);
+}
+
+/**
+ * Morale changes from a Character's upgrades, for its own Attack pools: Chthonic Flame (dw p.22)
+ * re-rolls successful Morale Tests; Anastegma (od p.20) rolls two Morale dice per Wound.
+ */
+export function charMoraleFlags(c: CharacterState): Pick<AttackPool, 'moraleRerollSuccesses' | 'moraleDouble'> {
+  const has = (n: string) => c.options.some((o) => o.toLowerCase().replace(/[’]/g, "'").startsWith(n));
+  return { ...(has('chthonic flame') ? { moraleRerollSuccesses: true } : {}), ...(has('anastegma') ? { moraleDouble: true } : {}) };
 }
 
 /** A Character lends its Resolve to its Regiment unless it has none (Animate Vessel, od p.5). */
@@ -110,6 +119,10 @@ export interface AttackPool {
   defenseOverride?: number;
   /** The target cannot use its Evasion (Hypercatalytic Discharge, sp p.33). */
   noEvasion?: boolean;
+  /** Morale Tests against these Wounds re-roll successes (Chthonic Flame, dw p.22). */
+  moraleRerollSuccesses?: boolean;
+  /** Morale Tests against these Wounds roll two dice per Wound (Anastegma, od p.20). */
+  moraleDouble?: boolean;
 }
 
 export interface AttackSpec {
@@ -147,6 +160,9 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
   const kind = spec.kind ?? 'special';
   let totalHits = 0;
   let wounds = 0;
+  // Wounds whose Morale Tests are changed by the attacking pool (Chthonic Flame, Anastegma).
+  let rerollWounds = 0;
+  let doubleWounds = 0;
   let naturalOnes = 0;
   const melee = kind === 'clash' || kind === 'impact';
   // Shield: +1 Defense against the front arc (core p.100). Phalanx: +1 Defense and Resolve against the front (core p.100).
@@ -253,6 +269,8 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
       .join(', ');
     ev(ctx, { type: 'note', text: `${target.name} saves on ${save} or less${mods ? ` (${mods})` : ''}: ${saved} saved, ${w} Wound${w === 1 ? '' : 's'}.`, player: target.owner });
     wounds += w;
+    if (pool.moraleRerollSuccesses) rerollWounds += w;
+    else if (pool.moraleDouble) doubleWounds += w;
   }
   const res: AttackResult = { hits: totalHits, wounds, moraleWounds: 0, standsLost: 0, destroyed: false, naturalOnes };
   // Searing Sandstorm (sk p.18): targeted by an enemy Volley, it becomes Inflamed.
@@ -270,7 +288,12 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
     // Lethal Demise (core p.99) only answers a Stand destroyed by the enemy in contact in a Clash
     // (RULE-AMBIGUITY: AMB-60): not Volleys, Impact Attacks, Spells or other Hits.
     allocateWounds(ctx, target, wounds, spec.attackerOwner, spec.noLethalDemise || kind !== 'clash' ? undefined : spec.attackerId);
-    if (!isDestroyed(target) && spec.morale) res.moraleWounds = moraleTest(ctx, target, wounds, spec);
+    if (!isDestroyed(target) && spec.morale) {
+      const plain = wounds - rerollWounds - doubleWounds;
+      if (plain) res.moraleWounds += moraleTest(ctx, target, plain, spec);
+      if (rerollWounds && !isDestroyed(target)) res.moraleWounds += moraleTest(ctx, target, rerollWounds, { ...spec, rerollSuccesses: true, why: 'Chthonic Flame' });
+      if (doubleWounds && !isDestroyed(target)) res.moraleWounds += moraleTest(ctx, target, doubleWounds, { ...spec, dice: 2 * doubleWounds, why: 'Anastegma: two dice per Wound' });
+    }
     res.standsLost = before - target.stands.length;
     res.destroyed = isDestroyed(target);
     // Ardent Creed, Blades of the Ancestor (dw p.6, p.29).
@@ -329,7 +352,12 @@ export function isDestroyed(r: RegimentState): boolean {
  * X fails become passes (core p.99); Oblivious: 1 Wound per 2 fails, rounding up (core p.99);
  * a declined Duel re-rolls successful tests of 1 (core p.76).
  */
-export function moraleTest(ctx: Ctx, r: RegimentState, wounds: number, spec: Pick<AttackSpec, 'arc' | 'terrifying' | 'attackerOwner'>): number {
+export function moraleTest(
+  ctx: Ctx,
+  r: RegimentState,
+  wounds: number,
+  spec: Pick<AttackSpec, 'arc' | 'terrifying' | 'attackerOwner'> & { rerollSuccesses?: boolean; dice?: number; why?: string },
+): number {
   // Animate Vessel (od p.5): no Resolve, always passes Morale Tests.
   if (autoPassesResolve(r)) {
     ev(ctx, { type: 'note', text: `${r.name} has Animate Vessel: it passes its Morale Tests automatically (od p.5).`, player: r.owner });
@@ -343,15 +371,16 @@ export function moraleTest(ctx: Ctx, r: RegimentState, wounds: number, spec: Pic
   const phalanx = spec.arc === 'front' && hasRule(r.rules, 'Phalanx') ? 1 : 0;
   const R = Math.max(0, resolveValue(ctx, r) - (ignoresFear ? 0 : spec.terrifying) + phalanx);
   const iron = hasRule(r.rules, 'Iron Discipline');
+  const dice = spec.dice ?? wounds;
   const t = rollTest(
     ctx,
-    wounds,
+    dice,
     // Dark Power Tier IV and similar effects (od p.7): re-roll successful Morale Tests.
     // Pheromantic Drive (sp p.15): friendly [Drone]/[Clone] within 12″ re-roll failed Resolve rolls of 6.
-    { target: R, rerollSuccesses: (!iron && (spec.arc === 'left' || spec.arc === 'right')) || rerollsMoraleSuccesses(ctx.s, r), autoFail: !iron && spec.arc === 'rear', rerollSixes: pheromanticDrive(ctx.s, r) },
+    { target: R, rerollSuccesses: (!iron && (spec.arc === 'left' || spec.arc === 'right')) || rerollsMoraleSuccesses(ctx.s, r) || (!!spec.rerollSuccesses && !iron), autoFail: !iron && spec.arc === 'rear', rerollSixes: pheromanticDrive(ctx.s, r) },
     `${r.name}: Morale`,
   );
-  let failed = wounds - t.passes;
+  let failed = dice - t.passes;
   // A declined Duel (core p.76), Fear and Dismay (dw p.28): re-roll successful Resolve tests of 1.
   if (r.flags.declinedDuel || r.flags.fear || r.flags.dismay) {
     const ones = t.values.filter((v, i) => v === 1 && t.passed[i]).length;
@@ -372,10 +401,11 @@ export function moraleTest(ctx: Ctx, r: RegimentState, wounds: number, spec: Pic
     spec.arc === 'rear' && !iron ? 'attacked in the rear' : spec.arc !== 'front' && !iron ? 'attacked in the flank' : '',
     saved ? `Indomitable saves ${saved}` : '',
     extra !== failed ? 'Oblivious' : '',
+    spec.why ?? '',
   ]
     .filter(Boolean)
     .join(', ');
-  ev(ctx, { type: 'dice', text: `${r.name} tests Morale ${wounds}× on ${R} or less${notes ? ` (${notes})` : ''}: ${failed} failed → ${extra} more Wound${extra === 1 ? '' : 's'}.`, dice: t.record, player: r.owner });
+  ev(ctx, { type: 'dice', text: `${r.name} tests Morale ${dice}× on ${R} or less${notes ? ` (${notes})` : ''}: ${failed} failed → ${extra} more Wound${extra === 1 ? '' : 's'}.`, dice: t.record, player: r.owner });
   if (extra > 0) allocateWounds(ctx, r, extra, spec.attackerOwner);
   return extra;
 }
@@ -406,7 +436,11 @@ export function allocateWounds(ctx: Ctx, r: RegimentState, n: number, byPlayer: 
     const st = candidates[0]!;
     st.wounds += 1;
     if (st.wounds >= W) {
-      if (r.stands.length === 1) dieFightingCheck(ctx, r, byPlayer);
+      if (r.stands.length === 1) {
+        dieFightingCheck(ctx, r, byPlayer);
+        // Ardent Creed (dw p.6): [Ardent] and [Clan] Command Stands may always Die Fighting!
+        if (st.isCommand && dwCommandDiesFighting(ctx.s, r)) commandDieFighting(ctx, r, 'Ardent Creed, dw p.6');
+      }
       r.stands = r.stands.filter((x) => x.id !== st.id);
       ev(ctx, { type: 'casualty', text: `${r.name} loses a Stand${st.isCommand ? ' (the Command Stand)' : ''}; ${r.stands.length} left.`, player: r.owner, regimentId: r.id });
       onStandLost(ctx, r, st);
@@ -474,7 +508,10 @@ function dieFightingCheck(ctx: Ctx, r: RegimentState, byPlayer: PlayerId): void 
   // The Lost Ancestor never Dies Fighting; Bloody-Minded Focus always does (dw p.20, p.24).
   if (c.name === 'Lost Ancestor' && ctx.s.players[r.owner].dw) return;
   const act = ctx.s.activation;
-  const always = c.options.some((o) => o.toLowerCase() === 'bloody-minded focus');
+  // Bloody-Minded Focus (dw p.24), Strength and Honor (od p.21), Convulsive Doom (sp p.20): always Die Fighting!
+  const opt = (n: string) => c.options.some((o) => o.toLowerCase() === n);
+  const convulsive = opt('convulsive doom');
+  const always = opt('bloody-minded focus') || opt('strength and honor') || convulsive;
   const acted = !always && (r.activatedThisRound || c.activatedThisRound || (act && act.regimentId === r.id && act.actions.length > 0));
   if (acted) return;
   const slot = layout(formationInput(ctx.s, r)).find((x) => x.isCharacter);
@@ -487,13 +524,40 @@ function dieFightingCheck(ctx: Ctx, r: RegimentState, byPlayer: PlayerId): void 
     attackerOwner: r.owner,
     targetId: enemy.id,
     arc: 'front',
-    pools: [{ label: `${c.name} (Die Fighting!)`, dice: charStat(c, 'A'), skill: charStat(c, 'C'), rerollFailed: hasRule(c.rules, 'Flurry'), reduceD: ruleX(c.rules, 'Cleave'), ignoreShield: hasRule(c.rules, 'Linebreaker') }],
+    pools: [{ label: `${c.name} (Die Fighting!)`, dice: charStat(c, 'A') + (convulsive ? 2 : 0), skill: charStat(c, 'C'), rerollFailed: hasRule(c.rules, 'Flurry'), reduceD: ruleX(c.rules, 'Cleave'), ignoreShield: hasRule(c.rules, 'Linebreaker'), ...charMoraleFlags(c) }],
     morale: true,
     terrifying: ruleX(c.rules, 'Terrifying'),
     what: 'Die Fighting!',
     kind: 'clash',
   });
   void byPlayer;
+}
+
+/**
+ * A Command Stand Dies Fighting! as if it were a Character (core p.74): before it is removed it makes
+ * a last Clash with its own Attacks against one enemy in contact with it. Used by the Ardent Creed
+ * (dw p.6) and the Fallen Divinity's sacrifice (od p.8).
+ */
+export function commandDieFighting(ctx: Ctx, r: RegimentState, why: string): void {
+  const slot = layout(formationInput(ctx.s, r)).find((x) => x.isCommand);
+  if (!slot) return;
+  const cp = rectPoly(slot.rect);
+  const enemy = onTableRegiments(ctx.s).find((e) => e.owner !== r.owner && regimentPolys(ctx.s, e).some((p) => polyDistance(p, cp) <= TOL));
+  if (!enemy) return;
+  const leader = r.commandModels.includes('Leader') ? 1 : 0;
+  ev(ctx, { type: 'note', text: `Die Fighting! ${r.name}'s Command Stand makes a last Clash against ${enemy.name} (${why}; core p.74).`, player: r.owner });
+  resolveAttack(ctx, {
+    attackerOwner: r.owner,
+    attackerId: r.id,
+    targetId: enemy.id,
+    arc: 'front',
+    pools: [{ label: `${r.name} Command Stand (Die Fighting!)`, dice: stat(r, 'A') + leader, skill: stat(r, 'C'), rerollFailed: hasRule(r.rules, 'Flurry'), reduceD: ruleX(r.rules, 'Cleave'), ignoreShield: hasRule(r.rules, 'Linebreaker') }],
+    morale: true,
+    terrifying: ruleX(r.rules, 'Terrifying'),
+    what: 'Die Fighting!',
+    kind: 'clash',
+    noLethalDemise: true,
+  });
 }
 
 export function destroyRegiment(ctx: Ctx, r: RegimentState, byPlayer: PlayerId | null): void {

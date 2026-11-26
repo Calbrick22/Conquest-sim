@@ -300,6 +300,12 @@ export function dwRegimentGrants(s: GameState, r: RegimentState): DwGrants {
     const plus = Math.max(0, Math.min(2, 5 - base));
     if (plus) add(`Impact (+${plus})`);
   }
+  // Bergont Raegh (dw p.24): the ridden Ironclad Drake gains Flawless Strikes and +2 Wounds.
+  // RULE-AMBIGUITY: AMB-86 — the Character's own +2 Wounds and Flawless Strikes come from the export.
+  if (c && hasOpt(c, 'Bergont Raegh') && r.name === 'Ironclad Drake') {
+    add('Flawless Strikes');
+    out.mods.push({ stat: 'W', delta: 2, source: 'Bergont Raegh' });
+  }
   // World Breakers (dw p.24): its Awakened Infantry Regiment never has Defense, Evasion or Resolve below 3.
   if (c && hasOpt(c, 'World Breakers') && r.type === 'Infantry' && awake) out.rules.push({ name: 'World Breakers', raw: 'World Breakers' });
   // First in the Fray (dw p.24): the foremost friendly Infantry Regiment gains Terrifying (+1), to at most 2.
@@ -317,6 +323,8 @@ export function dwCharacterRules(s: GameState, c: CharacterState): RuleRef[] {
   const out: RuleRef[] = [];
   // Paragon of War, First Born of War (dw p.6, p.8): the Character gains Forward Force.
   if (c.supremacyAbilities.some((a) => /paragon of war|first born of war/i.test(a))) out.push(ref('Forward Force'));
+  // Bergont Raegh (dw p.24): the Character gains Flawless Strikes.
+  if (hasOpt(c, 'Bergont Raegh')) out.push(ref('Flawless Strikes'));
   return out;
 }
 

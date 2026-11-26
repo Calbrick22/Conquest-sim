@@ -67,7 +67,7 @@ const IMPLEMENTED: [string, string][] = [
   ['Rapid Volley', 'core p.100'],
   ['Shock', 'core p.100'],
   ['Smite', 'core p.100'],
-  ['Sureshot', 'core p.100 (no terrain in the MVP, so no effect yet)'],
+  ['Sureshot', 'core p.100'],
   ['Tenacious', 'core p.101'],
   ['Torrential Fire', 'core p.101'],
   ['Trample', 'core p.101'],
@@ -77,7 +77,7 @@ const IMPLEMENTED: [string, string][] = [
   ['Murderous Volley', 'core p.95'],
   // Spires faction document (sp = Spires army list, 2026 post-Adepticon)
   ['Disruptive', 'sp p.27'],
-  ['Hypersynaptic Bonding', 'sp p.28 (Cover is not modelled)'],
+  ['Hypersynaptic Bonding', 'sp p.28'],
   ['Microbial Shroud', 'sp p.32'],
   ['Hypercatalytic Discharge', 'sp p.33'],
   ['Adrenal Hysteria', 'sp p.26'],
@@ -85,6 +85,7 @@ const IMPLEMENTED: [string, string][] = [
   ['Epigenetic Trigger', 'sp p.9'],
   ['Pheromantic Drive', 'sp p.15'],
   ['Optimized Fodder', 'sp p.24'],
+  ['Rider', 'core p.100'],
   // Spellcasting (core p.80–81, p.97)
   ['Priest', 'core p.80, p.100'],
   ['Wizard', 'core p.80, p.101'],
@@ -129,15 +130,20 @@ const IMPLEMENTED: [string, string][] = [
   ['Strain Expression', 'Spires (Strains entered on the review screen)'],
   // Sorcerer Kings (sk = Sorcerer Kings army list, 2026 Tainted Earth update)
   ['Fire Elemental', 'sk p.32–35'],
-  ['Air Elemental', 'sk p.36–39 (the Reinforcement Line part is manual)'],
+  ['Air Elemental', 'sk p.36–39'],
   ['Water Elemental', 'sk p.43–46'],
-  ['Earth Elemental', 'sk p.40–42 (Earth terrain; Earth Markers are manual, AMB-67)'],
+  ['Earth Elemental', 'sk p.40–42 (Earth terrain, AMB-67)'],
+  ['Favored of Hormus', 'sk p.17'],
+  // RULE-AMBIGUITY: AMB-87 — the Marid Lancers entry lists Tidal Wave, which the list does not define.
+  ['Tidal Wave', 'sk p.43 (not defined in the 2026 list: no effect)'],
+  // RULE-AMBIGUITY: AMB-74 — named by Elemental Dominion, not defined.
+  ['Fan the Flames', 'sk p.6 (not defined in the 2026 list: no effect)'],
   ['Elemental Waters', 'sk p.43–46 (Water Elemental in Water: re-roll failed Hit Rolls of 6)'],
   ['Infernal Branding', 'sk p.32'],
   ['Gifted Mortals', 'sk p.27–28'],
   ['Eminence', 'sk p.27'],
-  ['Last Word', 'sk p.34–35 (target picked by the engine, AMB-72)'],
-  ['Arrogance', 'sk p.34 (+3″ Charge; the free Duel is manual)'],
+  ['Last Word', 'sk p.34–35 (the engine picks the target, AMB-72)'],
+  ['Arrogance', 'sk p.34'],
   ['Hubris', 'sk p.35'],
   ['Earthen Aegis', 'sk p.40–41 (Dangerous terrain is not in the 2026 set)'],
   ['Elemental Tether', 'sk p.38'],
@@ -189,6 +195,15 @@ const IMPLEMENTED: [string, string][] = [
   ['Stride', 'dw p.39'],
   ['Testaments to Honor', 'dw p.38'],
   ['Empowerment', 'dw p.30–43'],
+  ['Slain Bigger', 'dw p.11'],
+  ['Chthonic Flame', 'dw p.22'],
+  ['Bergont Raegh', 'dw p.24'],
+  ['Hellbringer Sorcerer', 'dw p.24'],
+  ['Ferric Throne', 'dw p.25'],
+  // RULE-AMBIGUITY: AMB-87 — the Initiates entry lists Pike Formation and describes Shieldwall.
+  ['Pike Formation', 'dw p.37 (the entry describes it as Shieldwall)'],
+  // RULE-AMBIGUITY: AMB-87 — Flamecaster gives Flamer, which no 2026 document defines.
+  ['Flamer', 'dw p.45 (not defined in the 2026 documents: no effect)'],
   ['On Soaring Winds', 'sk p.36'],
   // Core Draw Events (p.94–95)
   ['Bastion', 'core p.94'],

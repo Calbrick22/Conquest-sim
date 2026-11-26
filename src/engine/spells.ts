@@ -15,6 +15,7 @@ import { addPower, darkTierMax, pantheonTier, poolTier, regimentDarkTier, roleOf
 import { addMarkers, characterCourts, ofCourt, sk, skUnit, spellKey, warlordHas } from './factions/sorcererKings';
 import { SK_SPELLS } from './factions/sorcererKingsSpells';
 import { DW_SPELLS } from './factions/dweghomSpells';
+import { hasDwRole, isAwakened, isForged, warlordHas as dwWarlordHas } from './factions/dweghom';
 import { dwAfterCast, dwExtraSuccessesNeeded, dwNoInterference, dwOnAttempt, dwSpellProblems, dwRangeExempt, spendBoost } from './factions/dweghomActions';
 
 /**
@@ -260,6 +261,30 @@ function tether(s: GameState, c: Caster, t: RegimentState): boolean {
   );
 }
 
+/**
+ * Forgemaster (Tempered Sorcerer Warlord, dw p.7): a friendly [Tempered] Character may measure Line
+ * of Sight, up to half of the Spell's Range, from the Command Stand of a friendly "Awakened"
+ * [Forged] Regiment, as if it were the spellcaster; each such Regiment once per Round.
+ * RULE-AMBIGUITY: AMB-86 — half the Range is measured from that Command Stand, and the relay is
+ * used only when the caster could not target the Regiment itself.
+ */
+export function forgeRelay(s: GameState, c: Caster, range: number, t: RegimentState, needLos: boolean): RegimentState | null {
+  const ch = c.character;
+  const st = s.players[c.owner].dw;
+  if (!ch || !st || !dwWarlordHas(s, c.owner, 'Forgemaster')) return null;
+  if (!hasDwRole(ch.roles ?? [], 'Tempered') && !/tempered/i.test(ch.name)) return null;
+  for (const r of Object.values(s.regiments)) {
+    if (r.owner !== c.owner || r.location !== 'table' || !isForged(r) || !isAwakened(s, r)) continue;
+    if (st.relayUsed?.[r.id] === s.round) continue;
+    const cmd = layout(formationInput(s, r)).find((x) => x.isCommand);
+    if (!cmd) continue;
+    if (distancePolys([rectPoly(cmd.rect)], regimentPolys(s, t)) > range / 2 + TOL) continue;
+    if (needLos && !hasLineOfSight(s, r, t)) continue;
+    return r;
+  }
+  return null;
+}
+
 export function spellProblems(s: GameState, casterId: string, name: string, targetId: string, attunement?: number): string[] {
   const c = casterOf(s, casterId);
   if (!c) return ['Unknown spellcaster.'];
@@ -296,16 +321,23 @@ export function spellProblems(s: GameState, casterId: string, name: string, targ
     if (def.target === 'enemy' && t.owner === c.owner) return [`${name} targets an enemy Regiment.`];
     const tethered = tether(s, c, t) || dwRangeExempt(s, name, t);
     const range = def.range === 'self' ? 'self' : def.range + rangeBonus(s, c);
-    if (range !== 'self' && !tethered && distancePolys(casterPolys(s, c), regimentPolys(s, t)) > range + TOL) return [`${t.name} is beyond ${range}″.`];
+    const relayed = range !== 'self' && !tethered && !!forgeRelay(s, c, range, t, def.hits) && directProblem(s, c, def, range, t);
+    if (range !== 'self' && !tethered && !relayed && distancePolys(casterPolys(s, c), regimentPolys(s, t)) > range + TOL) return [`${t.name} is beyond ${range}″.`];
     if (def.hits) {
       const engaged = enemiesInContact(s, c.regiment);
       if (engaged.length && !engaged.some((e) => e.id === t.id)) return ['An engaged spellcaster may only target the enemy it is in contact with with Hit Spells (core p.80).'];
-      if (!engaged.length && !tethered && !hasLineOfSight(s, c.regiment, t)) return [`${t.name} is not in Line of Sight (core p.80).`];
+      if (!engaged.length && !tethered && !relayed && !hasLineOfSight(s, c.regiment, t)) return [`${t.name} is not in Line of Sight (core p.80).`];
     } else if ((t.flags.spellsOn ?? []).includes(name.toLowerCase())) return [`${t.name} has already been the target of ${name} this Round (core p.80).`];
     const why = def.check?.(s, t);
     if (why) return [why];
   }
   return [];
+}
+
+/** Would the caster's own range or Line of Sight stop it targeting this Regiment? */
+function directProblem(s: GameState, c: Caster, def: SpellDef, range: number, t: RegimentState): boolean {
+  if (distancePolys(casterPolys(s, c), regimentPolys(s, t)) > range + TOL) return true;
+  return def.hits && !enemiesInContact(s, c.regiment).length && !hasLineOfSight(s, c.regiment, t);
 }
 
 /** Resolve a Spellcasting Action (core p.80–81). */
@@ -365,6 +397,15 @@ export function castSpell(ctx: Ctx, casterId: string, name: string, targetId: st
   const t = s.regiments[targetId]!;
   const def = spellDef(name);
   const act = s.activation!;
+  // Forgemaster (dw p.7): record the [Forged] Regiment whose Command Stand gave the Line of Sight.
+  if (def && def.range !== 'self') {
+    const range = def.range + rangeBonus(s, c);
+    const relay = !tether(s, c, t) && !dwRangeExempt(s, name, t) && directProblem(s, c, def, range, t) ? forgeRelay(s, c, range, t, def.hits) : null;
+    if (relay) {
+      (s.players[c.owner].dw!.relayUsed ??= {})[relay.id] = s.round;
+      ev(ctx, { type: 'note', text: `Forgemaster: ${c.name} measures from ${relay.name}'s Command Stand (dw p.7).`, player: c.owner, regimentId: relay.id });
+    }
+  }
   (act.spellsCast ??= []).push(name.toLowerCase());
   dwOnAttempt(s, c, name);
   if (c.character?.sacrament) c.character.sacrament = false;

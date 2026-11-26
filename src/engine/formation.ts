@@ -23,6 +23,11 @@ export interface Slot {
 export interface FormationInput {
   regiment: Pick<RegimentState, 'stands' | 'files' | 'pose' | 'type'>;
   characterId?: string | null;
+  /**
+   * A Rider (core p.100): no Stand of its own. It gets a Character slot on the Monster Stand, so
+   * distances, Line of Sight and contact are measured from that Stand.
+   */
+  riderId?: string | null;
 }
 
 export function standCount(input: FormationInput): number {
@@ -113,7 +118,10 @@ export function layout(input: FormationInput): Slot[] {
     const c = slotCentre(r.pose, F, a.rank, a.file, base.width, base.depth);
     out.push({ id, ...a, rect: { c, halfWidth: base.width / 2, halfDepth: base.depth / 2, angle: r.pose.angle } });
   }
-  return out.sort((a, b) => a.rank - b.rank || a.file - b.file);
+  out.sort((a, b) => a.rank - b.rank || a.file - b.file);
+  const mount = input.riderId ? out.find((x) => !x.isCharacter) : undefined;
+  if (mount) out.push({ ...mount, id: input.riderId!, isCharacter: true, isCommand: false });
+  return out;
 }
 
 /**

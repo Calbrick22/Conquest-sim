@@ -101,6 +101,8 @@ export function skActivationStart(ctx: Ctx, r: RegimentState, afterRitual: strin
     if (u?.freeSpell) (act.extra ??= []).push({ kind: 'spell', reason: 'Marid Sahar', free: true });
     // Mahut (sk p.42): a free Volley, never more than one Volley.
     if (u?.freeVolley) (act.extra ??= []).push({ kind: 'volley', reason: 'Mahut', free: true, anytime: true });
+    // Arrogance (sk p.34): a free Duel Action, as if it were a Character Stand.
+    if (u?.chargeVs === 'character') (act.extra ??= []).push({ kind: 'duel', reason: 'Arrogance', free: true, anytime: true });
     // Raging Elements (sk p.41): an additional Clash Action.
     if (u?.shattered === 'raging' && r.flags.shattered) (act.extra ??= []).push({ kind: 'clash', reason: 'Raging Elements' });
     if (afterRitual === 'Far Sight' && ofCourt(s, r, 'Air')) {
@@ -323,7 +325,8 @@ export function applySkDrawEvent(ctx: Ctx, r: RegimentState, c: CharacterState |
       return;
     case 'Fan the Flames':
       // RULE-AMBIGUITY: AMB-74 — the Raj's Elemental Dominion names this Draw Event but the list does not define it.
-      ev(ctx, { type: 'manual', text: 'Fan the Flames: this Draw Event is not defined in the army list; apply it by hand if your group has a ruling.', regimentId: r.id });
+      // It has no effect until the list defines it; a group ruling can still be applied with the override tools.
+      ev(ctx, { type: 'note', text: 'Fan the Flames: the army list names this Draw Event but does not define it, so it has no effect (AMB-74).', regimentId: r.id });
       return;
   }
 }

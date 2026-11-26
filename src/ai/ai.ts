@@ -769,7 +769,17 @@ function chooseOdDrawEvent(s: GameState, r: RegimentState, names: string[]): AiD
 
 /** Blasphemous Mesa (Archimandrite Warlord, od p.8): Aura of Death (+1) for a Regiment about to fight. */
 function chooseOdSpend(s: GameState, r: RegimentState): AiDecision | null {
-  if ((s.players[r.owner].od?.dark ?? 0) < 3 || !isEngaged(s, r) || odSpendProblems(s, r).length) return null;
+  const dark = s.players[r.owner].od?.dark ?? 0;
+  // Before a Clash: Obdurate's Attacks, Reign of Terror's Trial of Will, Soul Reaper (od p.10, p.20).
+  if (isEngaged(s, r) && !s.activation?.actions.includes('clash')) {
+    const tries: [Action, string][] = [
+      [{ type: 'odClash', regimentId: r.id, option: 'obdurate' }, 'adds the Dark Power Tier to its Warlord’s Attacks'],
+      ...(dark >= 2 ? ([[{ type: 'odClash', regimentId: r.id, option: 'reignOfTerror' }, 'spends a Token for Trial of Will']] as [Action, string][]) : []),
+      ...(dark >= 4 ? ([[{ type: 'odClash', regimentId: r.id, option: 'soulReaper', amount: Math.min(3, dark - 2) }, 'spends Tokens on Soul Reaper']] as [Action, string][]) : []),
+    ];
+    for (const [a, why] of tries) if (validate(s, a).ok) return { action: { ...a, why: `${r.name} ${why}` }, reason: why };
+  }
+  if (dark < 3 || !isEngaged(s, r) || odSpendProblems(s, r).length) return null;
   return { action: { type: 'odSpend', regimentId: r.id, option: 'aod', why: `${r.name} spends a Dark Power Token for Aura of Death (+1)` }, reason: 'spends a Dark Power Token' };
 }
 

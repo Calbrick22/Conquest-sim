@@ -100,12 +100,15 @@ export function refreshRules(s: GameState): void {
     drawEvents.push(...kg.drawEvents, ...dg.drawEvents);
     let eff = dedupe(rules);
     if (og.removeBrittle) eff = eff.filter((x) => x.name !== 'Brittle');
+    if (kg.remove?.length) eff = eff.filter((x) => !kg.remove!.includes(x.name));
     // Unmake Armor (dw p.27): loses Hardened this Round.
     if (r.flags.unmade) eff = eff.filter((x) => x.name !== 'Hardened');
     r.rules = eff;
     // Water (core p.87): −1 Clash with at least half the Stands within it; not for a Water Elemental (sk p.43).
     const water = r.location === 'table' && !elementalKind(r, 'Water') ? waterMods(s, regimentPolys(s, r), r.profile.C ?? 0) : [];
     r.grantMods = [...og.mods, ...kg.mods, ...dg.mods, ...water];
+    // Cuirass of Hazlia's Shadow (od p.18): −1 Attacks until the end of the game after declining its Duel.
+    if (r.flags.cursed) r.grantMods.push({ stat: 'A', delta: -1, source: "Cuirass of Hazlia's Shadow" });
     // World Breakers (dw p.24): Defense, Evasion and Resolve never below 3.
     r.grantMods.push(...worldBreakerMods(r, (k) => (r.profile[k] ?? 0) + [...r.roundMods, ...(r.grantMods ?? [])].filter((m) => m.stat === k).reduce((a, m) => a + m.delta, 0)));
     r.drawEvents = [...new Set(drawEvents)];
@@ -133,7 +136,10 @@ export function refreshRules(s: GameState): void {
     c.drawEvents = [...new Set([...(c.baseDrawEvents ?? c.drawEvents), ...og.drawEvents])];
     // Runeforged Plate (dw p.23): extra Attacks this Round.
     const rune = s.players[c.id.startsWith('P1') ? 'P1' : 'P2'].dw?.charAttacks?.[c.id];
-    c.grantMods = [...(og.mods as StatMod[]), ...spiresCharacterMods(c), ...sharedMods, ...(rune ? [{ stat: 'A' as const, delta: rune, source: 'Runeforged Plate' }] : [])];
+    c.grantMods = [...(og.mods as StatMod[]), ...spiresCharacterMods(c), ...sharedMods, ...(rune ? [{ stat: 'A' as const, delta: rune, source: 'Runeforged Plate' }] : []), ...(c.cursed ? [{ stat: 'A' as const, delta: -1, source: "Cuirass of Hazlia's Shadow" }] : []),
+      ...(c.roundA ? [{ stat: 'A' as const, delta: c.roundA, source: 'Soul Reaper' }] : []),
+      ...(c.nextA ? [{ stat: 'A' as const, delta: c.nextA, source: 'Obdurate Bone and Stone' }] : []),
+    ];
   }
   spiresGrants(s);
 }

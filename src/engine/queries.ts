@@ -22,7 +22,9 @@ export function regimentStandCount(s: Pick<GameState, 'characters'>, r: Regiment
 }
 
 export function formationInput(s: GameState, r: RegimentState, override?: Partial<Pick<RegimentState, 'pose' | 'files'>>): FormationInput {
-  return { regiment: { ...r, ...override }, characterId: attachedCharacter(s, r.id)?.id ?? null };
+  const c = attachedCharacter(s, r.id);
+  // A Rider has no Stand of its own (core p.100).
+  return c?.rider ? { regiment: { ...r, ...override }, characterId: null, riderId: c.id } : { regiment: { ...r, ...override }, characterId: c?.id ?? null };
 }
 
 /**
@@ -37,7 +39,7 @@ export function regimentPolys(s: GameState, r: RegimentState, override?: Partial
   const input = formationInput(s, r, override);
   if (override) return standPolys(input);
   const p = r.pose;
-  const key = `${p.x},${p.y},${p.angle},${r.files},${r.type},${input.characterId ?? ''},${r.stands.map((x) => `${x.id}:${x.wounds > 0 ? 1 : 0}:${x.isCommand ? 1 : 0}`).join('|')}`;
+  const key = `${p.x},${p.y},${p.angle},${r.files},${r.type},${input.characterId ?? ''},${input.riderId ?? ''},${r.stands.map((x) => `${x.id}:${x.wounds > 0 ? 1 : 0}:${x.isCommand ? 1 : 0}`).join('|')}`;
   const hit = polyCache.get(r);
   if (hit && hit.key === key) return hit.polys;
   const polys = standPolys(input);
@@ -51,7 +53,9 @@ export function marchValue(s: GameState, r: RegimentState): number {
   // Roots of Stone, Induced Aggression…) apply to the Regiment's own March.
   const mods = [...r.roundMods, ...(r.grantMods ?? [])].filter((m) => m.stat === 'M').reduce((a, m) => a + m.delta, 0);
   const own = r.profile.M === null ? null : r.profile.M + mods;
-  const vals = [own, attachedCharacter(s, r.id)?.profile.M].filter((m): m is number => typeof m === 'number');
+  // A Rider's Regiment Marches with the Monster's March (core p.100).
+  const ac = attachedCharacter(s, r.id);
+  const vals = [own, ac?.rider ? null : ac?.profile.M].filter((m): m is number => typeof m === 'number');
   // Kiss of the Earth (sk p.25): −2 March on its first March or Charge this Round. Battery (dw p.40): −1.
   return vals.length ? Math.max(0, Math.min(...vals) - (r.flags.kissOfEarth ? 2 : 0) - (r.flags.battered ? 1 : 0)) : 0;
 }
@@ -266,7 +270,10 @@ export function canTakeAction(s: GameState, regimentId: string, kind: ActionKind
     if (a.actions.length >= 1 && !freeSpell) return ['A Character performs a single Action each Round (core p.74).'];
     return [];
   }
-  if (kind === 'duel' || kind === 'ability') return ["Characters use their own Actions when their own Command Card is drawn (core p.74)."];
+  // The Fallen Divinity (a Character that is a Regiment by itself) may also Duel (od p.8).
+  // Arrogance (sk p.34): a free Duel as if it were a Character Stand (a free extra, below).
+  const embodiedDuel = kind === 'duel' && (!!s.regiments[regimentId]?.embodies || !!a.extra?.some((e) => !e.used && e.kind === 'duel' && e.reason === 'Arrogance'));
+  if ((kind === 'duel' && !embodiedDuel) || kind === 'ability') return ["Characters use their own Actions when their own Command Card is drawn (core p.74)."];
   if (freeSpell) return [];
   const extraUsed = a.extra?.filter((e) => e.used).length ?? 0;
   if (a.actions.length + extraUsed >= 3) return ['A Regiment never performs more than 3 Actions in an Activation (core p.25).'];

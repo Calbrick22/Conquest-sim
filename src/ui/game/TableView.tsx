@@ -290,16 +290,21 @@ export function TableView(props: Props) {
                 }}
                 data-testid={`regiment-${r.id}`}
               >
-                {slots.map((sl, i) => (
-                  <polygon
-                    key={sl.id}
-                    points={pts(polys[i]!)}
-                    fill={OWNER_COLOR[r.owner]}
-                    className={`stand ${sl.isCharacter ? 'character' : ''} ${sl.isCommand ? 'command' : ''}`}
-                  />
-                ))}
+                {slots.map((sl, i) =>
+                  // A Rider shares its Monster's Stand (core p.100): drawn as a small badge on it.
+                  s.characters[sl.id]?.rider ? (
+                    <circle key={sl.id} cx={sl.rect.c.x} cy={fy(sl.rect.c.y)} r={Math.min(sl.rect.halfWidth, sl.rect.halfDepth) * 0.35} className="stand character rider" fill={OWNER_COLOR[r.owner]} />
+                  ) : (
+                    <polygon
+                      key={sl.id}
+                      points={pts(polys[i]!)}
+                      fill={OWNER_COLOR[r.owner]}
+                      className={`stand ${sl.isCharacter ? 'character' : ''} ${sl.isCommand ? 'command' : ''}`}
+                    />
+                  ),
+                )}
                 {showIcons &&
-                  slots.map((sl) => {
+                  slots.filter((sl) => !s.characters[sl.id]?.rider).map((sl) => {
                     const ch = sl.isCharacter ? s.characters[sl.id] : undefined;
                     const roles = ch ? standRoles(ch.rules, ch.actions, ch.spells) : standRoles(r.rules, [], r.spells);
                     const c = sl.rect.c;
