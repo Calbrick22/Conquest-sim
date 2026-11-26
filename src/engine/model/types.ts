@@ -79,6 +79,8 @@ export interface CharacterState {
   cuirassUsed?: boolean;
   /** −1 Attacks until the end of the game (declined a Cuirass of Hazlia's Shadow Duel, od p.18). */
   cursed?: boolean;
+  /** Spires once-per-game upgrades used (Grotesque Elixir, No Matter the Price, Induced Fawn Response, Assassination Directive). */
+  usedOnce?: string[];
   /** Extra Attacks until the end of the Round (Soul Reaper, od p.20). */
   roundA?: number;
   /** Extra Attacks for its next Clash or Duel (Obdurate Bone and Stone, od p.10). */
@@ -207,6 +209,22 @@ export interface RegimentFlags {
   hindered?: boolean;
   /** Epigenetic Trigger: its Command Stand +2 Attacks (sp p.9). */
   epigenetic?: boolean;
+  /** Master of Flesh (sp p.28): the Biomancer Warlord's [Aura] gives its Command Stand +2 Attacks (recomputed). */
+  fleshAura?: boolean;
+  /** Lambs to the Slaughter [Activated] (sp p.10): Hit Rolls of 6 count as 1 this Round. */
+  lambs?: boolean;
+  /** Ruthless Competence (sp p.9): Opportunists for its next Clash or Volley. */
+  opportunistNext?: boolean;
+  /** Ruthless Competence (sp p.9): no Inspired until the end of the Round. */
+  noInspired?: boolean;
+  /** Ward Preceptor (sp p.36): the Round its 2″ move was last used. */
+  wardRound?: number;
+  /** Catabolic Node (sp p.31): it has Detonated and is removed. */
+  detonated?: boolean;
+  /** Gorged (Consumption Beast, sp p.50): for the rest of the game. */
+  gorged?: boolean;
+  /** Privileged Observer (sp p.35): the Class was changed to Medium. */
+  privileged?: boolean;
   /** Spells already cast on this Regiment this Round (core p.80: once per spell, except Hits). */
   spellsOn?: string[];
   // Sorcerer Kings (sk = Sorcerer Kings army list, 2026 Tainted Earth update), until the end of the Round:
@@ -317,6 +335,8 @@ export interface ActivationState {
   drawEvents?: string[];
   /** Spells cast this Activation (core p.76: never the same Spell twice). */
   spellsCast?: string[];
+  /** Spined Descent (sp p.48): Regiments it moved over this Activation. */
+  movedOver?: string[];
   /** Enemy Stands destroyed this Activation (Exploitation of Divine Vanity). */
   enemyStandsDestroyed?: number;
   /** Archimandrite's Blasphemous Mesa token spent this Activation. */
@@ -364,6 +384,15 @@ export interface PlayerState {
   strains: Record<string, StrainDef>;
   /** Lobotomytic Override used this Round. */
   lobotomyUsed: boolean;
+  /** Spires: Field Studies Observation Tokens (Biomancer Warlord, sp p.8), at most 4. */
+  observation?: number;
+  /** Spires: Tricks of the Trade Influence Pool (Merchant Prince Warlord, sp p.10). */
+  influence?: number[];
+  /** Spires: Master Manipulator Offer this Round (sp p.22): pending (null), accepted or declined. */
+  offer?: { round: number; accepted: boolean | null };
+  /** Spires: Ruthless Competence (sp p.9) — the Round it was last used, and which one is kept ready. */
+  ruthlessRound?: number;
+  ruthlessPlan?: 'auto' | 'opportunist' | 'denyInspired' | 'march';
   /** Glossary from the imported list: rule name → text. */
   glossary: Record<string, string>;
   vp: number;
@@ -452,11 +481,20 @@ export interface RoundTally {
   markersDestroyed: Record<PlayerId, string[]>;
   /** Zones Burned by each player this Round (Flames of Conquest). */
   burned?: Record<PlayerId, string[]>;
+  /** Regiments destroyed by each player this Round, by id (Chosen Regiments, Linebreakers; ns p.2, p.6). */
+  destroyedIds?: Record<PlayerId, string[]>;
+  /** Enemy Regiments destroyed by each player's own designated Regiments this Round (ns p.2). */
+  killsByChosen?: Record<PlayerId, number>;
 }
 
 export interface GameState {
   seed: number;
   scenario: ScenarioDef;
+  /**
+   * Scenario designations (ns p.2, p.6): Chosen Regiments are enemy Regiments each player marks;
+   * Linebreakers are each player's own Regiments.
+   */
+  designated?: Record<PlayerId, string[]>;
   round: number;
   phase: 'setup' | 'play' | 'ended';
   players: Record<PlayerId, PlayerState>;
@@ -489,7 +527,7 @@ export interface GameState {
   /** Zones Burned and removed from the game (Flames of Conquest, ns p.5). */
   burnedZones?: string[];
   /** A move granted outside the normal sequence, waiting to be made or skipped (Air Step, Translocation). */
-  pendingMove?: { regimentId: string; kind: 'airStep' | 'translocation'; max: number };
+  pendingMove?: { regimentId: string; kind: 'airStep' | 'translocation' | 'ward' | 'ruthless'; max: number };
   /** Pieces of terrain that are Erupting this Round (Dweghom School of Magma, dw p.26). */
   eruptingPieces?: string[];
   /** Objective Zones that count as Hindering this Round (Sunder (the Land), sk p.21). */

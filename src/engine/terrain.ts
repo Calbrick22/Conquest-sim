@@ -110,7 +110,9 @@ export function piecesUnder(s: Pick<GameState, 'scenario'>, poly: Poly): Terrain
 /** A Stand's Size for Line of Sight: its Type's Size plus any Elevated piece it is on (core p.12, p.84). */
 export function standLosSize(s: GameState, r: RegimentState, poly: Poly): number {
   const elev = piecesUnder(s, poly).filter((p) => has(p, 'Elevated')).reduce((a, p) => Math.max(a, p.size), 0);
-  return STAND_SIZE[r.type] + elev;
+  // Unhallowed Ground (od p.15, p.30): the Regiment counts as Size (4).
+  const size = r.rules.some((x) => x.name === 'Unhallowed Ground') ? 4 : STAND_SIZE[r.type];
+  return size + elev;
 }
 
 /**

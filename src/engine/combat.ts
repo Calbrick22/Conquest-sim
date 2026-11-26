@@ -10,6 +10,8 @@ import { hasRule, ruleX } from './rules/special/rules';
 import { autoPassesResolve, onRegimentDestroyed, onStandLost, rerollsMoraleSuccesses } from './factions/oldDominion';
 import { pheromanticDrive } from './factions/spires';
 import { skUnit } from './factions/sorcererKings';
+import { isChosen } from './scoring/designations';
+import { detonate, fawnResponse, hasNode, observeDestruction, ruthlessOnDestroyed } from './factions/spiresExtras';
 import { dwAutoPassesMorale, dwCommandDiesFighting, dwNoShatter, dwOnDestroyed, dwPreventBroken } from './factions/dweghomActions';
 
 /**
@@ -119,6 +121,10 @@ export interface AttackPool {
   defenseOverride?: number;
   /** The target cannot use its Evasion (Hypercatalytic Discharge, sp p.33). */
   noEvasion?: boolean;
+  /** Each failed Hit Roll converted by convertFails costs the attacker 1 Wound (No Matter the Price, sp p.30). */
+  payForHits?: boolean;
+  /** Hit Rolls of 6 count as 1: a success, and a 1 for rules that use 1s (Lambs to the Slaughter, sp p.10). */
+  sixesAsOnes?: boolean;
   /** Morale Tests against these Wounds re-roll successes (Chthonic Flame, dw p.22). */
   moraleRerollSuccesses?: boolean;
   /** Morale Tests against these Wounds roll two dice per Wound (Anastegma, od p.20). */
@@ -150,6 +156,8 @@ export interface AttackResult {
   destroyed: boolean;
   /** Natural 1s rolled to hit (for Visceral Bombardment). */
   naturalOnes: number;
+  /** Failed Hit Rolls converted into Hits by a pool that pays for them (No Matter the Price). */
+  paid?: number;
 }
 
 /** Hit → Defense → Wounds → allocation → Morale → Broken (core p.40, p.46, p.53–61). */
@@ -164,6 +172,7 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
   let rerollWounds = 0;
   let doubleWounds = 0;
   let naturalOnes = 0;
+  let paid = 0;
   const melee = kind === 'clash' || kind === 'impact';
   // Shield: +1 Defense against the front arc (core p.100). Phalanx: +1 Defense and Resolve against the front (core p.100).
   const shieldBonus = spec.arc === 'front' && hasRule(target.rules, 'Shield') ? 1 : 0;
@@ -179,12 +188,22 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
     } else {
       if (pool.dice <= 0) continue;
       const hit = rollTest(ctx, pool.dice, { target: pool.skill, rerollFailed: !!pool.rerollFailed, rerollSixes: !!pool.rerollSixes }, `${spec.what}: ${pool.label} to hit`);
+      if (pool.sixesAsOnes) {
+        const n = hit.values.filter((v) => v === 6).length;
+        if (n) {
+          hit.values = hit.values.map((v) => (v === 6 ? 1 : v));
+          hit.passed = hit.values.map((v, i) => hit.passed[i] || v === 1);
+          hit.passes = hit.passed.filter(Boolean).length;
+          hit.record.notes?.push(`${n} roll${n > 1 ? 's' : ''} of 6 count as 1 (Lambs to the Slaughter)`);
+        }
+      }
       hits = hit.passes;
       if (pool.convertFails) {
         const conv = Math.min(pool.convertFails, pool.dice - hit.passes);
         if (conv > 0) {
           hits += conv;
-          hit.record.notes?.push(`${conv} failed Hit${conv > 1 ? 's' : ''} converted (Glimmers of a Golden Age)`);
+          if (pool.payForHits) paid += conv;
+          hit.record.notes?.push(`${conv} failed Hit${conv > 1 ? 's' : ''} converted (${pool.payForHits ? 'No Matter the Price' : 'Glimmers of a Golden Age'})`);
         }
       }
       const ones = hit.values.filter((v) => v === 1).length;
@@ -272,7 +291,7 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
     if (pool.moraleRerollSuccesses) rerollWounds += w;
     else if (pool.moraleDouble) doubleWounds += w;
   }
-  const res: AttackResult = { hits: totalHits, wounds, moraleWounds: 0, standsLost: 0, destroyed: false, naturalOnes };
+  const res: AttackResult = { hits: totalHits, wounds, moraleWounds: 0, standsLost: 0, destroyed: false, naturalOnes, paid };
   // Searing Sandstorm (sk p.18): targeted by an enemy Volley, it becomes Inflamed.
   if (kind === 'volley' && target.flags.searing && !target.flags.inflamed) {
     target.flags.inflamed = true;
@@ -285,9 +304,12 @@ export function resolveAttack(ctx: Ctx, spec: AttackSpec): AttackResult {
       ev(ctx, { type: 'note', text: `${target.name} is Marked until the end of the Round (Designate Target): friendly Charges against it get +2″ and re-roll failed Hit Rolls.`, regimentId: target.id });
     }
     const before = target.stands.length;
+    const prevAttacker = ctx.attackerId;
+    ctx.attackerId = spec.attackerId;
     // Lethal Demise (core p.99) only answers a Stand destroyed by the enemy in contact in a Clash
     // (RULE-AMBIGUITY: AMB-60): not Volleys, Impact Attacks, Spells or other Hits.
     allocateWounds(ctx, target, wounds, spec.attackerOwner, spec.noLethalDemise || kind !== 'clash' ? undefined : spec.attackerId);
+    ctx.attackerId = prevAttacker;
     if (!isDestroyed(target) && spec.morale) {
       const plain = wounds - rerollWounds - doubleWounds;
       if (plain) res.moraleWounds += moraleTest(ctx, target, plain, spec);
@@ -437,6 +459,9 @@ export function allocateWounds(ctx: Ctx, r: RegimentState, n: number, byPlayer: 
     st.wounds += 1;
     if (st.wounds >= W) {
       if (r.stands.length === 1) {
+        // Catabolic Node (sp p.31): it may Detonate as its Regiment is destroyed; the engine always does.
+        if (st.isCommand && hasNode(r)) detonate(ctx, r, 'its Regiment is destroyed');
+        if (r.location !== 'table') return;
         dieFightingCheck(ctx, r, byPlayer);
         // Ardent Creed (dw p.6): [Ardent] and [Clan] Command Stands may always Die Fighting!
         if (st.isCommand && dwCommandDiesFighting(ctx.s, r)) commandDieFighting(ctx, r, 'Ardent Creed, dw p.6');
@@ -482,6 +507,7 @@ export function checkBroken(ctx: Ctx, r: RegimentState): void {
     if (lost > 0 && lost >= Math.ceil(r.standsAtRoundStart / 2)) {
       // The Gift (dw p.4): an Awakened Regiment cannot become Broken; Flame Berserkers Awaken instead.
       if (dwPreventBroken(ctx, r)) return;
+      if (fawnResponse(ctx, r)) return;
       r.broken = true;
       r.standsWhenBroken = n + 0;
       ev(ctx, { type: 'broken', text: `${r.name} is Broken (lost ${lost} of ${r.standsAtRoundStart} Stands this Round, core p.60).`, player: r.owner, regimentId: r.id });
@@ -561,13 +587,25 @@ export function commandDieFighting(ctx: Ctx, r: RegimentState, why: string): voi
 }
 
 export function destroyRegiment(ctx: Ctx, r: RegimentState, byPlayer: PlayerId | null): void {
+  const was = r.location === 'table' ? [rectPoly({ c: { x: r.pose.x, y: r.pose.y }, halfWidth: 0.5, halfDepth: 0.5, angle: r.pose.angle })] : null;
   r.location = 'destroyed';
   r.stands = [];
   const enemy: PlayerId = r.owner === 'P1' ? 'P2' : 'P1';
   const scorer = byPlayer ?? enemy;
   ctx.s.tally.regimentsDestroyed[scorer] += 1;
+  // Chosen Regiments and Linebreakers (ns p.2, p.6): which Regiments were destroyed, and by whom.
+  if (ctx.s.scenario.designate) {
+    ((ctx.s.tally.destroyedIds ??= { P1: [], P2: [] })[scorer] ??= []).push(r.id);
+    const by = ctx.attackerId ? ctx.s.regiments[ctx.attackerId] : undefined;
+    if (by && by.owner === scorer && isChosen(ctx.s, by)) (ctx.s.tally.killsByChosen ??= { P1: 0, P2: 0 })[scorer] += 1;
+  }
   ev(ctx, { type: 'destroyed', text: `${r.name} is destroyed.`, player: r.owner, regimentId: r.id });
   onRegimentDestroyed(ctx, r);
+  // Field Studies (sp p.8): an Observation Token; Ruthless Competence (sp p.9): a [Clone] may March.
+  if (was) {
+    observeDestruction(ctx, r);
+    ruthlessOnDestroyed(ctx, r, was);
+  }
   const c = Object.values(ctx.s.characters).find((x) => x.attachedTo === r.id && !x.destroyed);
   if (c) killCharacter(ctx, c, scorer, 'its Regiment was destroyed');
 }

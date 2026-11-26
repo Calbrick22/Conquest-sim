@@ -48,14 +48,24 @@
     {
       "kind": "regimentDestroyed",
       "vp": 1
+    },
+    {
+      "kind": "designatedDestroyed",
+      "vp": 3
+    },
+    {
+      "kind": "linebreakerInTerritory",
+      "vp": 5
     }
   ],
-  "manualRules": [
-    "Linebreakers: each player nominates two friendly Regiments able to Seize (they lose Fly); +3 VP for destroying an enemy Linebreaker and +5 VP for each unengaged Linebreaker in enemy territory in the Victory Phase are added by hand."
-  ],
+  "manualRules": [],
   "summary": [
     "2 VP per 6″ zone Seized",
     "1 VP per enemy Regiment destroyed",
-    "Linebreaker bonuses are manual; player territories are the 6″ bands at each edge"
-  ]
+    "Linebreakers: +3 VP per enemy Linebreaker destroyed, +5 VP per unengaged Linebreaker in enemy territory (the 6″ bands at each edge)"
+  ],
+  "designate": {
+    "kind": "linebreakers",
+    "count": 2
+  }
 }

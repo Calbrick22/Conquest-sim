@@ -18,6 +18,7 @@ import { clampFiles, footprint, legalFiles } from '../../engine/formation';
 import { dist, dot, type Vec } from '../../engine/geometry/vec';
 import { applyPath, parseMoveText, pathCost, type MoveSeg } from '../../engine/movement';
 import type { Edge, Pose, RegimentState } from '../../engine/model/types';
+import { AttackOptions, PractitionerButtons, SpiresBar, type AttackOpts } from './SpiresPanel';
 import { duellist, duelTargets, enemiesInContact, withdrawPose } from '../../engine/actions';
 import { baseName, CHARACTER_ABILITIES_AUTOMATED, DRAW_EVENTS_AUTOMATED } from '../../engine/activation';
 import { isEngaged } from '../../engine/queries';
@@ -39,7 +40,6 @@ import { PanelResizer } from '../shell/PanelResizer';
 import { SPECIAL_MOVE_LABEL, specialMoveAllowance, type SpecialMoveKind } from '../../engine/specialMoves';
 import { isOdDrawEvent } from '../../engine/factions/oldDominionActions';
 import { canInduceAggression, strainFor } from '../../engine/factions/spires';
-import { PractitionerButtons } from './SpiresPanel';
 import { usePreviews } from './usePreviews';
 import { useAutoplay, wipedOut } from './useAutoplay';
 import { EndGameSummary } from './EndGameSummary';
@@ -106,6 +106,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
   const [ruler, setRuler] = useState<{ a?: Vec; aReg?: string; result?: Ruler } | null>(null);
   const [drag, setDrag] = useState<{ start: Vec; base: MoveSeg[] | Pose } | null>(null);
   const [targetKind, setTargetKind] = useState<TargetKind>('charge');
+  const [attackOpts, setAttackOpts] = useState<AttackOpts>({});
   const [crFiles, setCrFiles] = useState(2);
   const [withdrawTurn, setWithdrawTurn] = useState(true);
   // Roadmap 2.2: the selected Regiment's Charge reach, and enemy threat ranges.
@@ -217,6 +218,13 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
     if (a.type === 'burnZone') {
       confirm.ask({ title: `Burn zone ${a.zoneId}?`, body: <p>The zone is removed from the game for both sides. You score 4 VP this Round (ns p.5).</p>, confirmLabel: 'Burn it', danger: true }, () => runRaw(a));
       return false;
+    }
+    // Choices made as a Clash or Volley is declared (Spires, sp p.9–31; Arcing Fire, core p.97).
+    if ((a.type === 'clash' || a.type === 'volley') && !a.targetId.startsWith(MARKER_PREFIX)) {
+      const merged = { ...a, ...(a.type === 'volley' ? { ruthless: attackOpts.ruthless, arcing: attackOpts.arcing } : { ruthless: attackOpts.ruthless, price: attackOpts.price, detonate: attackOpts.detonate, ...(attackOpts.assassin ? { assassin: attackOpts.assassin } : {}) }) } as Action;
+      const ok = runRaw(merged);
+      if (ok) setAttackOpts({});
+      return ok;
     }
     return runRaw(a);
   };
@@ -571,12 +579,21 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
                   ))}
                 </span>
               );
+            // Field Studies (sp p.8): 2 Observation Tokens for a Strain Expression without Decay.
+            const studied: Action = { type: 'drawEvent', name: n, observe: true };
             return (
-              <button key={n} type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n })} data-testid={`draw-event-${baseName(n)}`}>
-                {n}
-                {baseName(n) === 'Strain Expression' && strainFor(s, r) ? ` (${strainFor(s, r)!.text})` : ''}
-                {auto ? '' : ' (manual)'}
-              </button>
+              <span key={n} className="actions">
+                <button type="button" className="secondary small" onClick={() => run({ type: 'drawEvent', name: n })} data-testid={`draw-event-${baseName(n)}`}>
+                  {n}
+                  {baseName(n) === 'Strain Expression' && strainFor(s, r) ? ` (${strainFor(s, r)!.text})` : ''}
+                  {auto ? '' : ' (manual)'}
+                </button>
+                {baseName(n) === 'Strain Expression' && validate(s, studied).ok && (
+                  <button type="button" className="secondary small" onClick={() => run(studied)}>
+                    …without Decay (Field Studies, 2 Tokens)
+                  </button>
+                )}
+              </span>
             );
           })}
         </div>
@@ -651,6 +668,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
         <OdActivation key={`od-${r.id}`} s={s} run={run} />
         <SkActivation key={`sk-${r.id}`} s={s} run={run} onVolleyInContact={(id) => run({ type: 'volley', regimentId: r.id, targetId: id })} onSoaring={() => beginSpecial('soaring', r.id)} />
         <DwActivation key={`dw-${r.id}`} s={s} run={run} />
+        <AttackOptions s={s} r={r} opts={attackOpts} setOpts={setAttackOpts} />
         <div className="actions wrap">
           {!act.ended && r.location === 'arriving' && <button type="button" onClick={() => beginEnter(r)} data-testid="march-on">March on</button>}
           {!act.ended && r.location === 'table' && !engaged && (
@@ -876,6 +894,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
       )}
       <PowerBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
       <RitualBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
+      <SpiresBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
       <ElementalPowerBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
       <PhasePanel s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
 

@@ -2,6 +2,7 @@ import { applyCharacterAbility, applyDrawEvent, characterAbilityProblems, drawEv
 import { sectOf } from './rules/special/grants';
 import { activateMemories, blasphemousSoma, warlordHas } from './factions/oldDominion';
 import { applyOdClash, applyOdSpend, applyOdSupremacy, isOdSupremacy, memoriesProblems, odActivationStartSpells, odClashProblems, odSpendProblems, odSupremacyProblems } from './factions/oldDominionActions';
+import { applyRuthlessOpportunist, assassinate, assassinProblems, detonate, hasNode, lambsActivated, markPrice, priceProblems, ruthlessOpportunistProblems } from './factions/spiresExtras';
 import { castSpell, casterOf, spellProblems } from './spells';
 import { shrouded, spiresActivationStart } from './factions/spires';
 import { endOfSupremacy, prepareProblems, sk, skUnit } from './factions/sorcererKings';
@@ -120,7 +121,12 @@ export function validateM4(s: GameState, a: Action): Validation {
       if (isOdSupremacy(s, a.player)) {
         const p = odSupremacyProblems(s, a.player, a.targets ?? []);
         if (p.length) return fail(...p);
+        return ok();
       }
+      // Factions whose documents the engine implements: only Abilities with an [Activated] part can be used.
+      const activated = ['herald of war', 'thesis/antithesis/synthesis', 'remorseless hunter', 'lambs to the slaughter'];
+      const known = s.players[a.player].dw || s.players[a.player].sk || /spires/i.test(s.players[a.player].faction);
+      if (known && !w.supremacyAbilities.some((x) => activated.includes(x.toLowerCase()))) return fail(`${w.supremacyAbilities.join(', ')} has no [Activated] part.`);
       return ok();
     }
     case 'pickZone': {
@@ -154,6 +160,7 @@ export function validateM4(s: GameState, a: Action): Validation {
     }
     case 'drawEvent': {
       const p = drawEventProblems(s, a.name, { ...(a.option ? { option: a.option } : {}), ...(a.options ? { options: a.options } : {}), ...(a.targetId ? { targetId: a.targetId } : {}) });
+      if (a.observe && (s.players[s.regiments[s.activation?.regimentId ?? '']?.owner ?? 'P1'].observation ?? 0) < 2) return fail('Needs 2 Observation Tokens (Field Studies, sp p.8).');
       return p.length ? fail(...p) : ok();
     }
     case 'spell': {
@@ -231,12 +238,16 @@ export function validateM4(s: GameState, a: Action): Validation {
     case 'volley':
       return act(s, a.regimentId, 'volley', () => {
         const r = s.regiments[a.regimentId]!;
+        if (a.ruthless) {
+          const p = ruthlessOpportunistProblems(s, r);
+          if (p.length) return p;
+        }
         if (isMarkerTarget(a.targetId)) return markerVolleyPlan(s, r, markerId(a.targetId), !!s.activation?.aimed).problems;
         const t = s.regiments[a.targetId];
         if (!t) return ['Unknown target.'];
         // Mahut (sk p.42): never more than one Volley in an Activation.
         if (skUnit(r)?.freeVolley && sk(s, r.owner) && (s.activation?.actions.includes('volley') || s.activation?.extra?.some((e) => e.used && e.kind === 'volley'))) return ['A Mahut may not Volley more than once in its Activation (sk p.42).'];
-        return planVolley(s, r, t, volleyAimed(s, r)).problems;
+        return planVolley(s, r, t, volleyAimed(s, r), { arcing: !!a.arcing }).problems;
       });
     case 'clash':
       return act(s, a.regimentId, 'clash', () => {
@@ -247,7 +258,21 @@ export function validateM4(s: GameState, a: Action): Validation {
           if (p.length) return p;
           return markerInContact(s, r, id) ? [] : ['The Regiment must be in contact with the Marker (pack p.9).'];
         }
-        return clashTargets(s, r).some((t) => t.id === a.targetId) ? [] : ['Clash targets an enemy Regiment in contact (core p.44).'];
+        if (!clashTargets(s, r).some((t) => t.id === a.targetId)) return ['Clash targets an enemy Regiment in contact (core p.44).'];
+        if (a.ruthless) {
+          const p = ruthlessOpportunistProblems(s, r);
+          if (p.length) return p;
+        }
+        if (a.price) {
+          const p = priceProblems(s, r);
+          if (p.length) return p;
+        }
+        if (a.detonate && !hasNode(r)) return ['No Catabolic Node to Detonate (sp p.31).'];
+        if (a.assassin) {
+          const p = assassinProblems(s, r, a.assassin, (x) => layout(formationInput(s, x)));
+          if (p.length) return p;
+        }
+        return [];
       });
     case 'takeAim':
       return act(s, a.regimentId, 'takeAim', () => {
@@ -447,6 +472,9 @@ export function applyM4(ctx: Ctx, a: Action): void {
       else if (dwActivatedSupremacy(ctx, a.player)) {
         // Dweghom [Activated] Supremacy (dw p.6–7).
       }
+      else if (lambsActivated(ctx, a.player)) {
+        // Lambs to the Slaughter [Activated] (sp p.10).
+      }
       else if (w.supremacyAbilities.some((x) => x.toLowerCase() === 'remorseless hunter')) {
         // Remorseless Hunter [Activated]: all friendly Regiments gain Sureshot and Longshot until the end of the Round.
         for (const r of Object.values(s.regiments).filter((x) => x.owner === a.player)) r.roundRules.push({ name: 'Sureshot', raw: 'Sureshot' }, { name: 'Longshot', raw: 'Longshot' });
@@ -510,7 +538,7 @@ export function applyM4(ctx: Ctx, a: Action): void {
       break;
     }
     case 'drawEvent':
-      applyDrawEvent(ctx, a.name, { ...(a.option ? { option: a.option } : {}), ...(a.options ? { options: a.options } : {}), ...(a.targetId ? { targetId: a.targetId } : {}) });
+      applyDrawEvent(ctx, a.name, { ...(a.option ? { option: a.option } : {}), ...(a.options ? { options: a.options } : {}), ...(a.targetId ? { targetId: a.targetId } : {}), ...(a.observe ? { observe: true } : {}) });
       break;
     case 'spell': {
       const c = casterOf(s, a.casterId)!;
@@ -581,14 +609,26 @@ export function applyM4(ctx: Ctx, a: Action): void {
       if (isMarkerTarget(a.targetId)) {
         const id = markerId(a.targetId);
         attackMarker(ctx, r, id, markerVolleyPlan(s, r, id, s.activation!.aimed).pools, 'volley', `${r.name} Volley at Marker ${id}`);
-      } else applyVolley(ctx, r, s.regiments[a.targetId]!);
+      } else {
+        if (a.ruthless) applyRuthlessOpportunist(ctx, r);
+        applyVolley(ctx, r, s.regiments[a.targetId]!, { arcing: !!a.arcing });
+      }
       break;
     }
     case 'clash': {
       recordAction(s.activation!, 'clash');
       const r = s.regiments[a.regimentId]!;
-      if (isMarkerTarget(a.targetId)) applyMarkerClash(ctx, r, markerId(a.targetId));
-      else applyClash(ctx, r, s.regiments[a.targetId]!);
+      if (isMarkerTarget(a.targetId)) {
+        applyMarkerClash(ctx, r, markerId(a.targetId));
+        break;
+      }
+      // Choices made as the Clash is declared (sp p.9, p.24, p.30–31).
+      if (a.detonate) detonate(ctx, r, 'the Clash is declared');
+      if (r.location !== 'table' || s.regiments[a.targetId]!.location !== 'table') break;
+      if (a.assassin) assassinate(ctx, r, a.assassin, a.targetId, applyDuel);
+      if (a.ruthless) applyRuthlessOpportunist(ctx, r);
+      if (a.price) markPrice(s, r);
+      if (r.location === 'table' && s.regiments[a.targetId]!.location === 'table') applyClash(ctx, r, s.regiments[a.targetId]!, { price: !!a.price });
       break;
     }
     case 'takeAim':
@@ -630,7 +670,7 @@ export function applyM4(ctx: Ctx, a: Action): void {
     }
     case 'characterAbility': {
       recordAction(s.activation!, 'ability');
-      applyCharacterAbility(ctx, s.characters[a.characterId]!, a.name, a.targetId, a.target2Id);
+      applyCharacterAbility(ctx, s.characters[a.characterId]!, a.name, a.targetId, a.target2Id, !!a.observe);
       break;
     }
     case 'override.wounds': {

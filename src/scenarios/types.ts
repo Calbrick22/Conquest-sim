@@ -54,7 +54,17 @@ export type ScoringRule =
   /** Wheel of War (ns p.3): VP for Seizing this Round's Priority Zone (see ScenarioDef.priorityZones). */
   | ({ kind: 'priorityZoneSeized'; vp: number } & RoundFilter)
   /** Flames of Conquest (ns p.5): VP for each zone the player Burned this Round. */
-  | ({ kind: 'zoneBurned'; vp: number } & RoundFilter);
+  | ({ kind: 'zoneBurned'; vp: number } & RoundFilter)
+  /** Seek and Destroy (ns p.2): VP for each zone Seized with the player's own Chosen Regiments. */
+  | ({ kind: 'chosenZoneSeized'; vp: number } & RoundFilter)
+  /** Seek and Destroy (ns p.2): VP for each enemy Regiment destroyed by the player's Chosen Regiments. */
+  | ({ kind: 'killedByChosen'; vp: number } & RoundFilter)
+  /** VP per enemy designated Regiment destroyed (Chosen, ns p.2; Linebreakers, ns p.6). */
+  | ({ kind: 'designatedDestroyed'; vp: number } & RoundFilter)
+  /** Seek and Destroy (ns p.2): VP in the first Victory Phase for each Chosen Regiment the enemy army lacks. */
+  | ({ kind: 'missingDesignated'; vp: number } & RoundFilter)
+  /** Break the Line (ns p.6): VP for each unengaged Linebreaker in enemy territory. */
+  | ({ kind: 'linebreakerInTerritory'; vp: number } & RoundFilter);
 
 /**
  * Scenario-specific zone selection each Round (pack p.12, p.19, p.22):
@@ -114,6 +124,8 @@ export interface ScenarioDef {
   cursedSanctuaries?: Record<string, number>;
   /** Flames of Conquest (ns p.5): Regiments may Burn a zone they are Seizing from this Round. */
   burnFromRound?: number;
+  /** Regiments each player designates at the start (ns p.2, p.6). */
+  designate?: { kind: 'chosen' | 'linebreakers'; count: number };
   /** Player territories (Break the Line, ns p.6), as bands from each player's edge, for display. */
   territories?: Record<PlayerId, number>;
   /** Scenario rules that are not automated (shown on the preview and logged). */

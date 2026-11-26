@@ -19,6 +19,12 @@ export interface RoundFacts {
   zonePicks?: Record<PlayerId, string | null>;
   /** Zones each player Burned this Round (Flames of Conquest, ns p.5). */
   burned?: Record<PlayerId, string[]>;
+  /** Designations (ns p.2, p.6): zones Seized with the player's Chosen Regiments; enemies they destroyed; enemy designated Regiments destroyed; missing Chosen; Linebreakers in enemy territory. */
+  chosenZones?: Record<PlayerId, number>;
+  killsByChosen?: Record<PlayerId, number>;
+  designatedDestroyed?: Record<PlayerId, number>;
+  missingDesignated?: Record<PlayerId, number>;
+  linebreakersInTerritory?: Record<PlayerId, number>;
 }
 
 /** The Priority Zone this Round (Wheel of War, ns p.3): the list repeats from Round 1. */
@@ -124,6 +130,21 @@ export function scoreRound(s: ScenarioDef, f: RoundFacts, player: PlayerId): Pla
       }
       case 'zoneBurned':
         for (const z of f.burned?.[player] ?? []) add(rule.kind, rule.vp, `Burned zone ${z}`);
+        break;
+      case 'chosenZoneSeized':
+        add(rule.kind, rule.vp * (f.chosenZones?.[player] ?? 0), `${f.chosenZones?.[player] ?? 0} zone(s) Seized with Chosen Regiments`);
+        break;
+      case 'killedByChosen':
+        add(rule.kind, rule.vp * (f.killsByChosen?.[player] ?? 0), `${f.killsByChosen?.[player] ?? 0} Regiment(s) destroyed by Chosen Regiments`);
+        break;
+      case 'designatedDestroyed':
+        add(rule.kind, rule.vp * (f.designatedDestroyed?.[player] ?? 0), `${f.designatedDestroyed?.[player] ?? 0} enemy ${s.designate?.kind === 'linebreakers' ? 'Linebreaker' : 'Chosen Regiment'}(s) destroyed`);
+        break;
+      case 'missingDesignated':
+        add(rule.kind, rule.vp * (f.missingDesignated?.[player] ?? 0), `${f.missingDesignated?.[player] ?? 0} Chosen Regiment(s) the enemy army lacks`);
+        break;
+      case 'linebreakerInTerritory':
+        add(rule.kind, rule.vp * (f.linebreakersInTerritory?.[player] ?? 0), `${f.linebreakersInTerritory?.[player] ?? 0} Linebreaker(s) unengaged in enemy territory`);
         break;
     }
   }

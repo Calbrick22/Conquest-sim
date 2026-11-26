@@ -1,6 +1,8 @@
 import { ev, rollN, type Ctx } from './dice';
 import type { CommandCard, GameState, PlayerId, RegimentState, UnitClass } from './model/types';
 import { computeReinforcementLine, hasFlank, other, regimentStandCount } from './queries';
+import { addInfluence, offerPendingFor, offerState } from './factions/spiresExtras';
+import { parseRuleRef } from '../import/ruleTokens';
 import { beginRoundOd } from './factions/oldDominion';
 import { beginRoundSk, elementalKind, placeRituals } from './factions/sorcererKings';
 import { beginRoundDw } from './factions/dweghom';
@@ -43,6 +45,12 @@ export interface ReinforcementChoice {
   arrive: boolean;
   /** Tidal Summons (Marid Apsara, sk p.45): one more Water Elemental Regiment arrives automatically too. */
   tidalId?: string;
+  /** Master Manipulator, Offer accepted (sp p.22): one more Regiment arrives automatically. */
+  extraId?: string;
+  /** Master Manipulator, Offer declined (sp p.22): re-roll one failed Reinforcement Roll, or Vanguard (3). */
+  manipulate?: 'reroll' | 'vanguard';
+  /** With manipulate 'vanguard': the Regiment not on the Battlefield that gains Vanguard (3). */
+  vanguardId?: string;
 }
 
 /** Water Elementals in Reinforcements that Tidal Summons may bring with the Marid Apsara (sk p.45). */
@@ -58,12 +66,21 @@ export function flankChoices(s: GameState, p: PlayerId): RegimentState[] {
 }
 
 export function reinforcementChoiceProblems(s: GameState, p: PlayerId, c: ReinforcementChoice | null, flank: Record<string, boolean> = {}): string[] {
+  // Master Manipulator (sp p.22): the Offer is answered before any Reinforcement Roll.
+  if (offerPendingFor(s)) return ['An Offer (Master Manipulator) is waiting for an answer.'];
+  if (c?.extraId) {
+    const x = s.regiments[c.extraId];
+    if (offerState(s, p) !== 'extra') return ['Only after an accepted Offer (Master Manipulator, sp p.22).'];
+    if (!x || x.owner !== p || x.location !== 'reserve' || x.id === c.regimentId || reinforcementNeed(s.round, reinforcementClass(s, x)) === null) return ['Choose another of your Regiments that may arrive this Round.'];
+  }
+  if (c?.manipulate && offerState(s, p) !== 'declined') return ['Only after your declined Offer (Master Manipulator, sp p.22).'];
   for (const [id, arrive] of Object.entries(flank)) {
     const r = s.regiments[id];
     if (!r || r.owner !== p || !flankChoices(s, p).includes(r)) return ['Only your Flank Regiments that can arrive this Round may be declared (core p.98).'];
     if (!arrive && reinforcementNeed(s.round, reinforcementClass(s, r)) === 'auto') return [`${r.name} cannot stay past the Round its Class must arrive (core p.98).`];
   }
   if (!c) return [];
+  if (!c.regimentId && (c.extraId || c.manipulate)) return [];
   const r = s.regiments[c.regimentId];
   if (!r || r.owner !== p || r.location !== 'reserve') return ['Choose one of your Regiments in Reinforcements.'];
   const need = reinforcementNeed(s.round, reinforcementClass(s, r));
@@ -78,11 +95,20 @@ export function reinforcementChoiceProblems(s: GameState, p: PlayerId, c: Reinfo
 /**
  * Reinforcement Phase for one player (core p.20–21): the chosen Regiment arrives or stays without
  * rolling; every other eligible Regiment rolls against the table. Regiments that failed to enter
- * last Round arrive automatically (core p.31). Flank (X) Regiments are manual (core p.98).
+ * last Round arrive automatically (core p.31). Flank Regiments declare instead of rolling (core p.98).
  */
 export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementChoice | null, flank: Record<string, boolean> = {}): void {
   const s = ctx.s;
+  let rerollLeft = choice?.manipulate === 'reroll' ? 1 : 0;
+  const mineOffer = s.players[p].offer?.round === s.round && s.players[p].offer?.accepted === true;
   for (const r of reserveRegiments(s, p)) {
+    // Master Manipulator (sp p.22): an accepted Offer brings one more Regiment; the proposer's gains Vanguard (3).
+    if (choice?.extraId === r.id) {
+      r.location = 'arriving';
+      if (mineOffer) r.roundRules.push(parseRuleRef('Vanguard (3)'));
+      ev(ctx, { type: 'reinforcement', text: `Master Manipulator: ${r.name} arrives automatically${mineOffer ? ' with Vanguard (3)' : ''} (sp p.22).`, player: p, regimentId: r.id });
+      continue;
+    }
     // Flank (core p.98): no die; the player declares whether it arrives or stays, within its Class's window.
     if (hasFlank(s, r) && !(choice && r.id === choice.regimentId) && !r.flags.autoArrive) {
       const need = reinforcementNeed(s.round, reinforcementClass(s, r));
@@ -118,7 +144,14 @@ export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementCho
       continue;
     }
     const idx = ctx.rng.index;
-    const [v] = rollN(ctx, 1);
+    let [v] = rollN(ctx, 1);
+    // Master Manipulator, declined Offer (sp p.22): re-roll the first failed Reinforcement Roll (AMB-89).
+    if (v! > need && rerollLeft) {
+      rerollLeft = 0;
+      const first = v;
+      [v] = rollN(ctx, 1);
+      ev(ctx, { type: 'note', text: `Master Manipulator: ${r.name} re-rolls its failed Reinforcement Roll (${first} → ${v}) (sp p.22).`, player: p, regimentId: r.id });
+    }
     const okRoll = v! <= need;
     if (okRoll) r.location = 'arriving';
     ev(ctx, {
@@ -128,6 +161,14 @@ export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementCho
       regimentId: r.id,
       dice: { purpose: `${r.name}: Reinforcement Roll`, seed: ctx.rng.seed, index: idx, values: [v!], notes: [`need ${need} or less (core p.21)`] },
     });
+  }
+  // Master Manipulator, declined Offer (sp p.22): a Regiment not on the Battlefield gains Vanguard (3) this Round.
+  if (choice?.manipulate === 'vanguard') {
+    const pick = (choice.vanguardId ? s.regiments[choice.vanguardId] : undefined) ?? Object.values(s.regiments).find((x) => x.owner === p && x.location === 'arriving');
+    if (pick && pick.owner === p && pick.location !== 'table' && pick.location !== 'destroyed') {
+      pick.roundRules.push(parseRuleRef('Vanguard (3)'));
+      ev(ctx, { type: 'reinforcement', text: `Master Manipulator: ${pick.name} gains Vanguard (3) until the end of the Round (sp p.22).`, player: p, regimentId: pick.id });
+    }
   }
   s.players[p].reinforcementDone = true;
 }
@@ -196,7 +237,12 @@ export function supremacyRollOff(ctx: Ctx): PlayerId {
       text: `Supremacy roll-off: P1 ${a}${ma !== a ? `→${ma}` : ''}, P2 ${b}${mb !== b ? `→${mb}` : ''}${note}.${ma === mb ? ' Tie, re-roll.' : ''}`,
       dice: { purpose: 'Supremacy roll-off', seed: ctx.rng.seed, index: idx, values: [a, b], notes: ['lowest wins (core p.21)'] },
     });
-    if (ma !== mb) return ma < mb ? 'P1' : 'P2';
+    if (ma !== mb) {
+      // Tricks of the Trade (sp p.10): the final unmodified Supremacy Roll joins the Influence Pool.
+      addInfluence(s, 'P1', a);
+      addInfluence(s, 'P2', b);
+      return ma < mb ? 'P1' : 'P2';
+    }
   }
 }
 
@@ -293,7 +339,7 @@ export function beginRound(s: GameState): void {
   s.turn = null;
   s.drawn = null;
   s.zonePicks = { P1: null, P2: null };
-  s.tally = { charactersKilled: { P1: 0, P2: 0 }, regimentsDestroyed: { P1: 0, P2: 0 }, warlordSlain: { P1: false, P2: false }, markersDestroyed: { P1: [], P2: [] }, burned: { P1: [], P2: [] } };
+  s.tally = { charactersKilled: { P1: 0, P2: 0 }, regimentsDestroyed: { P1: 0, P2: 0 }, warlordSlain: { P1: false, P2: false }, markersDestroyed: { P1: [], P2: [] }, burned: { P1: [], P2: [] }, destroyedIds: { P1: [], P2: [] }, killsByChosen: { P1: 0, P2: 0 } };
   s.reinforcementLine = { P1: computeReinforcementLine(s, 'P1'), P2: computeReinforcementLine(s, 'P2') };
 }
 

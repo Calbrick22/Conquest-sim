@@ -4,7 +4,8 @@ import { layout } from '../formation';
 import { rectPoly } from '../geometry/polygon';
 import { standOverlapsZone } from '../geometry/zones';
 import type { GameState, PlayerId, RoundScore } from '../model/types';
-import { attachedCharacter, formationInput, markerPolys, onTableRegiments } from '../queries';
+import { attachedCharacter, formationInput, isEngaged, markerPolys, onTableRegiments } from '../queries';
+import { designatedForScoring } from './designations';
 import { seizeBonusFor, unhallowed } from '../factions/oldDominion';
 import { cycloned, skVictoryStart } from '../factions/sorcererKingsActions';
 import { scoreRound, type RoundFacts } from './scoreRound';
@@ -71,6 +72,11 @@ const RULE_GROUP: Record<string, 'zones' | 'kills'> = {
   pickedZoneSeized: 'zones',
   priorityZoneSeized: 'zones',
   zoneBurned: 'zones',
+  chosenZoneSeized: 'zones',
+  linebreakerInTerritory: 'zones',
+  killedByChosen: 'kills',
+  designatedDestroyed: 'kills',
+  missingDesignated: 'kills',
   markerDestroyed: 'kills',
   markersDestroyedCountBonus: 'kills',
   characterKilled: 'kills',
@@ -112,6 +118,7 @@ export function victoryPhase(ctx: Ctx): RoundScore {
     warlordScoredBefore: { ...s.warlordScored },
     ...(s.scenario.zonePick ? { zonePicks: s.zonePicks } : {}),
     ...(s.tally.burned ? { burned: s.tally.burned } : {}),
+    ...designationFacts(s, seized),
   };
   const rs: RoundScore = { round: s.round, seized, vp: { P1: 0, P2: 0 }, lines: { P1: [], P2: [] } };
   for (const p of ['P1', 'P2'] as const) {
@@ -132,6 +139,57 @@ export function victoryPhase(ctx: Ctx): RoundScore {
 }
 
 export { scoreRound };
+
+/**
+ * Designation facts for the Victory Phase (ns p.2, p.6). RULE-AMBIGUITY: AMB-91 — a zone counts as
+ * Seized "with Chosen Regiments" when one of the player's own Chosen Regiments (marked by the enemy)
+ * can Seize and has a Stand in it; a Linebreaker is "in enemy territory" when every Stand is within
+ * the enemy's band; missing Chosen Regiments are scored in the first Victory Phase.
+ */
+function designationFacts(s: GameState, seized: Record<PlayerId, string[]>): Partial<RoundFacts> {
+  const d = s.scenario.designate;
+  if (!d || !s.designated) return {};
+  const other = (p: PlayerId): PlayerId => (p === 'P1' ? 'P2' : 'P1');
+  const polysOf = (id: string) => {
+    const r = s.regiments[id];
+    return r && r.location === 'table' ? layout(formationInput(s, r)).map((sl) => rectPoly(sl.rect)) : [];
+  };
+  const out: Partial<RoundFacts> = {
+    designatedDestroyed: {
+      P1: (s.tally.destroyedIds?.P1 ?? []).filter((id) => designatedForScoring(s, 'P1', id)).length,
+      P2: (s.tally.destroyedIds?.P2 ?? []).filter((id) => designatedForScoring(s, 'P2', id)).length,
+    },
+  };
+  if (d.kind === 'chosen') {
+    const chosenZones = { P1: 0, P2: 0 };
+    for (const p of ['P1', 'P2'] as const)
+      for (const zid of seized[p]) {
+        const z = s.scenario.zones.find((x) => x.id === zid)!;
+        const mine = s.designated[other(p)].filter((id) => s.regiments[id] && !s.regiments[id]!.broken && !s.regiments[id]!.flags.declinedDuel);
+        if (mine.some((id) => polysOf(id).some((q) => standOverlapsZone(q, { x: z.x, y: z.y }, z.diameter)))) chosenZones[p] += 1;
+      }
+    out.chosenZones = chosenZones;
+    out.killsByChosen = { P1: s.tally.killsByChosen?.P1 ?? 0, P2: s.tally.killsByChosen?.P2 ?? 0 };
+    // Fewer than three non-Light Regiments in the enemy list: the missing ones score as if destroyed (ns p.2).
+    const nonLight = (p: PlayerId) => Object.values(s.regiments).filter((r) => r.owner === p && r.cls !== 'Light').length;
+    if (s.round === 1) out.missingDesignated = { P1: Math.max(0, d.count - nonLight('P2')), P2: Math.max(0, d.count - nonLight('P1')) };
+  } else {
+    const band = s.scenario.territories;
+    const inEnemyLand = (p: PlayerId, id: string) => {
+      const q = other(p);
+      const depth = band?.[q] ?? 6;
+      const edge = s.scenario.reinforcementZones[q];
+      const H = s.scenario.table.height;
+      const W = s.scenario.table.width;
+      const ps = polysOf(id);
+      const d0 = (v: { x: number; y: number }) => (edge === 'bottom' ? v.y : edge === 'top' ? H - v.y : edge === 'left' ? v.x : W - v.x);
+      return ps.length > 0 && ps.every((poly) => poly.every((v) => d0(v) <= depth + 1e-6));
+    };
+    const count = (p: PlayerId) => s.designated![p].filter((id) => s.regiments[id]?.location === 'table' && !isEngaged(s, s.regiments[id]!) && inEnemyLand(p, id)).length;
+    out.linebreakersInTerritory = { P1: count('P1'), P2: count('P2') };
+  }
+  return out;
+}
 
 /**
  * Cursed Sanctuaries (ns p.4): in each Victory Phase, every Regiment within a zone suffers that

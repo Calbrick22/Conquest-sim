@@ -3,6 +3,8 @@ import { parseRuleRef } from '../../../import/ruleTokens';
 import type { CharacterState, GameState, PlayerId, RegimentState, StatMod } from '../../model/types';
 import { odCharacterGrants, odRegimentGrants } from '../../factions/oldDominion';
 import { spiresCharacterMods, spiresGrants, strainFor } from '../../factions/spires';
+import { spiresExtraGrants } from '../../factions/spiresExtras';
+import { isLinebreaker } from '../../scoring/designations';
 import { distancePolys, regimentPolys } from '../../queries';
 import { waterMods } from '../../terrain';
 import { elementalKind, skRegimentGrants } from '../../factions/sorcererKings';
@@ -101,6 +103,8 @@ export function refreshRules(s: GameState): void {
     let eff = dedupe(rules);
     if (og.removeBrittle) eff = eff.filter((x) => x.name !== 'Brittle');
     if (kg.remove?.length) eff = eff.filter((x) => !kg.remove!.includes(x.name));
+    // Break the Line (ns p.6): Linebreakers lose Fly.
+    if (isLinebreaker(s, r)) eff = eff.filter((x) => x.name !== 'Fly');
     // Unmake Armor (dw p.27): loses Hardened this Round.
     if (r.flags.unmade) eff = eff.filter((x) => x.name !== 'Hardened');
     r.rules = eff;
@@ -142,6 +146,7 @@ export function refreshRules(s: GameState): void {
     ];
   }
   spiresGrants(s);
+  spiresExtraGrants(s);
 }
 
 /**

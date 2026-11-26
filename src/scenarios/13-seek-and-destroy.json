@@ -66,14 +66,32 @@
     {
       "kind": "regimentDestroyed",
       "vp": 1
+    },
+    {
+      "kind": "chosenZoneSeized",
+      "vp": 2
+    },
+    {
+      "kind": "killedByChosen",
+      "vp": 1
+    },
+    {
+      "kind": "designatedDestroyed",
+      "vp": 3
+    },
+    {
+      "kind": "missingDesignated",
+      "vp": 3
     }
   ],
-  "manualRules": [
-    "Chosen Regiments: before the first Supremacy Phase each player marks up to three non-Light enemy Regiments; +2 VP per zone Seized with Chosen Regiments, +1 VP per Regiment destroyed by Chosen Regiments, +3 VP per enemy Chosen Regiment destroyed (and VP for missing Chosen) are added by hand."
-  ],
+  "manualRules": [],
   "summary": [
     "2 VP per 6″ zone Seized (red zones are friendly to P1, blue to P2)",
     "1 VP per enemy Regiment destroyed",
-    "Chosen Regiments bonuses are manual"
-  ]
+    "Chosen Regiments: +2 VP per zone Seized with your Chosen, +1 VP per Regiment they destroy, +3 VP per enemy Chosen destroyed"
+  ],
+  "designate": {
+    "kind": "chosen",
+    "count": 3
+  }
 }

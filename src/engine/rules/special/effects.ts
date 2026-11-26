@@ -42,9 +42,13 @@ export function poolMods(rules: readonly RuleRef[], target: RegimentState, kind:
     // Herald of Fire (dw p.45): all Hit Rolls. Hone Blades (dw p.27): in a Clash.
     ...((kind === 'volley' && hasRule(rules, 'Homing Winds')) ||
     (kind !== 'special' && (hasRule(rules, 'Elemental Waters') || hasRule(rules, 'Herald of Fire'))) ||
-    (clashLike && hasRule(rules, 'Hone Blades'))
+    (clashLike && hasRule(rules, 'Hone Blades')) ||
+    // Assault Preceptor (sp p.33): failed Hit Rolls of 6 in Clash and Volley Actions.
+    ((kind === 'clash' || kind === 'volley') && hasRule(rules, 'Assault Preceptor'))
       ? { rerollSixes: true }
       : {}),
+    // Lambs to the Slaughter [Activated] (sp p.10): Hit Rolls of 6 count as 1 in Clash, Volley and Impact Hits.
+    ...((kind === 'clash' || kind === 'volley' || kind === 'impact') && hasRule(rules, 'Lambs to the Slaughter') ? { sixesAsOnes: true } : {}),
   };
 }
 

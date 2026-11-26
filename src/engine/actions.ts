@@ -29,9 +29,10 @@ import { barrageOf, flatRules, hasRule, ruleX } from './rules/special/rules';
 import { magnanimity, poolMods } from './rules/special/effects';
 import { elementalKind, isElemental, ofCourt, skUnit, warlordCourts, warlordHas, waterPieces, within } from './factions/sorcererKings';
 import { volleyInContact } from './factions/sorcererKingsActions';
+import { endlessHunger, ruthlessOnClashTarget } from './factions/spiresExtras';
 import { dwAfterDuel, dwMustAccept, dwOnCharge, dwOnDecline, toTheEnd } from './factions/dweghomActions';
 import { autoPassesResolve, markOnce, takeGlimmers, xhiliarchChargeBonus } from './factions/oldDominion';
-import { chargeThroughHindering, coverHalves, standLosSize, terrainBlocks, terrainPathProblems, terrainPositionProblems } from './terrain';
+import { chargeThroughHindering, coverHalves, piecePoly, standLosSize, terrainOf, terrainBlocks, terrainPathProblems, terrainPositionProblems } from './terrain';
 
 // ---------------------------------------------------------------- shared geometry helpers
 
@@ -567,7 +568,7 @@ function inspiredSkill(c: number, inspired: boolean): { skill: number; rerollSix
  * (the chosen target if it touches several); Unengaged Stands support the chosen target
  * (core p.45). Each enemy is resolved as a separate pool, from Hits to Morale.
  */
-export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
+export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState, opts: { price?: boolean } = {}): void {
   const s = ctx.s;
   const enemies = enemiesInContact(s, r);
   const fps = new Map(enemies.map((e) => [e.id, rectPoly(footprintOf(s, e))]));
@@ -576,10 +577,15 @@ export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
   // or against Dread (core p.60, p.76, p.97). Dauntless always counts as Inspired (core p.97).
   const dread = enemies.some((e) => hasRule(e.rules, 'Dread'));
   // Siphon Strength (sp p.15): never Inspired.
-  const inspiredAllowed = !r.broken && !r.flags.declinedDuel && !dread && !r.flags.siphoned && !r.flags.hindered;
+  // Ruthless Competence (sp p.9): Clashing a [Clone] Regiment may cost the attacker Inspired this Round.
+  ruthlessOnClashTarget(ctx, r, t);
+  const inspiredAllowed = !r.broken && !r.flags.declinedDuel && !dread && !r.flags.siphoned && !r.flags.hindered && !r.flags.noInspired;
+  // Epigenetic Trigger (sp p.9) or Master of Flesh's [Aura] (sp p.28): the Command Stand +2 Attacks.
+  const epi = r.flags.epigenetic || r.flags.fleshAura ? 2 : 0;
   const support = engagedFlankOrRear(s, r) && !hasRule(r.rules, 'Iron Discipline') ? 1 : ruleX(r.rules, 'Support') || 1;
   const leader = r.commandModels.includes('Leader');
   const c = attachedCharacter(s, r.id);
+  let paid = 0;
   const perTarget = new Map<string, { engaged: number; support: number; charAttacks: number; charEngaged: boolean; cmd: number }>();
   const bucket = (id: string) => perTarget.get(id) ?? (perTarget.set(id, { engaged: 0, support: 0, charAttacks: 0, charEngaged: false, cmd: 0 }), perTarget.get(id)!);
   // Exhortation of Eternal Faith (od p.30): [Aura] friendly Command Stands within 12″ add +3 Attacks and gain Cleave (1).
@@ -592,8 +598,8 @@ export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
     if (sl.isCharacter) {
       b.charAttacks += touching.length && c ? charStat(c, 'A') : 1;
       b.charEngaged = touching.length > 0;
-    } else if (touching.length && sl.isCommand && exhorted) b.cmd += stat(r, 'A') + (leader ? 1 : 0) + (r.flags.epigenetic ? 2 : 0) + 3;
-    else if (touching.length) b.engaged += stat(r, 'A') + (sl.isCommand && leader ? 1 : 0) + (sl.isCommand && r.flags.epigenetic ? 2 : 0); // Epigenetic Trigger (sp p.9)
+    } else if (touching.length && sl.isCommand && exhorted) b.cmd += stat(r, 'A') + (leader ? 1 : 0) + epi + 3;
+    else if (touching.length) b.engaged += stat(r, 'A') + (sl.isCommand && leader ? 1 : 0) + (sl.isCommand ? epi : 0);
     else b.support += support;
   }
   for (const [tid, b] of perTarget) {
@@ -602,7 +608,10 @@ export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
     const arc = arcOfAttack(s, r, target);
     // The Inspired Special Rule (core p.99) counts too, e.g. from Dark Power Tier III or a banner.
     const inspired = ((!!s.activation?.inspired || hasRule(r.rules, 'Inspired') || hasRule(r.rules, 'Dauntless') || magnanimity(s, r, target)) && inspiredAllowed) || (hasRule(r.rules, 'Dauntless') && !dread);
-    const C = stat(r, 'C');
+    // Endless Hunger (Consumption Beast, sp p.50): +1 Clash and Terrifying (2) against a smaller enemy.
+    const hunger = endlessHunger(r, target);
+    const C = stat(r, 'C') + (hunger ? 1 : 0);
+    if (hunger) ev(ctx, { type: 'note', text: `Endless Hunger: ${r.name} has +1 Clash and Terrifying (2) against ${target.name} (sp p.50).` });
     const ins = inspiredSkill(C, inspired);
     const blessed = takeBlessed(r);
     const pools: AttackPool[] = [
@@ -626,6 +635,16 @@ export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
       const cins = inspiredSkill(charStat(c, 'C'), inspired);
       pools.push({ label: `${c.name} (${b.charEngaged ? 'engaged' : 'support'})`, dice: b.charAttacks, skill: cins.skill, rerollSixes: cins.rerollSixes, ...poolMods(c.rules, target, 'clash', arc, cins.skill), ...charMoraleFlags(c) });
     }
+    // No Matter the Price (sp p.30): no re-rolls; every failed Hit Roll of the Regiment becomes a Hit for 1 Wound.
+    if (opts.price) {
+      for (const p of pools) {
+        if (c && p.label.startsWith(c.name)) continue;
+        p.rerollFailed = false;
+        p.rerollSixes = false;
+        p.convertFails = p.dice;
+        p.payForHits = true;
+      }
+    }
     // Trial of Will (od p.10): Defense Rolls against the target's modified Resolve when that is lower.
     if (hasRule(r.rules, 'Trial of Will') || r.flags.trialNext) {
       const why = trialOfWill(ctx, r, target, pools);
@@ -633,11 +652,20 @@ export function applyClash(ctx: Ctx, r: RegimentState, t: RegimentState): void {
     }
     if (inspired) ev(ctx, { type: 'note', text: `${r.name} is Inspired: ${ins.rerollSixes ? 're-rolls natural 6s' : `Clash ${C}→${ins.skill}`} (core p.99).` });
     if (perTarget.size > 1) ev(ctx, { type: 'note', text: `${r.name} directs ${pools.reduce((a, p) => a + p.dice, 0)} Attacks at ${target.name} (core p.45).` });
-    resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: target.id, arc, pools, morale: true, terrifying: ruleX(r.rules, 'Terrifying'), what: `${r.name} Clash`, kind: 'clash' });
+    const res = resolveAttack(ctx, { attackerOwner: r.owner, attackerId: r.id, targetId: target.id, arc, pools, morale: true, terrifying: hunger ? Math.max(2, ruleX(r.rules, 'Terrifying')) : ruleX(r.rules, 'Terrifying'), what: `${r.name} Clash`, kind: 'clash' });
+    paid += res.paid ?? 0;
     if (r.location === 'destroyed') break;
+  }
+  // No Matter the Price (sp p.30): the converted Hits cost Wounds; their Morale Test comes at the end of the Action.
+  if (paid && r.location === 'table') {
+    ev(ctx, { type: 'note', text: `No Matter the Price: ${r.name} suffers ${paid} Wound${paid > 1 ? 's' : ''} for its converted Hits (sp p.30).`, regimentId: r.id });
+    const enemy = r.owner === 'P1' ? 'P2' : 'P1';
+    allocateWounds(ctx, r, paid, enemy);
+    if (r.location === 'table') moraleTest(ctx, r, paid, { arc: 'front', terrifying: 0, attackerOwner: enemy });
   }
   // One-Clash effects end with the Clash (Reign of Terror, Obdurate Bone and Stone; od p.10).
   r.flags.trialNext = false;
+  r.flags.opportunistNext = false;
   if (c) delete c.nextA;
   pressTheAttack(ctx, r, enemies.map((e) => e.id));
 }
@@ -701,8 +729,24 @@ export function volleyAimed(s: GameState, r: RegimentState, opts: { current?: bo
   return hasRule(r.rules, 'Aimed Shot') && earlier <= 0;
 }
 
-export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aimed: boolean): { plans: VolleyStandPlan[]; problems: string[] } {
+/**
+ * Arcing Fire (core p.97): with Aimed Shot, a Volley at an enemy in the front arc that a friendly
+ * Regiment can see, as a Clear Shot: −1 Volley, only Stands with Arcing Fire, and Cover only when
+ * every target Stand is within it. RULE-AMBIGUITY: AMB-90 — Aimed Shot from Take Aim counts.
+ */
+export function arcingProblems(s: GameState, r: RegimentState, t: RegimentState): string[] {
+  const c = attachedCharacter(s, r.id);
+  if (!hasRule(r.rules, 'Arcing Fire') && !(c && hasRule(c.rules, 'Arcing Fire'))) return ['No Stand has Arcing Fire (core p.97).'];
+  if (!hasRule(r.rules, 'Aimed Shot') && !s.activation?.aimed) return ['Arcing Fire needs Aimed Shot (core p.97).'];
+  const seen = onTableRegiments(s).some((f) => f.owner === r.owner && hasLineOfSight(s, f, t));
+  return seen ? [] : [`No friendly Regiment has Line of Sight to ${t.name} (core p.97).`];
+}
+
+export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aimed: boolean, opts: { arcing?: boolean } = {}): { plans: VolleyStandPlan[]; problems: string[] } {
   const problems: string[] = [];
+  if (opts.arcing && t.location === 'table') problems.push(...arcingProblems(s, r, t));
+  // Spined Descent (Pteraphon Surveyor, sp p.48): a Regiment it moved over this Activation, regardless of Range or Line of Sight.
+  const spined = r.name === 'Pteraphon Surveyor' && (s.activation?.movedOver ?? []).includes(t.id);
   if (r.location !== 'table' || t.location !== 'table') problems.push('Both Regiments must be on the Battlefield.');
   if (t.owner === r.owner) problems.push('Choose an enemy Regiment.');
   // Eye of the Storm, Mahut (sk p.39, p.42): may Volley in contact, at the enemy in contact.
@@ -712,7 +756,7 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
   const tfp = footprintOf(s, t);
   const tPolys = regimentPolys(s, t);
   const arcs = shootingArcs(r);
-  if (!tPolys.some((p) => arcsOf(fp, p).some((a) => arcs.includes(a)))) problems.push(`${t.name} is not in the front arc (core p.38).`);
+  if (!spined && !tPolys.some((p) => arcsOf(fp, p).some((a) => arcs.includes(a)))) problems.push(`${t.name} is not in the front arc (core p.38).`);
   const obs = obstacles(s, [r.id, t.id]);
   const c = attachedCharacter(s, r.id);
   const plans: VolleyStandPlan[] = [];
@@ -729,12 +773,16 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
     const b = barrageOf(rules);
     const label = sl.isCharacter && c ? c.name : `${r.name} stand${sl.isCommand ? ' (Command)' : ''}`;
     const V = sl.isCharacter && c ? charStat(c, 'V') : stat(r, 'V');
-    const vAimed = aimed ? (V + 1 >= 5 ? V : V + 1) : V;
+    const vAimed = Math.max(0, (aimed ? (V + 1 >= 5 ? V : V + 1) : V) - (opts.arcing ? 1 : 0));
     const all = flatRules([...rules, ...(b?.sub ?? [])]);
     const ap = ruleX(all, 'Armor Piercing');
     const deadly = hasRule(all, 'Deadly Shot');
     if (!b) {
       plans.push({ label, shots: 0, arc: null, reason: 'no Barrage', skill: vAimed, ap, deadly });
+      continue;
+    }
+    if (opts.arcing && !hasRule(rules, 'Arcing Fire')) {
+      plans.push({ label, shots: 0, arc: null, reason: 'no Arcing Fire', skill: vAimed, ap, deadly });
       continue;
     }
     const from = frontCentre(sl.rect);
@@ -748,7 +796,7 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
         bestPoly = tp;
       }
     }
-    if (!bestPoly || bestD > b.range + TOL) {
+    if (!bestPoly || (!spined && bestD > b.range + TOL)) {
       plans.push({ label, shots: 0, arc: null, reason: `out of range (${bestD.toFixed(1)}″ > ${b.range}″)`, skill: vAimed, ap, deadly });
       continue;
     }
@@ -759,7 +807,7 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
       const ts = standLosSize(s, t, tp);
       return !volleyLineObstructed(from, to, ss, ts, obs) && !terrainBlocks(s, from, to, ss, ts, sp, tp);
     });
-    const clear = !!clearTo;
+    const clear = !!clearTo || spined || !!opts.arcing;
     if (!clear) {
       plans.push({ label, shots: 0, arc: null, reason: 'Obstructed (core p.38)', skill: vAimed, ap, deadly });
       continue;
@@ -772,7 +820,15 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
     // Hypersynaptic Bonding (sp p.28) and Sureshot (core p.100) ignore Cover.
     // Gifted Mortals, Court of Water (Mahabharati Initiates, sk p.27): within 3″ of Water terrain, all its Stands count as in Cover.
     const tidal = t.name === 'Mahabharati Initiates' && !!s.players[t.owner].sk && ofCourt(s, t, 'Water') && within(s, t, waterPieces(s), 3) ? 'Water, Gifted Mortals' : null;
-    const cover = hasRule(r.rules, 'Hypersynaptic Bonding') || hasRule(r.rules, 'Sureshot') ? null : tidal ?? coverHalves(s, from, closestPointOnPoly(from, clearTo!), regimentPolys(s, r), tPolys, t.type);
+    const coverPiece = opts.arcing ? terrainOf(s).find((p) => p.keywords.includes('Cover') && tPolys.every((q) => overlaps(q, piecePoly(p)))) : undefined;
+    const cover =
+      hasRule(r.rules, 'Hypersynaptic Bonding') || hasRule(r.rules, 'Sureshot')
+        ? null
+        : opts.arcing
+          ? coverPiece
+            ? 'every Stand in Cover'
+            : null
+          : (tidal ?? coverHalves(s, from, closestPointOnPoly(from, clearTo ?? bestPoly), regimentPolys(s, r), tPolys, t.type));
     if (loose || cover) shots = Math.ceil(shots / 2);
     const arc = majorityArc(tfp, rectPoly(sl.rect)) ?? 'front';
     plans.push({ label: `${label}${effective ? ' (Effective Range +1)' : ''}${loose ? ' (Loose Formation: halved)' : cover ? ` (Cover, ${cover}: halved)` : ''}`, shots, arc, skill: vAimed, ap, deadly, effective });
@@ -781,13 +837,14 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
   return { plans, problems };
 }
 
-export function applyVolley(ctx: Ctx, r: RegimentState, t: RegimentState): void {
+export function applyVolley(ctx: Ctx, r: RegimentState, t: RegimentState, opts: { arcing?: boolean } = {}): void {
   const s = ctx.s;
   const act = s.activation;
   const aimed = volleyAimed(s, r, { current: true }) || magnanimity(s, r, t);
   // Reprocessing Agents: the target suffers −1 Defense as soon as it is targeted.
   if (hasRule(r.rules, 'Reprocessing Agents')) reprocess(ctx, t);
-  const { plans } = planVolley(s, r, t, aimed);
+  const { plans } = planVolley(s, r, t, aimed, opts);
+  if (opts.arcing) ev(ctx, { type: 'note', text: `Arcing Fire: ${r.name} fires over the battlefield at −1 Volley, as a Clear Shot (core p.97).`, regimentId: r.id });
   const byArc = new Map<Arc, VolleyStandPlan[]>();
   for (const p of plans) if (p.shots > 0 && p.arc) byArc.set(p.arc, [...(byArc.get(p.arc) ?? []), p]);
   for (const p of plans) if (p.shots === 0) ev(ctx, { type: 'note', text: `${p.label}: no shots (${p.reason}).` });
@@ -817,6 +874,7 @@ export function applyVolley(ctx: Ctx, r: RegimentState, t: RegimentState): void 
     }
     if (s.regiments[t.id]!.location === 'destroyed') break;
   }
+  r.flags.opportunistNext = false;
   // Visceral Bombardment: each natural 1 is a Hit on every other enemy within 3″ of the target (no Morale).
   if (ones && hasRule(r.rules, 'Visceral Bombardment')) {
     const tp = regimentPolys(s, t);

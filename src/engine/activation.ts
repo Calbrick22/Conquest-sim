@@ -9,6 +9,7 @@ import type { ActionKind, ActivationState, CharacterState, CommandCard, GameStat
 import { attachedCharacter, distancePolys, formationInput, isEngaged, regimentPolys } from './queries';
 import { hasRole, sectOf } from './rules/special/grants';
 import { barrageOf, hasRule, ruleX } from './rules/special/rules';
+import { applySpiresAbility, checkGorged, omnivore, spendObservation, spiresAbilityProblems } from './factions/spiresExtras';
 import { OD_DRAW_EVENTS, applyOdDrawEvent, isOdDrawEvent, odDrawEventProblems } from './factions/oldDominionActions';
 import { applySkDrawEvent, skDrawEventProblems } from './factions/sorcererKingsActions';
 import { applyDwDrawEvent, dwDrawEventProblems } from './factions/dweghomActions';
@@ -190,6 +191,8 @@ export function heal(ctx: Ctx, r: RegimentState, points: number, why: string): v
     restored++;
   }
   ev(ctx, { type: 'heal', text: `${r.name} Heals ${points - left} of ${points} (${why})${restored ? `, restoring ${restored} Stand${restored > 1 ? 's' : ''}` : ''} (core p.56).`, regimentId: r.id });
+  // Gorged (Consumption Beast, sp p.50): the first time it is back to its maximum Wounds.
+  checkGorged(ctx, r);
 }
 
 // ---------------------------------------------------------------- Draw Events (core p.94–95 and list rule text)
@@ -197,7 +200,7 @@ export function heal(ctx: Ctx, r: RegimentState, points: number, why: string): v
 export const DRAW_EVENTS_AUTOMATED = [
   ...OD_DRAW_EVENTS,
   ...DW_DRAW_EVENTS,
-  ...SK_DRAW_EVENTS.filter((d) => d !== 'Fan the Flames'),
+  ...SK_DRAW_EVENTS,
   'Bastion',
   'Biotic Renewal',
   'Double Time',
@@ -234,6 +237,8 @@ export interface DrawEventChoice {
   options?: string[];
   /** Suppress Higher Functions: the friendly Regiment targeted. */
   targetId?: string;
+  /** Strain Expression: spend 2 Field Studies Observation Tokens to avoid Decay (sp p.8). */
+  observe?: boolean;
 }
 
 export function drawEventProblems(s: GameState, name: string, choice: DrawEventChoice): string[] {
@@ -325,8 +330,13 @@ export function applyDrawEvent(ctx: Ctx, name: string, choice: DrawEventChoice):
         for (const [k, d] of Object.entries(def.stats)) if (d) r.roundMods.push({ stat: k as keyof typeof def.stats, delta: d, source: 'Strain' });
         r.roundRules.push(...def.rules);
       }
+      // Field Studies (sp p.8): 2 Observation Tokens and the Regiment does not gain Decay this time.
+      const studied = choice.observe === true && spendObservation(ctx, r.owner, 2, 'Strain Expression without Decay');
+      if (studied) r.flags.noDecay = true;
       if (!r.flags.noDecay) r.roundRules.push({ name: 'Decay', raw: 'Decay' });
       r.flags.decay = true;
+      // Indiscriminate Omnivore (Consumption Beast, sp p.50): a Beast within 12″ Heals 2.
+      omnivore(ctx, r, heal);
       ev(ctx, {
         type: 'draw-event',
         text: `Strain Expression: ${r.name} ${aggression ? 'uses Induced Aggression: +1 Clash (max 4) and +1 March' : def ? `gains its Strain: ${def.text || 'as entered'}${def.rules.length ? ` (${def.rules.map((x) => x.raw).join(', ')})` : ''}${Object.keys(def.stats).length ? ` ${Object.entries(def.stats).map(([k, v]) => `${k}${(v ?? 0) > 0 ? '+' : ''}${v}`).join(' ')}` : ''}` : 'has no Strain (none typed, none built in): no benefit applied'}${r.flags.noDecay ? ', without Decay (Lobotomytic Override)' : ' and suffers Decay until the end of the Round'}.`,
@@ -370,7 +380,7 @@ export function applyDrawEvent(ctx: Ctx, name: string, choice: DrawEventChoice):
 
 // ---------------------------------------------------------------- Character abilities from the lists
 
-export const CHARACTER_ABILITIES_AUTOMATED = ['Snapshot', 'Mighty Swing', 'Break Their Lines'];
+export const CHARACTER_ABILITIES_AUTOMATED = ['Snapshot', 'Mighty Swing', 'Break Their Lines', 'Grotesque Elixir', 'Preservation Protocols'];
 
 export function characterAbilityProblems(s: GameState, c: CharacterState, name: string, targetId?: string, target2Id?: string): string[] {
   if (isPractitioner(name)) return practitionerProblems(s, c, name, { ...(targetId ? { targetId } : {}), ...(target2Id ? { target2Id } : {}) });
@@ -396,12 +406,12 @@ export function characterAbilityProblems(s: GameState, c: CharacterState, name: 
     return [];
   }
   if (bn === 'Break Their Lines') return hasRule(r.rules, 'Linebreaker') ? [`${r.name} already has Linebreaker.`] : [];
-  return [];
+  return spiresAbilityProblems(s, c, bn, targetId) ?? [];
 }
 
-export function applyCharacterAbility(ctx: Ctx, c: CharacterState, name: string, targetId?: string, target2Id?: string): void {
+export function applyCharacterAbility(ctx: Ctx, c: CharacterState, name: string, targetId?: string, target2Id?: string, observe = false): void {
   if (isPractitioner(name)) {
-    applyPractitioner(ctx, c, name, { ...(targetId ? { targetId } : {}), ...(target2Id ? { target2Id } : {}) }, heal);
+    applyPractitioner(ctx, c, name, { ...(targetId ? { targetId } : {}), ...(target2Id ? { target2Id } : {}), ...(observe ? { observe } : {}) }, heal);
     return;
   }
   const s = ctx.s;
@@ -413,6 +423,7 @@ export function applyCharacterAbility(ctx: Ctx, c: CharacterState, name: string,
     allocateWounds(ctx, t, 1, owner);
     return;
   }
+  if (applySpiresAbility(ctx, c, bn, targetId, heal)) return;
   // Implacable (od p.21): every Stand in the Character's Regiment gains Linebreaker.
   // RULE-AMBIGUITY: AMB-88 — no duration is given; it lasts until the end of the Round.
   if (bn === 'Break Their Lines') {

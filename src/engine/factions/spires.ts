@@ -6,7 +6,8 @@ import { polyDistance } from '../geometry/polygon';
 import { TOL } from '../geometry/vec';
 import { footprint } from '../formation';
 import type { CharacterState, GameState, PlayerId, RegimentState, StatMod, StrainDef } from '../model/types';
-import { attachedCharacter, distancePolys, enemiesTouching, formationInput, regimentPolys } from '../queries';
+import { attachedCharacter, distancePolys, enemiesTouching, formationInput, isEngaged as isEngagedReg, regimentPolys } from '../queries';
+import { pickDice } from './spiresExtras';
 import { hasRule } from '../rules/special/rules';
 
 /**
@@ -186,6 +187,8 @@ export interface PractitionerChoice {
   targetId?: string;
   /** Essence Transfer: the Regiment that Heals. */
   target2Id?: string;
+  /** Field Studies (sp p.8): spend an Observation Token to roll one more die and keep the best. */
+  observe?: boolean;
 }
 
 export function practitionerProblems(s: GameState, c: CharacterState, name: string, ch: PractitionerChoice): string[] {
@@ -219,10 +222,17 @@ export function applyPractitioner(ctx: Ctx, c: CharacterState, name: string, ch:
   (s.activation!.spellsCast ??= []).push(n);
   const t = ch.targetId ? s.regiments[ch.targetId] : undefined;
   if (t && t.owner === r.owner) (t.flags.spellsOn ??= []).push('practitioner');
-  const roll = (k: number, why: string) => {
+  // Field Studies (Biomancer Warlord, sp p.8): one more die; the engine keeps the best for the ability (AMB-89).
+  const studied = !!ch.observe && c.isWarlord && (s.players[r.owner].observation ?? 0) > 0;
+  const roll = (k: number, why: string, prefer: 'low' | 'high' | ((v: number) => number) = 'high') => {
     const idx = ctx.rng.index;
-    const v = rollN(ctx, k);
-    ev(ctx, { type: 'dice', text: `${c.name}, ${name}: rolled ${v.join(', ')}.`, dice: { purpose: why, seed: ctx.rng.seed, index: idx, values: v }, player: r.owner });
+    const all = rollN(ctx, studied ? k + 1 : k);
+    const v = studied ? pickDice(all, k, prefer) : all;
+    if (studied) {
+      s.players[r.owner].observation = (s.players[r.owner].observation ?? 0) - 1;
+      ev(ctx, { type: 'note', text: `Field Studies: an Observation Token rolls one more die for ${name}; ${s.players[r.owner].observation} left (sp p.8).`, player: r.owner });
+    }
+    ev(ctx, { type: 'dice', text: `${c.name}, ${name}: rolled ${all.join(', ')}${studied ? `, keeps ${v.join(', ')}` : ''}.`, dice: { purpose: why, seed: ctx.rng.seed, index: idx, values: all }, player: r.owner });
     return v;
   };
   const hits = (target: RegimentState, k: number, ap: number, what: string) =>
@@ -245,7 +255,7 @@ export function applyPractitioner(ctx: Ctx, c: CharacterState, name: string, ch:
       ev(ctx, { type: 'action', text: `Siphon Strength: ${t!.name} cannot be Inspired or Aimed this Round (sp p.15).`, regimentId: t!.id });
       return;
     case 'essence transfer': {
-      const v = roll(2, 'Essence Transfer');
+      const v = roll(2, 'Essence Transfer', 'low');
       const w = Math.min(...v);
       ev(ctx, { type: 'action', text: `Essence Transfer: ${t!.name} suffers ${w} Wounds, no Morale (sp p.15).`, regimentId: t!.id });
       allocateWounds(ctx, t!, w, r.owner === 'P1' ? 'P2' : 'P1');
@@ -254,7 +264,9 @@ export function applyPractitioner(ctx: Ctx, c: CharacterState, name: string, ch:
       return;
     }
     case 'unstable enhancement': {
-      const [d] = roll(1, 'Unstable Enhancement') as [number];
+      // With a spare die: Clash for an engaged target, else Volley if it shoots, else March.
+      const want = isEngagedReg(s, t!) ? 'C' : hasRule(t!.rules, 'Barrage') ? 'V' : 'M';
+      const [d] = roll(1, 'Unstable Enhancement', (x) => ((x <= 2 ? 'M' : x <= 4 ? 'C' : 'V') === want ? 10 : 0) + x / 10) as [number];
       const k = d <= 2 ? 'M' : d <= 4 ? 'C' : 'V';
       // +1 Clash or Volley to a maximum of 4.
       const delta = k === 'M' ? 1 : Math.max(0, Math.min(1, 4 - stat(t!, k)));
@@ -272,7 +284,7 @@ export function applyPractitioner(ctx: Ctx, c: CharacterState, name: string, ch:
       return;
     }
     case 'grant virulence': {
-      const [d] = roll(1, 'Grant Virulence') as [number];
+      const [d] = roll(1, 'Grant Virulence', (x) => x * (1 - Math.max(0, Math.max(stat(t!, 'D') - (6 - x), stat(t!, 'E'))) / 6)) as [number];
       ev(ctx, { type: 'action', text: `Grant Virulence: ${t!.name} suffers ${d} Hits with Armor Piercing (${6 - d}), no Morale (sp p.15).`, regimentId: t!.id });
       hits(t!, d, 6 - d, 'Grant Virulence');
       return;
@@ -283,6 +295,9 @@ export function applyPractitioner(ctx: Ctx, c: CharacterState, name: string, ch:
 /** Pheromancer / Biomancer Warlord: a free additional Practitioner Action each Activation (sp p.6). */
 export function spiresActivationStart(ctx: Ctx): void {
   const act = ctx.s.activation;
+  // Spined Descent (Pteraphon Surveyor, sp p.48): a free Volley Action during its Activation.
+  const reg = act ? ctx.s.regiments[act.regimentId] : undefined;
+  if (act && !act.characterId && reg?.name === 'Pteraphon Surveyor' && /spires/i.test(ctx.s.players[reg.owner].faction)) (act.extra ??= []).push({ kind: 'volley', reason: 'Spined Descent', free: true, anytime: true });
   if (!act?.characterId) return;
   const c = ctx.s.characters[act.characterId]!;
   if (c.isWarlord && (has(c.supremacyAbilities, 'Induced Aggression') || has(c.supremacyAbilities, 'Field Studies')) && practitionerAbilities(c).length)

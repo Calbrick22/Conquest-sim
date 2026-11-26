@@ -14,6 +14,8 @@ export interface Ctx {
   power?: PendingPower[];
   /** Hierodeacon's Dark Shepherd: Stands destroyed generate double the Power Tokens (od p.9). */
   doublePower?: boolean;
+  /** The Regiment making the attack being resolved (for Chosen Regiments, ns p.2). */
+  attackerId?: string;
 }
 
 export function ev(ctx: Ctx, e: Omit<GameEvent, 'round'>): void {

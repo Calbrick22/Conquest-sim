@@ -18,6 +18,7 @@ import { castableSpells, casterOf, scalingExtra, spellDef } from '../engine/spel
 import { fallenDivinity, hasMemories, pantheonTier } from '../engine/factions/oldDominion';
 import { practitionerAbilities, strainFor } from '../engine/factions/spires';
 import { isOdDrawEvent, odSpendProblems, tokensAvailable } from '../engine/factions/oldDominionActions';
+import { offerPendingFor, offerState } from '../engine/factions/spiresExtras';
 import type { CharacterState, CommandCard, GameState, PlayerId, RegimentState } from '../engine/model/types';
 import {
   attachedCharacter,
@@ -53,7 +54,8 @@ export function decisionMaker(s: GameState): PlayerId | 'any' | null {
   if (s.phase !== 'play') return null;
   switch (s.step) {
     case 'reinforcement':
-      return !s.players.P1.reinforcementDone ? 'P1' : !s.players.P2.reinforcementDone ? 'P2' : null;
+      // Master Manipulator (sp p.22): an Offer is answered first.
+      return offerPendingFor(s) ?? (!s.players.P1.reinforcementDone ? 'P1' : !s.players.P2.reinforcementDone ? 'P2' : null);
     case 'command':
       return !s.players.P1.stackSet ? 'P1' : !s.players.P2.stackSet ? 'P2' : null;
     case 'supremacy':
@@ -298,6 +300,8 @@ function marchToward(s: GameState, r: RegimentState, target: Vec, stopShort: num
 // ---------------------------------------------------------------- decisions per step
 
 function decideReinforcements(s: GameState, p: PlayerId): AiDecision {
+  // Master Manipulator (sp p.22): the computer declines Offers, which only help it when accepted by both.
+  if (offerPendingFor(s) === p) return { action: { type: 'spires', player: p, act: { option: 'answerOffer', accept: false } }, reason: 'declines the Offer (Master Manipulator)' };
   // Bring the most valuable Regiment that is allowed to arrive this Round (Mediums and Heavies first).
   const choices = reinforcementChoices(s, p).filter((r) => reinforcementNeed(s.round, reinforcementClass(s, r)) !== 'auto');
   const rank = (r: RegimentState) => (r.cls === 'Heavy' ? 3 : r.cls === 'Medium' ? 2 : 1) * 10 + regimentValue(r);
@@ -308,7 +312,9 @@ function decideReinforcements(s: GameState, p: PlayerId): AiDecision {
   const flankNote = Object.keys(flank).length ? `; Flank: ${flankChoices(s, p).map((r) => r.name).join(', ')} arrive` : '';
   // Tidal Summons (sk p.45): bring the most valuable Water Elemental with the Marid Apsara.
   const tidal = best ? tidalChoices(s, p, best.id).sort((a, b) => rank(b) - rank(a))[0] : undefined;
-  if (best) return { action: { type: 'reinforcements', player: p, choice: { regimentId: best.id, arrive: true, ...(tidal ? { tidalId: tidal.id } : {}) }, flank }, reason: `brings ${best.name}${tidal ? ` and ${tidal.name} (Tidal Summons)` : ''} on automatically; rolls for the rest${flankNote}` };
+  // An accepted Offer brings one more Regiment (sp p.22).
+  const extra = offerState(s, p) === 'extra' ? choices.filter((r) => r.id !== best?.id && r.id !== tidal?.id).sort((a, b) => rank(b) - rank(a))[0] : undefined;
+  if (best) return { action: { type: 'reinforcements', player: p, choice: { regimentId: best.id, arrive: true, ...(tidal ? { tidalId: tidal.id } : {}), ...(extra ? { extraId: extra.id } : {}) }, flank }, reason: `brings ${best.name}${tidal ? ` and ${tidal.name} (Tidal Summons)` : ''} on automatically; rolls for the rest${flankNote}` };
   return { action: { type: 'reinforcements', player: p, choice: null, flank }, reason: `rolls for Reinforcements${flankNote}` };
 }
 
@@ -838,7 +844,12 @@ function decideInner(s: GameState, p: PlayerId): AiDecision {
       return decideStack(s, p);
     case 'supremacy':
       if (!s.supremacyWinner) return { action: { type: 'supremacyRollOff' }, reason: 'rolls off for Supremacy' };
-      if (!s.firstPlayer) return decideFirst(s, p);
+      if (!s.firstPlayer) {
+        // [Activated] Supremacy Abilities that need no target: used from Round 3, once the armies have met (core p.22).
+        const sup: Action = { type: 'useSupremacy', player: p };
+        if (P.targeting && s.round >= 3 && !s.players[p].supremacyUsed && validate(s, sup).ok) return { action: sup, reason: 'uses its Warlord’s [Activated] Supremacy Ability' };
+        return decideFirst(s, p);
+      }
       return decideZonePick(s, p);
     case 'victory':
       return { action: { type: 'endRound' }, reason: 'ends the Round' };

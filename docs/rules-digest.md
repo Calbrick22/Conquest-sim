@@ -295,7 +295,11 @@ Only front-rank Stands shoot, unless a rule says otherwise.
 - A Character can only be wounded by **Duels** and by rules that specifically wound Characters. Clash and Volley can't target it.
 - **Shared effects:** an attached Character is affected by the Regiment's rules and characteristic changes gained this Round (Strains, Draw Events, Spells; core p.72; AMB-59).
 - **Die Fighting:** if the Regiment is destroyed and the Character hasn't acted, it makes a free Clash, or is removed if nothing is in contact. This doesn't apply to Monster Characters. The engine removes the Character after that Clash (AMB-35).
-- **Character Actions:** Snapshot (a small Volley) and Mighty Swing (a Clash) are automated. Other Character Actions stay manual.
+- **Character Actions:** Snapshot (a small Volley) and Mighty Swing (a Clash) are automated, as are the faction ones: Break Their Lines (od p.21), Grotesque Elixir and Preservation Protocols (sp p.28, p.30), and the Practitioner Actions. An Action from a faction the engine does not cover is shown and logged as manual.
+- **Rider (core p.100):** the Character has no Stand of its own. It shares the Monster's Stand (distances, Line of Sight, contact), the Regiment counts as two Stands and Marches with the Monster's March, and the Character can Duel (AMB-86).
+- **Duels with a Character that is a Regiment by itself (od p.8):** it fights with its Regiment's profile and takes the Wounds on its Stand (AMB-48). Relentless Blows adds Hits in a Duel (core p.100). A Character with no Resolve makes no Resolve rolls.
+- **Die Fighting! (core p.74):** also for Command Stands that may "Die Fighting! as if they were Characters" (Ardent Creed, dw p.6; the Fallen Divinity's sacrifice, od p.8), and for upgrades that always Die Fighting (Bloody-Minded Focus, Strength and Honor, Convulsive Doom).
+- **Aura of Death on Activation (core p.97):** if it destroys the Regiment, its player draws again; with no card left, play passes.
 - **Duel** (Combat Action):
   - Challenge an enemy Character in a Regiment in contact.
   - **Decline:** the challenged Regiment can't seize, uses its lowest R, can't be Inspired and re-rolls successful Resolve tests of 1, all until the end of the Round.
@@ -353,11 +357,11 @@ Code: `src/engine/terrain.ts` (rules) and `src/engine/terrainLayouts.ts` (layout
 
 ### 2026 scenarios (ns p.2–6)
 
-- **Seek and Destroy:** 2 VP per zone and 1 VP per Regiment destroyed. Chosen Regiments are manual.
+- **Seek and Destroy:** 2 VP per zone and 1 VP per Regiment destroyed. Chosen Regiments (up to three non-Light enemy Regiments, designated by the engine at the start and changeable until the first Supremacy Phase): +2 VP per zone Seized with your own Chosen Regiments, +1 VP per enemy Regiment they destroy, +3 VP per enemy Chosen destroyed, and +3 VP per Chosen the enemy army lacks (AMB-91).
 - **Wheel of War:** a Priority Zone (+2 VP), starting nearest P1 and moving clockwise each Round.
 - **Cursed Sanctuaries:** Victory Phase Hits against Resolve, 4 in a 6″ zone and 8 in a 9″ zone (AMB-63).
 - **Flames of Conquest:** from Round 4 a Regiment Seizing a zone may Burn it for 4 VP, and the zone leaves the game (AMB-64).
-- **Break the Line:** 2 VP per zone and 1 VP per Regiment destroyed. Linebreakers are manual.
+- **Break the Line:** 2 VP per zone and 1 VP per Regiment destroyed. Two Linebreakers per player (they lose Fly): +3 VP per enemy Linebreaker destroyed, +5 VP per unengaged Linebreaker wholly in the enemy's 6″ band (AMB-91).
 
 ## 20. Draw Events and special rules (core p.94–101)
 
@@ -388,6 +392,7 @@ The registry in `src/engine/rules/special/rules.ts` lists each rule with its pag
 - **Morale:** Indomitable, Oblivious, Iron Discipline, Bravery, Dread, Dauntless and Unyielding (core p.96–101).
 - **Charging and moving:** Juggernaut, Glorious Charge, Fury, Shock, Trample, Pathfinders, Fluid Formation, Flawless Drill, Swift Retreat and Acute Senses (core p.96–101). A successful Charge may push the Charger up to 1″, or pivot the target, to make contact (core p.44; AMB-38).
 - **Triggers:** Aura of Death, Blessed, Bodyguards, Counter-Attack, Lethal Demise, Quicksilver Strike, Decay, Longshot and Weapon Platform (core p.96–101).
+- **Volleys (v2.4.0):** Sureshot ignores Cover (core p.100). Arcing Fire (core p.97): with Aimed Shot (or a Take Aim, AMB-90), a Volley at an enemy in the front arc that a friendly Regiment can see, as a Clear Shot, at −1 Volley, only by Stands with Arcing Fire; Cover halves it only when every target Stand is within it. Unhallowed Ground counts as Size (4) for Line of Sight (od p.15).
 - **Draw Events (core p.94–95):** Bastion, Double Time, Fire and Advance, Murderous Volley and Regeneration. Regeneration heals Wounds or restores Stands (core p.56).
 - **Spires:** Biotic Renewal, Flux-Powered, Strain Expression with Decay, Superior Creations, Lobotomytic Override, Suppress Higher Functions, Ferro-Ossified Carapace, Designate Target, Reprocessing, Just Desserts by Sect, and Character options such as Avatar Projection. Mechanics follow the rule text in the uploaded list. Strains are entered by the owner on the list review screen, because the export doesn't contain them (AMB-18).
 - **Combat flow:** a Clash is split between every enemy the Regiment's Stands touch, and Press the Attack follows Clashes and Charges (core p.46, p.61).
@@ -506,7 +511,7 @@ It affects Animate Vessel Regiments only, not the Fallen Divinity.
 - **Dark Shepherd** (od p.11): Wounds equal to what is left on the most wounded Stand, with no Morale. A Hierodeacon Warlord doubles the Tokens.
 - **Dark Awakening** (od p.28): 2 Tokens per effect (AMB-43). The effects are +2 Clash, Cleave (2), Brutal Impact (2) and Impact (+2).
 - **Heaven's Descent** (od p.28): 2 Tokens while Engaged. Impact Attacks, plus Inspired and Cleave (+1).
-- **Exhortation of Eternal Faith** (od p.30): 3 Wounds and +1 Token. Then either +6 for Seizing, −1 Resolve for enemies within 12″ (AMB-44), or the Command Stand aura (manual).
+- **Exhortation of Eternal Faith** (od p.30): 3 Wounds and +1 Token. Then either +6 for Seizing, −1 Resolve for enemies within 12″, or the [Aura]: friendly Command Stands within 12″ Clash with +3 Attacks and Cleave (1) (AMB-44).
 - **Exploitation of Divine Vanity** (od p.16): 3 Wounds and +1 Token. Then either Aura of Death (+10), 1 Token per 2 enemy Stands destroyed, or a target that re-rolls successful Morale Tests.
 - **Unholy Sacrament** (od p.19): 1 Token for Priest (+3) on the first Spell.
 - **Blasphemous Mesa** (od p.8): 1 Token for a free extra Spell.
@@ -524,7 +529,7 @@ It affects Animate Vessel Regiments only, not the Fallen Divinity.
 - **Insanity:** 2 Hits per success against Resolve, with no Morale (AMB-42).
 - **Drain Will:** −1 Defense, to a maximum of −2.
 - **Immolation:** Aura of Death (+1).
-- **Translocation:** the move is manual.
+- **Translocation:** an out-of-sequence 8″ move in any direction, ignoring what is in the way, offered straight after the Spell.
 
 ### Supremacy Abilities (od p.8–10)
 
@@ -537,7 +542,7 @@ It affects Animate Vessel Regiments only, not the Fallen Divinity.
   - [Activated] [The Fallen Pantheon] Regiments gain Blessed.
 - **Strategos:** Tier IV; [Activated] every Supremacy Phase, two [The Legion] Regiments each pick one of Tier +1, Memories of Old, a 2D6 Charge or losing Brittle.
 - **Mounted Strategos:** Tier IV; Glimmers converts 1+X failed Hits (AMB-41); [Activated] it counts as Tier IV.
-- **Theokrator:** Terrifying (+1) at Tier III; [Activated] Trial of Will (its use in a Clash is manual).
+- **Theokrator:** Terrifying (+1) at Tier III; once per Round 1 Token gives a Regiment Trial of Will for its next Clash; [Activated] Trial of Will for [The Creed] and [The Legion] this Round. Trial of Will: Defense Rolls against the target's Resolve (less the attacker's Terrifying) when that is lower; a target with no Resolve suffers −1 Defense.
 - **Xhiliarch:** Tier IV; Vanguard 2 for Medium [The Legion] Regiments and 4 for Heavy ones; +X Charge distance once per Round (AMB-41).
 
 ### Treasures and Dark Blessings (od p.17–21)
@@ -549,7 +554,7 @@ It affects Animate Vessel Regiments only, not the Fallen Divinity.
   - Calamitas, Harvest of the Fallen, Skofnung, Eleutherea (+1 Clash);
   - Aura of Malice, Eternal Discipline, Kentarch, Strength and Honor (Brittle only), Gladiator;
   - Unholy Mastery, Schemophore, Devoted to Hazlia, Viaticum.
-- **Manual:** Cuirass of Hazlia's Shadow, Hierotekton, Anastegma, Soul Reaper, Implacable, What We Did in Life, Eleutherea's Duel rules, Sanctified Labaron (list building only), and Trial of Will.
+- **Also automated (v2.4.0):** Cuirass of Hazlia's Shadow (survives one Duel with 1 Wound, cannot decline, a declined Duel gives −1 Attacks for the game), Hierotekton (joins the Bone Golems; the export shows the rest), Anastegma (two Morale dice per Wound), Soul Reaper (X Tokens for +X Attacks, before a Clash), Implacable (Break Their Lines: Linebreaker this Round, AMB-88), What We Did in Life (a declined Duel re-rolls successful Morale; Flurry against Broken Regiments), Eleutherea (Parry, Counter-Attack and Cleave (+1) in Duels), Strength and Honor (always Dies Fighting). Sanctified Labaron is list building only.
 
 ## 23. Spires (Spires army list, 2026 post-Adepticon update; cited as sp p.N)
 
@@ -586,7 +591,14 @@ Mechanics are in `src/engine/factions/spires.ts`.
 - **Epigenetic Trigger** (Biomancer): a Command Stand gets +2 Attacks.
 - **Upgrades:** Hyperadrenal Stimulation, Linked Neuroreceptors, Degenerative Aura, Induce Lethargy, Endocrine Overstimulation and Grafted are automated.
 - **Consumption Beast:** starts with 8 Wounds.
-- **Still manual:** Field Studies, Tricks of the Trade, Master Manipulator, Ruthless Competence, Catabolic Nodes, Spined Descent, Indiscriminate Omnivore, Gorged, Endless Hunger, and the remaining upgrades.
+### v2.4.0 additions (cited by PDF page of the 2026 post-Adepticon document; the entries above use the earlier numbering)
+
+- **Supremacy:** Field Studies (Observation Tokens, at most 4, one per Regiment destroyed: 1 for an extra Practitioner die, 2 for a Strain Expression without Decay, 3 on the last Command Card to remove Broken and Heal 5; sp p.8). Ruthless Competence (once per Round: Opportunists for a [Clone] Clash or Volley, no Inspired for an enemy Clashing a [Clone], or an out-of-sequence March after a friendly Regiment is destroyed; sp p.9). Lambs to the Slaughter (Fearless and Fury; [Activated] Hit Rolls of 6 count as 1 for [Husk]; sp p.10). Tricks of the Trade (a 5-dice Influence Pool that replaces dice in the Action Phase, topped up by Supremacy Rolls; sp p.10).
+- **Merchant Prince:** Master Manipulator Offers before Reinforcement Rolls; accepted, both players bring one more Regiment (the proposer's with Vanguard (3)); declined, the proposer re-rolls one failed roll or gives Vanguard (3) (sp p.22).
+- **Mimetic Assassin:** Assassination Directive replaces a front Stand as a Clash is declared, then Hits with Cleave (2) and an optional Duel (sp p.24).
+- **Upgrades:** Master of Flesh, Grotesque Elixir, Preservation Protocols, No Matter the Price, Induced Fawn Response, Lineage Commander, Convulsive Doom, Infiltration and Marksman Optimization Strains, Chain Reaction (sp p.28–31).
+- **Units and Officers:** Catabolic Node, Assault Preceptor, Lineage Guard, Privileged Observer, Ward Preceptor, Inherited Excellence, Spined Descent, Indiscriminate Omnivore, Gorged and Endless Hunger (sp p.31–50).
+- Choices made by the engine are listed in AMB-89.
 
 
 ## 24. Sorcerer Kings (Sorcerer Kings army list, 2026 "Tainted Earth" update; cited as sk p.N)
@@ -601,7 +613,7 @@ Mechanics in our own words. The code is in `src/engine/factions/sorcererKings*.t
   - The same player then draws again. A card of the Ritual's Court Activates at once; any other card goes back on top and play passes (AMB-71). Far Sight lets any card follow.
   - A completed Water Ritual, or any Ritual under Elemental Confluence, starts another of an allowed Court straight away. It can be changed while it has no Markers.
 - **Inflamed (sk p.18).** A status until the end of the Round. Fire Elementals gain Juggernaut while Inflamed, or when charging an Inflamed enemy, and still add Charge Distance bonuses. Infernal Branding gives Rapid Volley in the same cases.
-- **Court Spells (sk p.18–21).** All 24 are automated, except Air Step's 2″ move and Sunder's zone, which are manual (AMB-69).
+- **Court Spells (sk p.18–21).** All 24 are automated. Air Step offers its 2″ move straight after the Spell; Sunder targets a zone (AMB-69).
   - Hit Spells check Line of Sight. Lightning Bolt adds the target's Defense in Hits, and Blood to Water its Resolve, when the target is engaged with a friendly Regiment of that Court.
   - Ignite inflames every other Regiment within 6″ (AMB-68).
   - Cauterize and Earthquake stop Healing. Induced Hypoxia uses the lowest unmodified Resolve (AMB-75).
@@ -611,7 +623,7 @@ Mechanics in our own words. The code is in `src/engine/factions/sorcererKings*.t
 - **Supremacy (sk p.6).**
   - Elemental Confluence: Conduit Markers go to any Ritual, and a completed Ritual chains to another Court.
   - Omnipotence: 4 or more successes give a free Spellcasting Action once per Activation. A Character attempts each Spell once per Round, and each Spell is cast at most three times per Round.
-  - Elemental Dominion: Fire grants "Fan the Flames", which is manual (AMB-74). Air gives Opportunists. Water gives +2 Impact and Terrifying (1) on flank and rear Charges. Earth gives Regeneration (2).
+  - Elemental Dominion: Fire grants "Fan the Flames", which the list does not define and so has no effect (AMB-74). Air gives Opportunists. Water gives +2 Impact and Terrifying (1) on flank and rear Charges. Earth gives Regeneration (2).
 - **Unit rules (sk p.27–46).**
   - Gifted Mortals: a friendly Character's Spell on them is cast automatically. Eminence: +2 Evasion and +5 Stands for Scaling against enemy Spells.
   - Air Elemental: +1 Evasion, to at most 3, after the first March of an Activation. Water Elemental: no Water penalty, and re-rolls failed Hit Rolls of 6 in Water. Earth Elemental: Untouchable within 3″ of Earth terrain (AMB-67).
@@ -623,9 +635,10 @@ Mechanics in our own words. The code is in `src/engine/factions/sorcererKings*.t
 - **Character upgrades (sk p.16–17).** Automated:
   - Banner of Elemental Dominion, Dancing Scimitar, Prijm Khanjar, Jadoo Kavach and Shu'laat;
   - Recorder of all Deeds, Prince of the Setting Moon and Vizier of the Morning Star;
-  - Best Money can Buy, Elemental Feedback, Bound to the Elements (the change of Type is manual) and Elemental Projection.
-
-  Niyantran and Favored of Hormus are manual.
+  - Best Money can Buy, Elemental Feedback, Bound to the Elements (the Character joins a Regiment of any Type) and Elemental Projection;
+  - Niyantran, and Favored of Hormus (the Character rides a Mahut, which loses Barrage and gains Terrifying (1); friends within 3″ count as near Earth terrain).
+- **Arrogance (sk p.34):** the Rakshasa makes a free Duel as if it were a Character Stand; a declined Duel gives it Flurry this Round.
+- **Tidal Wave** (Marid Lancers) is not defined in the list and has no effect (AMB-87).
 
 ## 25. Dweghom (Dweghom army list, November 10th 2026; cited as dw p.N)
 
@@ -673,4 +686,4 @@ Mechanics in our own words. The code is in `src/engine/factions/dweghom*.ts`.
   - Shieldwall (+2 Defense to the front), Battery, Unstable Alloys and Testaments to Honor.
   - Heralds: Fire re-rolls failed Hit Rolls of 6, Magma gives Linebreaker, Stone gives Untouchable, and the Mnemancer's Apprentice gives Unyielding. A Herald puts its Regiment in the Creed's sub-faction, and in a Tempered army it may spend 1 Marker to Awaken.
   - Relics and Masteries: Litanies of Victory, Runeforged Plate, The Crown of Ushkelodh, Tempered Goad, Invocation of the Shattering, Gifted in Fire, World Breakers, First in the Fray, Superiority, Bloody-Minded Focus, Relentless March, Thaumaturge and Ferric Throne. Profile changes (Champion's Horns, Draegbhrud) come from the export.
-  - Manual: AMB-85.
+  - Also automated (v2.4.0): Ardent Command Stands Die Fighting! even after Activating; Slain Bigger (+3 Evasion to at most 3 and Fearless against Monster Characters and Riders); Chthonic Flame (successful Morale Tests re-rolled); the Forgemaster's Line of Sight from an Awakened [Forged] Command Stand; Bergont Raegh, Hellbringer Sorcerer and Ferric Throne as Riders (AMB-86). Pike Formation is the Initiates' Shieldwall; Flamer is not defined (AMB-87).

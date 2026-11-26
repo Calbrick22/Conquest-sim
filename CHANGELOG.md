@@ -1,5 +1,55 @@
 # Changelog
 
+## [2.4.0] - 2026-11-26 (no more special rules done by hand)
+
+Every special rule, upgrade and Supremacy Ability of the four implemented factions (Old Dominion, Spires, Sorcerer Kings, Dweghom) is now resolved by the engine. Ten complete computer-vs-computer games with your real lists (every pairing, five scenarios) logged no manual rules and no overrides. Choices the documents leave open are recorded as AMB-86 to AMB-91.
+
+### Added
+- **Core:**
+  - **Rider** (core p.100): the Character shares its Monster's Stand.
+  - **Arcing Fire** (core p.97): a Volley option.
+  - **Sureshot** ignores Cover.
+  - **Die Fighting!** for Command Stands that "Die Fighting as Characters", and for upgrades that always Die Fighting.
+  - **Duels:** Duels with the Fallen Divinity, and Relentless Blows in Duels.
+- **Scenarios:** Seek and Destroy's Chosen Regiments and Break the Line's Linebreakers are designated at the start (changeable in Round 1) and scored automatically. Linebreakers lose Fly.
+- **Dweghom:**
+  - Ardent Command Stands Die Fighting!
+  - Slain Bigger and Chthonic Flame.
+  - The Forgemaster's Line of Sight from an Awakened [Forged] Command Stand.
+  - Bergont Raegh, Hellbringer Sorcerer and Ferric Throne as Riders.
+  - Pike Formation is the Initiates' Shieldwall.
+- **Sorcerer Kings:**
+  - Arrogance's free Duel; a refused Duel gives the Rakshasa Flurry.
+  - Favored of Hormus: the Character rides a Mahut, which loses Barrage and gains Terrifying (1), and makes friends nearby count as near Earth.
+  - Fan the Flames and Tidal Wave, which the list names but never defines, are shown as having no effect.
+- **Old Dominion:**
+  - Exhortation's Command Stand aura and Trial of Will.
+  - Soul Reaper and Obdurate's Attacks option, chosen before a Clash.
+  - Implacable's Break Their Lines and Hierotekton.
+  - Cuirass of Hazlia's Shadow, Anastegma, Eleutherea and What We Did in Life.
+  - Strength and Honor; Unhallowed Ground's Size (4).
+- **Spires:**
+  - Supremacy Abilities: Field Studies (Observation Tokens), Ruthless Competence, Lambs to the Slaughter and Tricks of the Trade (Influence Pool).
+  - The Merchant Prince's Offer (Master Manipulator) and the Mimetic Assassin.
+  - Character upgrades: Master of Flesh, Grotesque Elixir, Preservation Protocols, No Matter the Price, Induced Fawn Response, Lineage Commander, Convulsive Doom, the Optimization Strains and Chain Reaction.
+  - Officers: Catabolic Node, Ward Preceptor and Assault Preceptor.
+  - Unit rules: Lineage Guard, Inherited Excellence, Spined Descent and Privileged Observer.
+  - Consumption Beast: Indiscriminate Omnivore, Gorged and Endless Hunger.
+- **Controls:**
+  - "With the next Clash or Volley" toggles.
+  - A Spires bar for the pools and plans.
+  - Offer buttons on the Reinforcements screen.
+  - "Before the Clash" Old Dominion spends.
+  - Duel buttons for the Fallen Divinity and the Rakshasa.
+- **Computer:**
+  - Uses [Activated] Supremacy Abilities that need no target, from Round 3.
+  - Uses the Old Dominion Clash spends.
+  - Declines Offers.
+
+### Fixed
+- A Regiment destroyed by Aura of Death as it Activates no longer leaves its player trying to draw from an empty Command Stack.
+- Supremacy Abilities with no [Activated] part can no longer be "used" (for the four implemented factions).
+
 ## [2.3.1] - 2026-11-25 (Dweghom: tested with a real list)
 
 ### Fixed

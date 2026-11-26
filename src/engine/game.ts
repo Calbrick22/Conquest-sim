@@ -1,10 +1,11 @@
-import { grantExtras, onActivationStart, recordAction } from './activation';
+import { grantExtras, heal, onActivationStart, recordAction } from './activation';
 import type { ArmyList, ListEntry } from '../import/types';
 import type { Edge, ScenarioDef } from '../scenarios/types';
 import type { StandType } from './geometry/bases';
 import { rotateAbout, sub, TOL } from './geometry/vec';
 import { clampFiles, footprint, layout } from './formation';
 import { applyPath, marchShapeProblems, samplePath, type MoveSeg } from './movement';
+import { overlaps } from './geometry/polygon';
 import type { CharacterState, GameState, PlayerId, Pose, PowerPool, Profile, RegimentState, StrainDef, TierProfileDef, UnitClass } from './model/types';
 import { createRng, rollD6, type RngState } from './rng';
 import type { Ctx } from './dice';
@@ -12,7 +13,7 @@ import { applyM4, endActivation, logManualRules, validateM4 } from './gameM4';
 import { initSorcererKings } from './factions/sorcererKings';
 import { initDweghom } from './factions/dweghom';
 import { dwActivationStart, dwAfterApply } from './factions/dweghomActions';
-import { applySpecialMove, specialMoveProblems } from './specialMoves';
+import { applySpecialMove, SPECIAL_MOVE_LABEL, specialMoveProblems, type SpecialMoveKind } from './specialMoves';
 import { skActivationStart, skAfterApply } from './factions/sorcererKingsActions';
 import { beginRound, cardTargets, passTurn, type ReinforcementChoice } from './round';
 import { victoryPhase } from './scoring/victory';
@@ -20,6 +21,8 @@ import './rules/special/rules';
 import { applyCharacterOptions, refreshRules } from './rules/special/grants';
 import { flushPower, initOldDominion } from './factions/oldDominion';
 import { odActivationStartSpells, type OdClashOption } from './factions/oldDominionActions';
+import { applyDesignate, defaultDesignations, designateProblems } from './scoring/designations';
+import { applySpiresAction, assassinsLost, initInfluence, optimizationStrains, spiresActionProblems, wardAfterAction, type AssassinPlan, type SpiresAction } from './factions/spiresExtras';
 import { strainFor } from './factions/spires';
 import { parseRuleRef } from '../import/ruleTokens';
 import {
@@ -66,14 +69,23 @@ export type ActionBody =
   | { type: 'pickZone'; player: PlayerId; zoneId: string }
   | { type: 'drawCard'; player: PlayerId }
   | { type: 'activateCharacter'; characterId: string }
-  | { type: 'drawEvent'; name: string; option?: string; options?: string[]; targetId?: string }
+  | { type: 'drawEvent'; name: string; option?: string; options?: string[]; targetId?: string; observe?: boolean }
   | { type: 'lobotomy'; player: PlayerId; place: 'top' | 'bottom' }
   // Combat and other Actions (core p.31–51, p.74–76)
   | { type: 'charge'; regimentId: string; targetId: string }
   | { type: 'placeCharge'; pose: Pose }
   | { type: 'failCharge' }
-  | { type: 'volley'; regimentId: string; targetId: string }
-  | { type: 'clash'; regimentId: string; targetId: string }
+  /** ruthless: Ruthless Competence (sp p.9); arcing: Arcing Fire (core p.97). */
+  | { type: 'volley'; regimentId: string; targetId: string; ruthless?: boolean; arcing?: boolean }
+  /** Scenario designations: Chosen Regiments or Linebreakers (ns p.2, p.6). */
+  | { type: 'designate'; player: PlayerId; regimentIds: string[] }
+  /** Spires choices outside the normal Actions (sp p.8–35). */
+  | { type: 'spires'; player: PlayerId; act: SpiresAction }
+  /**
+   * Clash (core p.44) with choices made as it is declared: Ruthless Competence (sp p.9), No Matter the
+   * Price and Catabolic Node (sp p.30–31), the Mimetic Assassin's Assassination Directive (sp p.24).
+   */
+  | { type: 'clash'; regimentId: string; targetId: string; ruthless?: boolean; price?: boolean; detonate?: boolean; assassin?: AssassinPlan }
   | { type: 'takeAim'; regimentId: string }
   | { type: 'inspire'; regimentId: string }
   | { type: 'rally'; regimentId: string }
@@ -81,7 +93,7 @@ export type ActionBody =
   | { type: 'combatReform'; regimentId: string; files: number }
   | { type: 'withdraw'; regimentId: string; moves: MoveSeg[]; turn?: boolean }
   | { type: 'duel'; characterId: string; targetCharacterId: string; accept: boolean }
-  | { type: 'characterAbility'; characterId: string; name: string; targetId?: string; target2Id?: string }
+  | { type: 'characterAbility'; characterId: string; name: string; targetId?: string; target2Id?: string; observe?: boolean }
   // Spellcasting (core p.80–81) and Old Dominion faction Actions (od p.5–8)
   | { type: 'spell'; casterId: string; spell: string; targetId: string; attunement?: number; pool?: PowerPool; boost?: number }
   | { type: 'memories'; regimentId: string }
@@ -91,7 +103,7 @@ export type ActionBody =
   | { type: 'skForm'; regimentId: string; group: string; option: string }
   | { type: 'gildedStatue'; regimentId: string }
   // Moves outside the March rules: Air Step, Translocation, On Soaring Winds (specialMoves.ts)
-  | { type: 'specialMove'; regimentId: string; kind: 'airStep' | 'translocation' | 'soaring'; moves: MoveSeg[] }
+  | { type: 'specialMove'; regimentId: string; kind: SpecialMoveKind; moves: MoveSeg[] }
   | { type: 'skipMove' }
   // Dweghom (dw p.4–45)
   | { type: 'dwSpend'; regimentId: string; what: 'wander' | 'herald' }
@@ -176,6 +188,7 @@ export function attachTypeOk(c: CharacterState, r: RegimentState): boolean {
   }
   if (r.type === c.type) return true;
   if (hasOption(c, 'Bound to the Elements')) return true;
+  if (hasOption(c, 'Lineage Commander') && r.name === 'Bound Clones') return true;
   return c.name === 'Lost Ancestor' && c.type === 'Brute' && r.type === 'Infantry';
 }
 
@@ -354,6 +367,20 @@ export function createGame(input: SetupInput): SetupResult {
     if (!hasOption(c, 'Hierotekton')) continue;
     const bg = Object.values(regiments).find((r) => r.owner === c.id.slice(0, 2) && r.warband === c.warband && r.name === 'Bone Golems');
     if (bg) c.attachedTo = bg.id;
+  }
+  for (const c of Object.values(characters)) {
+    if (!/spires/i.test(c.id.startsWith('P1') ? input.lists.P1.faction : input.lists.P2.faction)) continue;
+    // Infiltration / Marksman Optimization Strain (sp p.31): Barrage profiles.
+    optimizationStrains(c);
+    // Lineage Commander (sp p.30): attached to a Bound Clones Regiment even though it is a Brute.
+    if (hasOption(c, 'Lineage Commander')) {
+      const bc = Object.values(regiments).find((r) => r.owner === c.id.slice(0, 2) && r.warband === c.warband && r.name === 'Bound Clones');
+      if (bc) c.attachedTo = bc.id;
+    }
+    // Assassination Directive (sp p.24): the Mimetic Assassin starts unattached and joins a Clash later.
+    if (/mimetic assassin/i.test(c.name)) c.attachedTo = null;
+    // Grotesque Elixir, Preservation Protocols (sp p.28, p.30): Character Actions.
+    for (const n of ['Grotesque Elixir', 'Preservation Protocols']) if (hasOption(c, n) && !c.actions.some((x) => x.name === n)) c.actions = [...c.actions, parseRuleRef(n)];
   }
   // Rider (core p.100): the Character has no Stand and rides a Monster of its Warband.
   for (const c of Object.values(characters)) {
@@ -535,6 +562,14 @@ export function validate(s: GameState, a: Action): Validation {
     }
     case 'skipMove':
       return s.pendingMove ? ok() : fail('No move is waiting.');
+    case 'spires': {
+      const p = spiresActionProblems(s, a.player, a.act);
+      return p.length ? fail(...p) : ok();
+    }
+    case 'designate': {
+      const p = designateProblems(s, a.player, a.regimentIds);
+      return p.length ? fail(...p) : ok();
+    }
     case 'pass':
       return s.activation ? (canTakeAction(s, s.activation.regimentId, 'pass').length ? fail('No Actions left to pass.') : ok()) : fail('No Regiment is active.');
     case 'endActivation': {
@@ -648,7 +683,7 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
   const ctx: Ctx = { s, rng, events };
   // A move offered outside the sequence (Air Step, Translocation) lapses when anything else happens.
   if (s.pendingMove && a.type !== 'specialMove' && !a.type.startsWith('override')) {
-    ev({ type: 'note', text: `${s.regiments[s.pendingMove.regimentId]?.name ?? 'The Regiment'} does not use its ${s.pendingMove.kind === 'airStep' ? 'Air Step' : 'Translocation'} move.` });
+    ev({ type: 'note', text: `${s.regiments[s.pendingMove.regimentId]?.name ?? 'The Regiment'} does not use its ${SPECIAL_MOVE_LABEL[s.pendingMove.kind]} move.` });
     delete s.pendingMove;
   }
 
@@ -664,6 +699,10 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
     }
     case 'startBattle':
       s.phase = 'play';
+      // Tricks of the Trade (sp p.10): the Influence Pool is rolled before the first Reinforcement Phase.
+      initInfluence(ctx);
+      // Chosen Regiments / Linebreakers (ns p.2, p.6): default designations, changeable until the first Supremacy Phase.
+      defaultDesignations(ctx);
       beginRound(s);
       ev({ type: 'round', text: 'Round 1 begins: Reinforcement Phase.' });
       break;
@@ -703,6 +742,15 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
     case 'march': {
       const r = s.regiments[a.regimentId]!;
       const width = footprint(formationInput(s, r)).halfWidth * 2;
+      // Spined Descent (Pteraphon Surveyor, sp p.48): remember the Regiments it moves over.
+      if (r.name === 'Pteraphon Surveyor' && s.activation) {
+        const over = new Set(s.activation.movedOver ?? []);
+        for (const pose of samplePath(r.pose, a.moves, width)) {
+          const polys = regimentPolys(s, r, { pose });
+          for (const o of Object.values(s.regiments)) if (o.id !== r.id && o.location === 'table' && polys.some((p) => regimentPolys(s, o).some((q) => overlaps(p, q)))) over.add(o.id);
+        }
+        s.activation.movedOver = [...over];
+      }
       r.pose = applyPath(r.pose, a.moves, width);
       recordAction(s.activation!, 'march');
       ev({ type: 'march', text: `${r.name} marches: ${describeMoves(a.moves)}.`, player: r.owner, regimentId: r.id });
@@ -726,6 +774,8 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
       break;
     }
     case 'endRound': {
+      // Assassination Directive (sp p.24): a Mimetic Assassin that never entered is destroyed before the last Victory Phase.
+      if (s.round >= s.scenario.rounds) assassinsLost(ctx);
       ev({ type: 'victory', text: `Victory Phase, Round ${s.round}.` });
       victoryPhase(ctx);
       s.round += 1;
@@ -754,12 +804,20 @@ export function apply(state: GameState, a: Action, rng: RngState): ApplyResult {
       break;
     case 'skipMove':
       break; // the pending move lapsed above
+    case 'spires':
+      applySpiresAction(ctx, a.player, a.act, heal);
+      break;
+    case 'designate':
+      applyDesignate(ctx, a.player, a.regimentIds);
+      break;
     default:
       applyM4(ctx, a);
 
   }
   if (ctx.s.activation) grantExtras(ctx, ctx.s.activation);
   refreshRules(ctx.s);
+  // Ward Preceptor (sp p.36): an enemy that ended its movement within 8″.
+  if (['march', 'enter', 'withdraw', 'charge', 'placeCharge', 'specialMove'].includes(a.type) && 'regimentId' in a) wardAfterAction(ctx, ctx.s.regiments[a.regimentId as string]);
   // Sorcerer Kings: Ritual access, Shattered Perfection, Air Elemental, Last Word (sk p.5–46).
   skAfterApply(ctx);
   // Dweghom: Paragon of War (dw p.6).

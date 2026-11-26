@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import type { Action } from '../../engine/game';
+import { validate, type Action } from '../../engine/game';
 import type { GameState, PlayerId } from '../../engine/model/types';
+import { offerPendingFor, offerState } from '../../engine/factions/spiresExtras';
+import { designationPool } from '../../engine/scoring/designations';
 import { flankChoices, reinforcementChoices, reinforcementClass, reinforcementNeed, reserveRegiments, tidalChoices } from '../../engine/round';
 import { zoneResults } from '../../engine/scoring/victory';
 import { decisionMaker } from '../../ai/ai';
@@ -35,11 +37,47 @@ export function PhasePanel({ s, dispatch, aiPlayer }: { s: GameState; dispatch: 
   );
 }
 
+/** Chosen Regiments / Linebreakers (ns p.2, p.6): shown and changeable until the first Supremacy Phase. */
+function Designations({ s, dispatch, ai }: { s: GameState; dispatch: (a: Action) => boolean; ai: PlayerId | null }) {
+  const d = s.scenario.designate;
+  if (!d || !s.designated || s.round !== 1) return null;
+  return (
+    <div className="reinf designations" data-testid="designations">
+      <strong>{d.kind === 'chosen' ? 'Chosen Regiments' : 'Linebreakers'}</strong>{' '}
+      <span className="meta">{d.kind === 'chosen' ? `up to ${d.count} non-Light enemy Regiments (ns p.2)` : `${d.count} of your Regiments able to Seize; they lose Fly (ns p.6)`}</span>
+      {PLAYERS.map((p) => {
+        const mine = s.designated![p];
+        if (p === ai) return <p key={p} className="meta">{p}: {mine.map((id) => s.regiments[id]?.name).join(', ') || 'none'}</p>;
+        return (
+          <div key={p} className="actions wrap">
+            <span className={`side-tag ${p.toLowerCase()}`}>{p}</span>
+            {designationPool(s, p).map((r) => {
+              const on = mine.includes(r.id);
+              const next = on ? mine.filter((x) => x !== r.id) : [...mine, r.id];
+              const a: Action = { type: 'designate', player: p, regimentIds: next };
+              return (
+                <button key={r.id} type="button" className={`small ${on ? '' : 'secondary'}`} disabled={!on && !validate(s, a).ok && next.length > d.count} onClick={() => dispatch(a)}>
+                  {on ? '★ ' : ''}
+                  {r.name}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Action) => boolean; ai: PlayerId | null }) {
   const [auto, setAuto] = useState<Record<PlayerId, string | null>>({ P1: null, P2: null });
   const [flankStay, setFlankStay] = useState<Record<string, boolean>>({});
   // Tidal Summons (sk p.45): a Water Elemental that arrives with the chosen Marid Apsara.
   const [tidal, setTidal] = useState<Record<PlayerId, string | null>>({ P1: null, P2: null });
+  // Master Manipulator (sp p.22): an extra Regiment after an accepted Offer, or the declined-Offer benefit.
+  const [extra, setExtra] = useState<Record<PlayerId, string | null>>({ P1: null, P2: null });
+  const [manip, setManip] = useState<Record<PlayerId, string>>({ P1: 'reroll', P2: 'reroll' });
+  const waiting = offerPendingFor(s);
   const needText = (cls: 'Light' | 'Medium' | 'Heavy') => {
     const n = reinforcementNeed(s.round, cls);
     return n === null ? 'not yet' : n === 'auto' ? 'arrives' : `rolls ${n} or less`;
@@ -50,8 +88,18 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
       <p className="meta">
         Light {needText('Light')} · Medium {needText('Medium')} · Heavy {needText('Heavy')} (core p.21). Tap one Regiment to bring it on automatically; the rest roll.
       </p>
+      <Designations s={s} dispatch={dispatch} ai={ai} />
+      {waiting && waiting !== ai && (
+        <div className="reinf">
+          <strong>{waiting}</strong> <span className="meta">{waiting === 'P1' ? 'P2' : 'P1'} proposes an Offer (Master Manipulator, sp p.22).</span>
+          <button type="button" className="small" onClick={() => dispatch({ type: 'spires', player: waiting, act: { option: 'answerOffer', accept: true } })}>Accept</button>
+          <button type="button" className="secondary small" onClick={() => dispatch({ type: 'spires', player: waiting, act: { option: 'answerOffer', accept: false } })}>Decline</button>
+        </div>
+      )}
       {PLAYERS.map((p) => {
         if (s.players[p].reinforcementDone) return <p key={p}><strong>{p}</strong> <span className="meta">done</span></p>;
+        const offer: Action = { type: 'spires', player: p, act: { option: 'offer' } };
+        const os = offerState(s, p);
         if (p === ai) return <p key={p}><strong>{p}</strong> <span className="meta">the computer will choose</span></p>;
         const reserve = reserveRegiments(s, p);
         const eligible = new Set(reinforcementChoices(s, p).map((r) => r.id));
@@ -110,6 +158,33 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
                 </select>
               </label>
             )}
+            {validate(s, offer).ok && (
+              <button type="button" className="secondary small" onClick={() => dispatch(offer)}>
+                Propose an Offer (Master Manipulator)
+              </button>
+            )}
+            {os === 'extra' && (
+              <label className="meta tidal">
+                Accepted Offer: also bring{' '}
+                <select value={extra[p] ?? ''} onChange={(e) => setExtra({ ...extra, [p]: e.target.value || null })}>
+                  <option value="">none</option>
+                  {reserve.filter((r) => r.id !== auto[p] && reinforcementNeed(s.round, reinforcementClass(s, r)) !== null).map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {os === 'declined' && (
+              <label className="meta tidal">
+                Declined Offer:{' '}
+                <select value={manip[p]} onChange={(e) => setManip({ ...manip, [p]: e.target.value })}>
+                  <option value="reroll">re-roll one failed Reinforcement Roll</option>
+                  {[...reserve, ...Object.values(s.regiments).filter((r) => r.owner === p && r.location === 'arriving')].map((r) => (
+                    <option key={r.id} value={r.id}>{r.name} gains Vanguard (3)</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <button
               type="button"
               className="small"
@@ -117,7 +192,16 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
                 dispatch({
                   type: 'reinforcements',
                   player: p,
-                  choice: auto[p] ? { regimentId: auto[p]!, arrive: true, ...(tidal[p] && tidalChoices(s, p, auto[p]!).some((r) => r.id === tidal[p]) ? { tidalId: tidal[p]! } : {}) } : null,
+                  choice:
+                    auto[p] || (os === 'extra' && extra[p]) || os === 'declined'
+                      ? {
+                          regimentId: auto[p] ?? '',
+                          arrive: true,
+                          ...(auto[p] && tidal[p] && tidalChoices(s, p, auto[p]!).some((r) => r.id === tidal[p]) ? { tidalId: tidal[p]! } : {}),
+                          ...(os === 'extra' && extra[p] ? { extraId: extra[p]! } : {}),
+                          ...(os === 'declined' ? (manip[p] === 'reroll' ? { manipulate: 'reroll' as const } : { manipulate: 'vanguard' as const, vanguardId: manip[p] }) : {}),
+                        }
+                      : null,
                   flank: Object.fromEntries([...flank].map((id) => [id, !flankStay[id]])),
                 })
               }
