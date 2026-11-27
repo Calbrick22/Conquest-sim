@@ -6,6 +6,7 @@ import { isImplemented } from '../../engine/rules/special/registry';
 import { isAnimateVessel, regimentDarkTier } from '../../engine/factions/oldDominion';
 import { OWNER_COLOR } from './TableView';
 import { Tooltip } from '../shell/Tooltip';
+import { attackSummaries } from './rolls';
 
 const KEYS: (keyof Profile)[] = ['M', 'V', 'C', 'A', 'W', 'R', 'D', 'E'];
 
@@ -156,9 +157,18 @@ function diceNotes(e: GameEvent): string[] {
   return (e.dice?.notes ?? []).filter((n) => !/^target /.test(n) && !/^\d+ pass/.test(n));
 }
 
-/** Callout for the last Action: what happened, with the dice. */
-export function ActionCallout({ s, action, events, byComputer, onNext, onClose }: { s: GameState; action: Action; events: GameEvent[]; byComputer: boolean; onNext?: () => void; onClose: () => void }) {
+/** Event types worth a line of their own beside the attack summaries. */
+const KEY_TYPES = new Set(['charge', 'march', 'broken', 'shattered', 'destroyed', 'duel', 'draw-event', 'action', 'supremacy', 'reinforcement', 'heal', 'power', 'ritual', 'spell', 'override', 'pick', 'score']);
+
+/**
+ * Callout for the last Action: one line per attack (Hits, saves, Wounds, Morale, losses), the key
+ * events, and the full log folded away. While the dice box is still rolling, the results wait.
+ */
+export function ActionCallout({ s, action, events, byComputer, ready = true, onNext, onClose }: { s: GameState; action: Action; events: GameEvent[]; byComputer: boolean; ready?: boolean; onNext?: () => void; onClose: () => void }) {
   const lines = events.filter((e) => e.type !== 'ai' && e.type !== 'manual');
+  const attacks = attackSummaries(lines);
+  const key = lines.filter((e) => !e.dice && (KEY_TYPES.has(e.type) || e.override) && !/saves on \d+ or less/.test(e.text));
+  const rest = lines.filter((e) => !key.includes(e));
   return (
     <div data-testid="action-callout">
       {!onNext && (
@@ -169,25 +179,68 @@ export function ActionCallout({ s, action, events, byComputer, onNext, onClose }
         {actionTitle(s, action)}
       </h4>
       {action.why && <div className="meta">{action.why}</div>}
-      <ul>
-        {lines.slice(0, 12).map((e, i) => (
-          <li key={i} className={e.override ? 'warn' : ''}>
-            {e.dice && e.dice.values.length > 0 && (
-              <span className="dice small-dice">
-                {e.dice.values.map((v, k) => (
-                  <span key={k} className={`die ${v === 1 ? 'one' : v === 6 ? 'six' : ''}`}>{v}</span>
+      {!ready ? (
+        <p className="meta">Rolling… watch the dice box.</p>
+      ) : (
+        <>
+          {attacks.map((a, i) => (
+            <div key={i} className="attack-line" data-testid="attack-summary">
+              <div className="attack-who">
+                {a.title.replace(/\s*\(.*\)\s*$/, '')}
+                {a.target && <span className="meta"> → {a.target}</span>}
+              </div>
+              <div className="chips">
+                <span className="chip">
+                  Hits <strong>{a.hits}</strong>
+                  {a.hitDice ? <span className="meta">/{a.hitDice}{a.hitNeed !== null ? ` (≤${a.hitNeed})` : ''}</span> : <span className="meta"> auto</span>}
+                </span>
+                {(a.saveDice > 0 || a.saved > 0) && (
+                  <span className="chip">
+                    Saved <strong>{a.saved}</strong>
+                    {a.saveDice ? <span className="meta">/{a.saveDice}</span> : null}
+                  </span>
+                )}
+                <span className="chip wounds">
+                  Wounds <strong>{a.wounds + a.moraleExtra}</strong>
+                  {a.moraleExtra ? <span className="meta"> incl. {a.moraleExtra} Morale</span> : null}
+                </span>
+                {a.destroyed ? <span className="chip lost">destroyed</span> : a.standsLost ? <span className="chip lost">−{a.standsLost} Stand{a.standsLost > 1 ? 's' : ''}</span> : null}
+              </div>
+            </div>
+          ))}
+          {key.length > 0 && (
+            <ul className="key-events">
+              {key.slice(0, 8).map((e, i) => (
+                <li key={i} className={e.override ? 'warn' : ''}>
+                  {e.text}
+                </li>
+              ))}
+            </ul>
+          )}
+          {rest.length > 0 && (
+            <details className="full-log">
+              <summary className="meta">Every roll and modifier ({rest.length})</summary>
+              <ul>
+                {rest.map((e, i) => (
+                  <li key={i}>
+                    {e.dice && e.dice.values.length > 0 && (
+                      <span className="dice small-dice">
+                        {e.dice.values.map((v, k) => (
+                          <span key={k} className={`die ${v === 1 ? 'one' : v === 6 ? 'six' : ''}`}>{v}</span>
+                        ))}
+                      </span>
+                    )}
+                    {e.text}
+                    {diceNotes(e).length > 0 && <span className="meta dice-notes"> · {diceNotes(e).join(' · ')}</span>}
+                  </li>
                 ))}
-              </span>
-            )}
-            {e.text}
-            {/* Re-rolls and conversions (Flurry, Designate Target, Blessed, Devout…). */}
-            {diceNotes(e).length > 0 && <span className="meta dice-notes"> · {diceNotes(e).join(' · ')}</span>}
-          </li>
-        ))}
-        {lines.length > 12 && <li className="meta">… {lines.length - 12} more in the log</li>}
-      </ul>
+              </ul>
+            </details>
+          )}
+        </>
+      )}
       {onNext && (
-        <button type="button" onClick={onNext} data-testid="ai-next">Next</button>
+        <button type="button" onClick={onNext} disabled={!ready} data-testid="ai-next">Next</button>
       )}
     </div>
   );

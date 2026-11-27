@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.5.0] - 2026-11-27 (dice box, clearer results, a computer with a plan)
+
+### Added
+- **Dice box:** each roll of an Action tumbles on screen, then settles on its result, with passing dice highlighted and the outcome underneath (Hits, saves and Wounds, Morale). Skip jumps to the end; it follows the Reduce motion setting.
+- **Roll your own Defence dice:** when the other side attacks you, the dice box waits for you to roll your saves and Morale. The results come from the game's seeded dice, so saved games still replay exactly. A setting turns this off.
+- **Clearer results:** the Action callout shows one line per attack as chips (Hits, Saved, Wounds including Morale, Stands lost or destroyed), plus the key events. Every roll and modifier is still there, folded away.
+- **Reinforcement priority** (core p.21): each Class rolls one die per Regiment, and each success brings on the next Regiment of that Class in your priority order (▲ on the Reinforcements screen).
+- **Your Command Stack** can be checked during the Round, top card first (core p.21).
+- **Drawing a card** slides it off the deck and turns it over, for both players.
+- **The computer's game plan:** lanes, a posture and a coordinated advance, so it deploys across the table instead of funnelling down the centre and feeding Regiments in one at a time (see docs/ai-difficulty.md).
+
+### Fixed
+- **Acute Senses** lets a Regiment Volley at targets in any arc; before, Volley lines were only drawn from the front edge (AMB-92).
+- **Grind Them Down** no longer stalls when a player has Regiments near every 6″ zone: that player picks no zone (AMB-93).
+- **Charges** go to an equally engaged position whose path avoids Hindering terrain, when there is one.
+- **Simulating the rest of the game:** Regiments already in an objective zone hold it, and the others head for zones not yet held.
+- The computer no longer tries a Spellcasting Action its Regiment is not allowed to take.
+
 ## [2.4.0] - 2026-11-26 (no more special rules done by hand)
 
 Every special rule, upgrade and Supremacy Ability of the four implemented factions (Old Dominion, Spires, Sorcerer Kings, Dweghom) is now resolved by the engine. Ten complete computer-vs-computer games with your real lists (every pairing, five scenarios) logged no manual rules and no overrides. Choices the documents leave open are recorded as AMB-86 to AMB-91.

@@ -92,6 +92,28 @@ export function frontCentre(rect: Rect): Vec {
 }
 
 /**
+ * Where a Volleying Stand's line starts (core p.38): the centre of its front facing. With Acute
+ * Senses every arc is a front arc (core p.97), so the line starts at the centre of whichever edge of
+ * the Stand faces the target. RULE-AMBIGUITY: AMB-92 — the front-rank Stands still do the shooting.
+ */
+export function volleyOrigin(r: RegimentState, rect: Rect, target: Poly[]): Vec {
+  if (!hasRule(r.rules, 'Acute Senses')) return frontCentre(rect);
+  const cs = rectCorners(rect);
+  const mids = cs.map((p, i) => ({ x: (p.x + cs[(i + 1) % 4]!.x) / 2, y: (p.y + cs[(i + 1) % 4]!.y) / 2 }));
+  let best = mids[0]!;
+  let bd = Infinity;
+  for (const m of mids)
+    for (const tp of target) {
+      const d = dist(m, closestPointOnPoly(m, tp));
+      if (d < bd) {
+        bd = d;
+        best = m;
+      }
+    }
+  return best;
+}
+
+/**
  * Line of Sight (core p.14): target in the front arc, and a front-rank Stand can draw a 1 mm line
  * to it not blocked by Regiments of equal or larger Size than the target. RULE-AMBIGUITY: AMB-07.
  */
@@ -222,6 +244,7 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
   };
   const why = new Map<string, number>();
   const note = (k: string) => why.set(k, (why.get(k) ?? 0) + 1);
+  let hinderedFallback: { pose: Pose; overlap: number } | null = null;
   for (const off of candidates) {
     const P = add(mid, scale(dir, off));
     const pose: Pose = { x: P.x, y: P.y, angle };
@@ -251,6 +274,12 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
         blockedReason = 'the path to the target is blocked';
         continue;
       }
+      // Prefer a position just as engaged whose straight path avoids Hindering terrain (core p.86).
+      if (hinderedFallback && overlapLen(off) < hinderedFallback.overlap - 1e-6) return { pose: hinderedFallback.pose };
+      if (chargeHindered(s, r, r.pose, pose)) {
+        hinderedFallback ??= { pose, overlap: overlapLen(off) };
+        continue;
+      }
       return { pose };
     }
     // Push a single unengaged enemy blocker up to 1″ directly away from the charger (core p.32).
@@ -270,6 +299,7 @@ export function chargePlacement(s: GameState, r: RegimentState, t: RegimentState
       if (okBlocker && pathClear(pose, bl.id)) pushOption = { pose, push: { id: bl.id, pose: bPose } };
     }
   }
+  if (hinderedFallback) return { pose: hinderedFallback.pose };
   if (pushOption) return pushOption;
   // The charger cannot pivot flush: move it straight ahead to contact, then the (unengaged) target pivots (core p.32).
   // RULE-AMBIGUITY: AMB-11 — the target rotates about the contact point until its charged facing is flush.
@@ -785,7 +815,7 @@ export function planVolley(s: GameState, r: RegimentState, t: RegimentState, aim
       plans.push({ label, shots: 0, arc: null, reason: 'no Arcing Fire', skill: vAimed, ap, deadly });
       continue;
     }
-    const from = frontCentre(sl.rect);
+    const from = volleyOrigin(r, sl.rect, tPolys);
     let bestD = Infinity;
     let bestPoly: Poly | null = null;
     for (const tp of tPolys) {
@@ -1309,13 +1339,16 @@ export function volleyLines(s: GameState, r: RegimentState): VolleyLine[] {
   for (const sl of layout(formationInput(s, r)).filter((x) => x.rank === 0)) {
     const b = barrageOf(sl.isCharacter && c ? c.rules : r.rules);
     if (!b) continue;
-    const from = frontCentre(sl.rect);
+    const front = frontCentre(sl.rect);
     const { forward } = poseFrame({ x: 0, y: 0, angle: r.pose.angle });
-    out.push({ a: from, b: add(from, scale(forward, b.range)), kind: 'range', label: `${b.range}″` });
-    out.push({ a: add(from, scale(forward, b.range / 2 - 0.15)), b: add(from, scale(forward, b.range / 2 + 0.15)), kind: 'halfrange' });
+    out.push({ a: front, b: add(front, scale(forward, b.range)), kind: 'range', label: `${b.range}″` });
+    out.push({ a: add(front, scale(forward, b.range / 2 - 0.15)), b: add(front, scale(forward, b.range / 2 + 0.15)), kind: 'halfrange' });
+    // Acute Senses, Weapon Platform, Fluid Formation: other arcs count as front arcs (core p.97–101).
+    const arcs = shootingArcs(r);
     for (const e of enemies) {
       const polys = regimentPolys(s, e);
-      if (!polys.some((p) => arcsOf(fp, p).includes('front'))) continue;
+      if (!polys.some((p) => arcsOf(fp, p).some((a) => arcs.includes(a)))) continue;
+      const from = volleyOrigin(r, sl.rect, polys);
       let best: Vec | null = null;
       let bd = Infinity;
       for (const p of polys) {

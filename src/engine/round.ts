@@ -97,8 +97,9 @@ export function reinforcementChoiceProblems(s: GameState, p: PlayerId, c: Reinfo
  * rolling; every other eligible Regiment rolls against the table. Regiments that failed to enter
  * last Round arrive automatically (core p.31). Flank Regiments declare instead of rolling (core p.98).
  */
-export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementChoice | null, flank: Record<string, boolean> = {}): void {
+export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementChoice | null, flank: Record<string, boolean> = {}, priority: string[] = []): void {
   const s = ctx.s;
+  const rollers: { r: RegimentState; need: number; cls: UnitClass }[] = [];
   let rerollLeft = choice?.manipulate === 'reroll' ? 1 : 0;
   const mineOffer = s.players[p].offer?.round === s.round && s.players[p].offer?.accepted === true;
   for (const r of reserveRegiments(s, p)) {
@@ -143,23 +144,37 @@ export function doReinforcements(ctx: Ctx, p: PlayerId, choice: ReinforcementCho
       ev(ctx, { type: 'reinforcement', text: `${r.name} (${r.cls}) arrives automatically in Round ${s.round} (core p.21).`, player: p, regimentId: r.id });
       continue;
     }
+    rollers.push({ r, need, cls: reinforcementClass(s, r) });
+  }
+  // One die per Regiment of each Class; each success brings on one of that Class, chosen by the
+  // player's priority order (core p.21).
+  const rank = (id: string) => {
+    const i = priority.indexOf(id);
+    return i < 0 ? priority.length : i;
+  };
+  for (const cls of ['Light', 'Medium', 'Heavy'] as const) {
+    const group = rollers.filter((x) => x.cls === cls).sort((a, b) => rank(a.r.id) - rank(b.r.id));
+    if (!group.length) continue;
+    const need = group[0]!.need;
     const idx = ctx.rng.index;
-    let [v] = rollN(ctx, 1);
-    // Master Manipulator, declined Offer (sp p.22): re-roll the first failed Reinforcement Roll (AMB-89).
-    if (v! > need && rerollLeft) {
+    const vals = rollN(ctx, group.length);
+    // Master Manipulator, declined Offer (sp p.22): re-roll one failed Reinforcement Roll (AMB-89).
+    const fail = vals.findIndex((v) => v > need);
+    if (rerollLeft && fail >= 0) {
       rerollLeft = 0;
-      const first = v;
-      [v] = rollN(ctx, 1);
-      ev(ctx, { type: 'note', text: `Master Manipulator: ${r.name} re-rolls its failed Reinforcement Roll (${first} → ${v}) (sp p.22).`, player: p, regimentId: r.id });
+      const first = vals[fail]!;
+      vals[fail] = rollN(ctx, 1)[0]!;
+      ev(ctx, { type: 'note', text: `Master Manipulator: ${p} re-rolls a failed ${cls} Reinforcement Roll (${first} → ${vals[fail]}) (sp p.22).`, player: p });
     }
-    const okRoll = v! <= need;
-    if (okRoll) r.location = 'arriving';
+    const wins = vals.filter((v) => v <= need).length;
+    const coming = group.slice(0, wins);
+    for (const x of coming) x.r.location = 'arriving';
+    const staying = group.slice(wins);
     ev(ctx, {
       type: 'dice',
-      text: `${r.name} (${r.cls}) Reinforcement Roll ${v} — needs ${need} or less: ${okRoll ? 'arrives' : 'stays'}.`,
+      text: `${cls} Reinforcement Rolls ${vals.join(', ')}, needing ${need} or less: ${wins} success${wins === 1 ? '' : 'es'}.${coming.length ? ` Arriving by priority: ${coming.map((x) => x.r.name).join(', ')}.` : ''}${staying.length ? ` Staying: ${staying.map((x) => x.r.name).join(', ')}.` : ''}`,
       player: p,
-      regimentId: r.id,
-      dice: { purpose: `${r.name}: Reinforcement Roll`, seed: ctx.rng.seed, index: idx, values: [v!], notes: [`need ${need} or less (core p.21)`] },
+      dice: { purpose: `${p} ${cls} Reinforcement Rolls`, seed: ctx.rng.seed, index: idx, values: vals, notes: [`target ${need}`, `need ${need} or less (core p.21)`] },
     });
   }
   // Master Manipulator, declined Offer (sp p.22): a Regiment not on the Battlefield gains Vanguard (3) this Round.

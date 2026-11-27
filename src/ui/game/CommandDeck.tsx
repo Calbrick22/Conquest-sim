@@ -151,3 +151,56 @@ export function DrawDeck({ s, dispatch, onSelect, aiPlayer, onHover }: { s: Game
     </div>
   );
 }
+
+/**
+ * Your Command Stack during the Round, top card first (core p.21: you may look at it at any point,
+ * but not reorder it). One per human player; hovering a card highlights its Regiment.
+ */
+export function StackPeek({ s, players, onHover }: { s: GameState; players: PlayerId[]; onHover?: (regimentId: string | null) => void }) {
+  if (s.phase !== 'play' || s.step !== 'action') return null;
+  return (
+    <>
+      {players.map((p) => {
+        const stack = s.players[p].stack;
+        return (
+          <details key={p} className="card stack-peek" data-testid={`stack-peek-${p}`}>
+            <summary>
+              <span className={`side-tag ${p.toLowerCase()}`}>{p}</span> Command Stack: {stack.length} card{stack.length === 1 ? '' : 's'} left
+            </summary>
+            {stack.length ? (
+              <ol className="stack-list">
+                {stack.map((c, i) => {
+                  const reg = c.kind === 'character' ? s.characters[c.refId]?.attachedTo ?? null : c.kind === 'regiment' ? c.refId : null;
+                  return (
+                    <li key={c.id} onMouseEnter={() => onHover?.(reg)} onMouseLeave={() => onHover?.(null)} className={i === 0 ? 'next' : ''}>
+                      {c.name}
+                      <span className="meta">
+                        {c.kind === 'character' ? ' · Character' : c.kind === 'ritual' ? ' · Ritual' : ''}
+                        {i === 0 ? ' · next' : ''}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <p className="meta">Empty: every card has been drawn.</p>
+            )}
+          </details>
+        );
+      })}
+    </>
+  );
+}
+
+/** A card sliding off the deck and turning over, shown briefly whenever a Command Card is drawn. */
+export function DrawFlash({ name, player, kind, stamp }: { name: string; player: PlayerId; kind: string; stamp: number }) {
+  return (
+    <div key={stamp} className="draw-flash" aria-hidden="true" data-testid="draw-flash">
+      <div className={`ccard face ${kind} owner-${player} flying`}>
+        <span className="pos">{player}</span>
+        <span className="cname">{name}</span>
+        {kind === 'character' && <span className="ckind">Character</span>}
+      </div>
+    </div>
+  );
+}

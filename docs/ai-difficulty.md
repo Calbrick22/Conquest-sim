@@ -30,6 +30,16 @@ Characters sit just above their Regiment, and Rituals just above a Regiment of t
 
 An Expert that played its best three attacks 32 times each through the engine's outcome previews lost to Advanced. It scored 76 kills to Advanced's 172 over 80 games. A preview covers a single Action, so it undervalued a Charge followed by a Clash and talked the Expert out of good Charges. The Expert now uses the same estimates as Advanced, applied every time, with more weight on opportunities.
 
+## The game plan (v2.5.0)
+
+At the start of a game the computer works out a plan (`src/ai/plan.ts`) from the two armies and the scenario:
+
+- **Lanes.** The table is split into left, centre and right lanes. Each lane's objectives set where it advances and how much of the army it gets. Light Regiments and shooters are spread across the lanes first, then the rest go to the lane furthest below its share.
+- **Posture.** If its army is at least 10% stronger, it presses the attack (approaching enemies scores higher). Otherwise it plays for the objectives.
+- **Coordinated advance.** In the first three Rounds, until 60% of a lane's force is on the table, a Regiment does not push more than 3″ ahead of its lane's foremost friend, unless the enemy is already close. A destination with no friend within 10″ counts its danger half again.
+
+Intermediate follows the plan half-heartedly, Advanced and Expert fully, and Beginner ignores it. The plan appears in the log with the first Reinforcements. Advanced with the plan beat Advanced without it 33–26 over 60 games, and spread its Regiments about twice as widely across the table.
+
 ## Checking the levels
 
 `src/ai/tournament.local.test.ts` (local only) plays full games between levels with fixed seeds. Each level plays both synthetic armies from both sides, on several scenarios. It reports wins, VP, zone and kill points, and survivors.

@@ -61,7 +61,8 @@ export type ActionBody =
   | { type: 'endActivation'; entourage?: boolean }
   | { type: 'endRound' }
   // Round sequence (core p.20–25)
-  | { type: 'reinforcements'; player: PlayerId; choice: ReinforcementChoice | null; flank?: Record<string, boolean> }
+  /** priority: the order in which Regiments come on with successful Reinforcement Rolls of their Class (core p.21). */
+  | { type: 'reinforcements'; player: PlayerId; choice: ReinforcementChoice | null; flank?: Record<string, boolean>; priority?: string[] }
   | { type: 'setStack'; player: PlayerId; order: string[] }
   | { type: 'supremacyRollOff' }
   | { type: 'chooseFirst'; first: PlayerId }

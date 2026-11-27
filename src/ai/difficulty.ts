@@ -33,13 +33,15 @@ export interface Profile {
   scenario: number;
   /** Command Stack policy. */
   stack: 'list' | 'simple' | 'threats';
+  /** How closely it follows its game plan: lanes, a coordinated advance, posture (plan.ts). */
+  plan: number;
 }
 
 export const PROFILES: Record<Difficulty, Profile> = {
-  beginner: { id: 'beginner', consistency: 0, noise: 1.2, danger: 0, targeting: 0, opportunism: 0, minCharge: 0.3, setup: 0, scenario: 0, stack: 'list' },
-  intermediate: { id: 'intermediate', consistency: 0.6, noise: 0.7, danger: 0.5, targeting: 0.7, opportunism: 0.5, minCharge: 0.4, setup: 0.3, scenario: 0.4, stack: 'simple' },
-  advanced: { id: 'advanced', consistency: 0.85, noise: 0.35, danger: 1, targeting: 1, opportunism: 1, minCharge: 0.45, setup: 0.8, scenario: 0.8, stack: 'threats' },
-  expert: { id: 'expert', consistency: 1, noise: 0.08, danger: 0.6, targeting: 1, opportunism: 2, minCharge: 0.4, setup: 1, scenario: 1.2, stack: 'threats' },
+  beginner: { id: 'beginner', consistency: 0, noise: 1.2, danger: 0, targeting: 0, opportunism: 0, minCharge: 0.3, setup: 0, scenario: 0, stack: 'list', plan: 0 },
+  intermediate: { id: 'intermediate', consistency: 0.6, noise: 0.7, danger: 0.5, targeting: 0.7, opportunism: 0.5, minCharge: 0.4, setup: 0.3, scenario: 0.4, stack: 'simple', plan: 0.5 },
+  advanced: { id: 'advanced', consistency: 0.85, noise: 0.35, danger: 1, targeting: 1, opportunism: 1, minCharge: 0.45, setup: 0.8, scenario: 0.8, stack: 'threats', plan: 1 },
+  expert: { id: 'expert', consistency: 1, noise: 0.08, danger: 0.6, targeting: 1, opportunism: 2, minCharge: 0.4, setup: 1, scenario: 1.2, stack: 'threats', plan: 1 },
 };
 
 export const BEGINNER = PROFILES.beginner;

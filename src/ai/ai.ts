@@ -33,10 +33,12 @@ import {
   other,
   regimentDistance,
 } from '../engine/queries';
-import { buildCards, cardTargets, flankChoices, reinforcementChoices, reinforcementClass, reinforcementNeed, tidalChoices } from '../engine/round';
+import { buildCards, cardTargets, flankChoices, reinforcementChoices, reinforcementClass, reinforcementNeed, reserveRegiments, tidalChoices } from '../engine/round';
 import { legalFiles } from '../engine/formation';
 import { barrageOf, hasRule, manualRules, ruleX } from '../engine/rules/special/rules';
 import { zoneResults } from '../engine/scoring/victory';
+import { standOverlapsZone } from '../engine/geometry/zones';
+import { forwardOf, gamePlan, laneArrived, type Lane } from './plan';
 import { aiContactVolley, aiRitual, aiSkActivation, placeRituals, skSpellValue } from './sorcererKingsAi';
 import { aiBoost, aiDwActivation } from './dweghomAi';
 import { BEGINNER, PROFILES, profileFor, type Difficulty, type Profile } from './difficulty';
@@ -153,7 +155,56 @@ function centreOf(s: GameState, r: RegimentState): Vec {
 
 /** Zones the player can Seize (not friendly-only to itself), with the best one first for a Regiment. */
 function targetZones(s: GameState, p: PlayerId): { id: string; c: Vec; d: number }[] {
-  return s.scenario.zones.filter((z) => z.friendlyTo !== p).map((z) => ({ id: z.id, c: { x: z.x, y: z.y }, d: z.diameter }));
+  const burned = s.burnedZones ?? [];
+  let zones = s.scenario.zones.filter((z) => z.friendlyTo !== p && !burned.includes(z.id));
+  // With no enemy left, march only on zones no friendly Regiment holds yet.
+  if (enemyGone(s, p)) {
+    const zr = zoneResults(s);
+    const open = zones.filter((z) => zr[z.id]?.seizedBy !== p);
+    if (open.length) zones = open;
+  }
+  return zones.map((z) => ({ id: z.id, c: { x: z.x, y: z.y }, d: z.diameter }));
+}
+
+function laneOfX(s: GameState, x: number): Lane {
+  const W = s.scenario.table.width;
+  return x < W / 3 ? 'left' : x > (2 * W) / 3 ? 'right' : 'centre';
+}
+
+/** 1 when no friendly Regiment is within 10″ of the position, else 0 (a lone Regiment is easy prey). */
+function isolation(s: GameState, r: RegimentState, at: Vec): number {
+  return onTableRegiments(s).some((f) => f.owner === r.owner && f.id !== r.id && dist(centreOf(s, f), at) <= 10 + footprintOf(s, f).halfWidth) ? 0 : 1;
+}
+
+/**
+ * Coordinated advance (game plan): early on, while less than 60% of its lane's force is on the
+ * table, a Regiment does not push more than 3″ beyond the lane's foremost friend, unless the enemy
+ * is already close. Returns the penalty for a destination.
+ */
+function planHold(s: GameState, r: RegimentState, end: Vec): number {
+  if (!P.plan || s.round > 3) return 0;
+  const plan = gamePlan(s, r.owner);
+  const lane = plan.lanes[r.id] ?? 'centre';
+  const arrived = laneArrived(s, r.owner, lane);
+  if (arrived >= 0.6) return 0;
+  const friends = onTableRegiments(s).filter((f) => f.owner === r.owner && f.id !== r.id && plan.lanes[f.id] === lane);
+  const front = friends.length ? Math.max(...friends.map((f) => forwardOf(s, r.owner, centreOf(s, f).y))) : forwardOf(s, r.owner, centreOf(s, r).y);
+  const ahead = forwardOf(s, r.owner, end.y) - front - 3;
+  if (ahead <= 0 || enemiesNear(s, r, marchValue(s, r) + 6)) return 0;
+  return P.plan * (1 + 0.15 * ahead) * (1 - arrived / 0.6);
+}
+
+/** The enemy has no Regiment left on the table or still to arrive. */
+function enemyGone(s: GameState, p: PlayerId): boolean {
+  const theirs = Object.values(s.regiments).filter((r) => r.owner !== p);
+  return theirs.length > 0 && theirs.every((r) => r.location === 'destroyed');
+}
+
+/** Has the Regiment a Stand within an Objective Zone? */
+function inAZone(s: GameState, r: RegimentState): boolean {
+  if (r.location !== 'table') return false;
+  const polys = regimentPolys(s, r);
+  return s.scenario.zones.some((z) => !(s.burnedZones ?? []).includes(z.id) && polys.some((q) => standOverlapsZone(q, { x: z.x, y: z.y }, z.diameter)));
 }
 
 /** Threat to a Regiment at a position: enemies that could charge it next Round (core p.31). */
@@ -314,8 +365,10 @@ function decideReinforcements(s: GameState, p: PlayerId): AiDecision {
   const tidal = best ? tidalChoices(s, p, best.id).sort((a, b) => rank(b) - rank(a))[0] : undefined;
   // An accepted Offer brings one more Regiment (sp p.22).
   const extra = offerState(s, p) === 'extra' ? choices.filter((r) => r.id !== best?.id && r.id !== tidal?.id).sort((a, b) => rank(b) - rank(a))[0] : undefined;
-  if (best) return { action: { type: 'reinforcements', player: p, choice: { regimentId: best.id, arrive: true, ...(tidal ? { tidalId: tidal.id } : {}), ...(extra ? { extraId: extra.id } : {}) }, flank }, reason: `brings ${best.name}${tidal ? ` and ${tidal.name} (Tidal Summons)` : ''} on automatically; rolls for the rest${flankNote}` };
-  return { action: { type: 'reinforcements', player: p, choice: null, flank }, reason: `rolls for Reinforcements${flankNote}` };
+  // Successful rolls bring on the most valuable Regiments of each Class first (core p.21).
+  const priority = reserveRegiments(s, p).sort((a, b) => rank(b) - rank(a)).map((r) => r.id);
+  if (best) return { action: { type: 'reinforcements', player: p, choice: { regimentId: best.id, arrive: true, ...(tidal ? { tidalId: tidal.id } : {}), ...(extra ? { extraId: extra.id } : {}) }, flank, priority }, reason: `brings ${best.name}${tidal ? ` and ${tidal.name} (Tidal Summons)` : ''} on automatically; rolls for the rest${flankNote}${P.plan && s.round === 1 ? `. ${gamePlan(s, p).summary}` : ''}` };
+  return { action: { type: 'reinforcements', player: p, choice: null, flank, priority }, reason: `rolls for Reinforcements${flankNote}` };
 }
 
 /** Command Stack: ranged and fast first, units likely to charge later (they want targets to come closer). */
@@ -415,7 +468,7 @@ function decideZonePick(s: GameState, p: PlayerId): AiDecision {
     const a: Action = { type: 'pickZone', player: p, zoneId: z.id };
     if (validate(s, a).ok) return { action: a, reason: `picks zone ${z.label ?? z.id}` };
   }
-  return { action: { type: 'pickZone', player: p, zoneId: eligible[0]!.id }, reason: 'picks a zone' };
+  return { action: { type: 'pickZone', player: p, zoneId: '' }, reason: 'has no zone it may pick' };
 }
 
 interface Scored {
@@ -444,12 +497,21 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
     const fits = options.filter((f) => footprintOf(s, r, { files: f }).halfDepth * 2 <= budget - 0.2);
     const files = fits.length ? fits[0]! : options[options.length - 1]!;
     const partial = !fits.length && act.actions.length === 0;
-    for (let x = 8; x <= s.scenario.table.width - 8; x += 8) {
-      const a = marchToward(s, r, nearestZone(zones, { x, y: own === 'bottom' ? 0 : s.scenario.table.height }) ?? { x: 36, y: 24 }, 1, 'enter', { edge: own, along: x }, files, partial);
+    // Game plan (informed levels): enter in the Regiment's own lane, toward that lane's objectives.
+    const plan = gamePlan(s, r.owner);
+    const lane = plan.lanes[r.id] ?? 'centre';
+    const laneZones = zones.filter((z) => laneOfX(s, z.c.x) === lane);
+    const W = s.scenario.table.width;
+    const xs = [...new Set([...Array.from({ length: Math.floor((W - 16) / 8) + 1 }, (_, i) => 8 + i * 8), ...(P.plan ? [Math.round(Math.min(W - 6, Math.max(6, plan.laneX[lane])))] : [])])];
+    for (const x of xs) {
+      const from = { x, y: own === 'bottom' ? 0 : s.scenario.table.height };
+      const goal = (P.plan && laneZones.length ? nearestZone(laneZones, from) : null) ?? nearestZone(zones, from) ?? { x: W / 2, y: s.scenario.table.height / 2 };
+      const a = marchToward(s, r, goal, 1, 'enter', { edge: own, along: x }, files, partial);
       if (a) {
         const end = a.type === 'enter' ? applyPath(entryPose(s, a.edge, a.along), a.moves, footprintOf(s, r).halfWidth * 2) : r.pose;
-        const risk = P.danger ? 0.3 * P.danger * danger(s, r, { x: end.x, y: end.y }) : 0;
-        out.push({ action: a, score: 5 - 0.05 * Math.abs(x - 36) - risk + P.noise * noise(s, x), reason: `marches on toward the objectives at ${x}″` });
+        const risk = P.danger ? 0.3 * P.danger * danger(s, r, { x: end.x, y: end.y }) * (1 + 0.5 * P.plan * isolation(s, r, end)) : 0;
+        const spot = (1 - P.plan) * 0.05 * Math.abs(x - W / 2) + P.plan * 0.12 * Math.abs(x - plan.laneX[lane]);
+        out.push({ action: a, score: 5 - spot - risk + P.noise * noise(s, x), reason: P.plan ? `marches on in its ${lane} lane at ${x}″ (${plan.summary})` : `marches on toward the objectives at ${x}″` });
       }
     }
     return out;
@@ -519,14 +581,20 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
   const zr = P.scenario ? zoneResults(s) : {};
   const width = footprintOf(s, r).halfWidth * 2;
   /** Informed levels: what the end position risks and sets up. */
-  const place = (end: { x: number; y: number; angle: number }) => (P.danger ? -0.3 * P.danger * danger(s, r, end) : 0) + (P.setup ? 0.6 * P.setup * opportunity(s, r, end, end.angle) : 0);
+  const place = (end: { x: number; y: number; angle: number }) =>
+    (P.danger ? -0.3 * P.danger * danger(s, r, end) * (1 + 0.5 * P.plan * isolation(s, r, end)) : 0) + (P.setup ? 0.6 * P.setup * opportunity(s, r, end, end.angle) : 0) - planHold(s, r, end);
+  // Game plan: objectives in the Regiment's own lane count more; the posture tilts toward fights or zones.
+  const plan = gamePlan(s, r.owner);
+  const myLane = plan.lanes[r.id] ?? 'centre';
+  const laneBonus = (x: number) => (laneOfX(s, x) === myLane ? 1.2 * P.plan : 0);
+  const posture = plan.posture === 'aggressive' ? { fight: 0.5 * P.plan, zone: 0 } : { fight: 0, zone: 0.5 * P.plan };
   for (const z of zones) {
     const a = marchToward(s, r, z.c, light ? 6 : 0, 'march');
     if (!a || a.type !== 'march') continue;
     const end = applyPath(r.pose, a.moves, width);
     const gained = dist(here, z.c) - dist({ x: end.x, y: end.y }, z.c);
     const onZone = dist({ x: end.x, y: end.y }, z.c) < z.d / 2 + 1.5 && !light ? 3 : 0;
-    const score = 1 + gained * 0.35 + onZone * (1 + zoneWorth(s, r.owner, z.id, zr) * 0.3) + zoneWorth(s, r.owner, z.id, zr) + place(end) + 2.5 * P.scenario * zoneSwing(s, r.owner, a) + P.noise * noise(s, progress(s) + z.c.x);
+    const score = 1 + gained * 0.35 + onZone * (1 + zoneWorth(s, r.owner, z.id, zr) * 0.3) + zoneWorth(s, r.owner, z.id, zr) + place(end) + 2.5 * P.scenario * zoneSwing(s, r.owner, a) + laneBonus(z.c.x) + posture.zone + P.noise * noise(s, progress(s) + z.c.x);
     out.push({ action: a, score, reason: light ? `screens toward zone ${z.id}` : `marches toward zone ${z.id}${onZone ? ' to Seize it' : ''}` });
   }
   for (const e of enemies.slice(0, P.targeting ? 6 : 4)) {
@@ -535,7 +603,7 @@ function regimentCandidates(s: GameState, r: RegimentState): Scored[] {
     const melee = meleeExpect(s, r, e) + impactExpect(r, e);
     const end = applyPath(r.pose, a.moves, width);
     // A Beginner closes on the enemy keenly; informed levels only when the fight favours them.
-    const score = P.targeting ? 0.5 + (melee - meleeExpect(s, e, r) * 0.6) * 0.3 * P.targeting - (light ? 2 : 0) + place(end) + 2.5 * P.scenario * zoneSwing(s, r.owner, a) : 1.8 + melee * 0.2 - (light ? 1 : 0);
+    const score = P.targeting ? 0.5 + (melee - meleeExpect(s, e, r) * 0.6) * 0.3 * P.targeting - (light ? 2 : 0) + place(end) + 2.5 * P.scenario * zoneSwing(s, r.owner, a) + posture.fight : 1.8 + melee * 0.2 - (light ? 1 : 0);
     out.push({ action: a, score: score + P.noise * noise(s, progress(s) + 99), reason: `closes on ${e.name}` });
   }
   // Holding back (informed levels): staying put can beat walking into a losing fight.
@@ -676,6 +744,8 @@ function decideActivation(s: GameState): AiDecision {
     if (sp && validate(s, sp.action as Action).ok) return { action: { ...sp.action, why: `${r.name} ${sp.reason}` }, reason: sp.reason };
     return finish(s, r);
   }
+  // No enemy left anywhere (the rest of the game is simulated): hold the zones already reached.
+  if (enemyGone(s, r.owner) && inAZone(s, r)) return finish(s, r);
   const spend = chooseOdSpend(s, r);
   if (spend) return spend;
   const ode = chooseOdDrawEvent(s, r, r.drawEvents);
@@ -696,7 +766,8 @@ function decideActivation(s: GameState): AiDecision {
     const a: ActionBody = { type: 'memories', regimentId: r.id };
     if (validate(s, a as Action).ok) cands.push({ action: a, score: 3.2, reason: 'uses Memories of Old before the fight' });
   }
-  const best = cands.sort((a, b) => b.score - a.score)[0];
+  // Only legal Actions (a candidate can break a limit such as one Spellcasting Action per Activation).
+  const best = cands.filter((c) => validate(s, c.action as Action).ok).sort((a, b) => b.score - a.score)[0];
   if (!best || best.score < 0.4) return finish(s, r);
   const manual = manualRules(r.rules).map((x) => x.raw);
   const note = manual.length && act.actions.length === 0 ? ` (ignoring manual rules: ${manual.slice(0, 4).join(', ')}${manual.length > 4 ? '…' : ''})` : '';

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   attachedCharacter,
   describeMoves,
@@ -17,13 +17,15 @@ import {
 import { clampFiles, footprint, legalFiles } from '../../engine/formation';
 import { dist, dot, type Vec } from '../../engine/geometry/vec';
 import { applyPath, parseMoveText, pathCost, type MoveSeg } from '../../engine/movement';
-import type { Edge, Pose, RegimentState } from '../../engine/model/types';
+import type { Edge, GameState, PlayerId, Pose, RegimentState } from '../../engine/model/types';
 import { AttackOptions, PractitionerButtons, SpiresBar, type AttackOpts } from './SpiresPanel';
 import { duellist, duelTargets, enemiesInContact, withdrawPose } from '../../engine/actions';
 import { baseName, CHARACTER_ABILITIES_AUTOMATED, DRAW_EVENTS_AUTOMATED } from '../../engine/activation';
 import { isEngaged } from '../../engine/queries';
 import { barrageOf } from '../../engine/rules/special/rules';
 import { DiceTray } from './DiceTray';
+import { DiceBox } from './DiceBox';
+import { playerRolls, rollSteps, type RollStep } from './rolls';
 import { gameLogMarkdown } from '../../engine/log/markdown';
 import { markerAttackProblems, markerInContact, MARKER_PREFIX } from '../../engine/markers';
 import { saveGame } from '../../storage/db';
@@ -32,7 +34,7 @@ import type { NewGame } from './SetupScreen';
 import { ManualTools } from './ManualTools';
 import { PhasePanel } from './PhasePanel';
 import { ActionCallout, UnitCallout } from './Callouts';
-import { DrawDeck, StackBuilder } from './CommandDeck';
+import { DrawDeck, DrawFlash, StackPeek, StackBuilder } from './CommandDeck';
 import { OdActivation, PowerBar } from './OldDominionPanel';
 import { RitualBar, SkActivation } from './SorcererKingsPanel';
 import { DwActivation, ElementalPowerBar } from './DweghomPanel';
@@ -82,6 +84,14 @@ type TargetKind = 'charge' | 'volley' | 'clash' | 'Snapshot' | 'Mighty Swing';
 
 const deg = (d: number) => (d * Math.PI) / 180;
 const fmt = (n: number) => `${(Math.round(n * 100) / 100).toFixed(2)}″`;
+
+/** The player whose Action it was (for whose dice the dice box waits). */
+function actorOf(s: GameState, a: Action): PlayerId | null {
+  if ('player' in a && (a.player === 'P1' || a.player === 'P2')) return a.player;
+  const id = 'regimentId' in a ? a.regimentId : 'casterId' in a ? a.casterId : 'characterId' in a ? a.characterId : undefined;
+  if (typeof id === 'string') return (s.regiments[id]?.owner ?? (id.startsWith('P1') ? 'P1' : id.startsWith('P2') ? 'P2' : null)) as PlayerId | null;
+  return s.activation ? s.regiments[s.activation.regimentId]?.owner ?? null : null;
+}
 
 export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQuit: () => void; onSettings?: () => void }) {
   const { session, dispatch, undo, undoHuman, error, setError } = useGame(game.session);
@@ -133,6 +143,16 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
   const wiped = (['P1', 'P2'] as const).find((p) => wipedOut(s, p)) ?? null;
   const [summaryClosed, setSummaryClosed] = useState(false);
   const { settings, update: updateSettings } = useSettings();
+  // The dice box: the rolls of the last Action, played one by one; the callout's results wait for it.
+  const [diceDone, setDiceDone] = useState(0);
+  const steps = useMemo(() => rollSteps(session.last?.events ?? []), [session.last]);
+  const humans: PlayerId[] = aiPlayer ? [aiPlayer === 'P1' ? 'P2' : 'P1'] : ['P1', 'P2'];
+  const actor = session.last ? actorOf(s, session.last.action) : null;
+  const humanKey = humans.join();
+  const mustRoll = useCallback((st: RollStep) => settings.rollOwnDice && playerRolls(st, humanKey.split(',') as PlayerId[], actor), [settings.rollOwnDice, humanKey, actor]);
+  // A Command Card drawn by the last Action (for the draw animation).
+  const drawn = session.last && (session.last.action.type === 'drawCard' || session.last.action.type === 'lobotomy') ? s.drawn ?? null : null;
+  const diceReady = !steps.length || diceDone === session.actions.length || auto.running;
   const [menuOpen, setMenuOpen] = useState(false);
   // The computer waits while the pause menu is open.
   const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused || auto.running || menuOpen, dispatch, needsAck, game.difficulty);
@@ -747,6 +767,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
           action={last.action}
           events={last.events}
           byComputer={!!last.action.why && !!aiPlayer}
+          ready={diceReady}
           {...(needsAck ? { onNext: () => { setAckedAt(session.actions.length); setClosedCallout(session.actions.length); } } : {})}
           onClose={() => setClosedCallout(session.actions.length)}
         />
@@ -829,6 +850,9 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
       >
         {s.phase === 'play' && !needsAck && <DrawDeck s={s} dispatch={dispatch} onSelect={setSelectedId} aiPlayer={paused ? null : aiPlayer} onHover={setHoverId} />}
         {!auto.running && <Toasts events={session.last?.events ?? []} stamp={session.actions.length} />}
+        {/* The card just drawn slides off the deck and turns over (both players). */}
+        {!auto.running && drawn && <DrawFlash key={session.actions.length} stamp={session.actions.length} name={drawn.card.name} player={drawn.player} kind={drawn.card.kind} />}
+        {!auto.running && steps.length > 0 && <DiceBox key={session.actions.length} steps={steps} stamp={session.actions.length} mustRoll={mustRoll} reduceMotion={settings.reduceMotion} onDone={setDiceDone} />}
       </TableView>
       </div>
       {wide && (
@@ -895,6 +919,7 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
       <PowerBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
       <RitualBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
       <SpiresBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
+      <StackPeek s={s} players={humans} onHover={setHoverId} />
       <ElementalPowerBar s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
       <PhasePanel s={s} dispatch={dispatch} aiPlayer={paused ? null : aiPlayer} />
 

@@ -37,7 +37,7 @@ import { clampFiles } from './formation';
 import type { Arc } from './geometry/arcs';
 import { marchShapeProblems } from './movement';
 import type { Action } from './game';
-import type { ActionKind, GameState, RegimentState } from './model/types';
+import type { ActionKind, GameState, PlayerId, RegimentState } from './model/types';
 import {
   anyOverlap,
   attachedCharacter,
@@ -93,6 +93,19 @@ function act(s: GameState, regimentId: string, kind: ActionKind, extra: () => st
   return p.length ? fail(...p) : ok();
 }
 
+/** Zones a player may pick now (scenario zone picks, pack p.12, p.19, p.22). */
+export function pickableZones(s: GameState, p: PlayerId): string[] {
+  const zp = s.scenario.zonePick;
+  if (!zp) return [];
+  const zr = zoneResults(s);
+  const first = s.firstPlayer;
+  return s.scenario.zones
+    .filter((z) => !zp.eligibleZoneIds || zp.eligibleZoneIds.includes(z.id))
+    .filter((z) => !(zp.mode === 'vetoDistinct' && first && p !== first && s.zonePicks[first] === z.id))
+    .filter((z) => !(zp.mode === 'bonusPick' && (zr[z.id]?.totals[p] ?? 0) > 0))
+    .map((z) => z.id);
+}
+
 export function validateM4(s: GameState, a: Action): Validation {
   switch (a.type) {
     case 'reinforcements': {
@@ -135,6 +148,8 @@ export function validateM4(s: GameState, a: Action): Validation {
       const second = s.firstPlayer === 'P1' ? 'P2' : 'P1';
       const next = s.zonePicks[s.firstPlayer] === null ? s.firstPlayer : s.zonePicks[second] === null ? second : null;
       if (next !== a.player) return fail(`It is ${next ?? 'nobody'}'s turn to pick a zone (First Player first).`);
+      // RULE-AMBIGUITY: AMB-93 — with no zone free of friendly Regiments, the player picks none and scores no bonus.
+      if (a.zoneId === '') return pickableZones(s, a.player).length ? fail('A zone can still be picked.') : ok();
       if (zp.eligibleZoneIds && !zp.eligibleZoneIds.includes(a.zoneId)) return fail('That zone cannot be picked in this scenario.');
       if (!s.scenario.zones.some((z) => z.id === a.zoneId)) return fail('Unknown zone.');
       if (zp.mode === 'vetoDistinct' && a.player === second && s.zonePicks[s.firstPlayer] === a.zoneId) return fail('The Second Player must pick a different zone (pack p.12).');
@@ -423,7 +438,7 @@ export function applyM4(ctx: Ctx, a: Action): void {
   const s = ctx.s;
   switch (a.type) {
     case 'reinforcements': {
-      doReinforcements(ctx, a.player, a.choice, a.flank ?? {});
+      doReinforcements(ctx, a.player, a.choice, a.flank ?? {}, a.priority ?? []);
       if (s.players.P1.reinforcementDone && s.players.P2.reinforcementDone) {
         s.step = 'command';
         ev(ctx, { type: 'phase', text: 'Command Phase: both players build their Command Stacks (core p.21).' });
@@ -461,7 +476,7 @@ export function applyM4(ctx: Ctx, a: Action): void {
     case 'pickZone': {
       s.zonePicks[a.player] = a.zoneId;
       const secret = s.scenario.zonePick!.mode === 'vetoSecret';
-      ev(ctx, { type: 'pick', text: `${a.player} picks ${secret ? 'a zone (secret until the Victory Phase)' : `zone ${a.zoneId}`}.`, player: a.player });
+      ev(ctx, { type: 'pick', text: a.zoneId === '' ? `${a.player} has no zone it may pick this Round (every 6″ zone has a friendly Regiment in range).` : `${a.player} picks ${secret ? 'a zone (secret until the Victory Phase)' : `zone ${a.zoneId}`}.`, player: a.player });
       if (s.zonePicks.P1 !== null && s.zonePicks.P2 !== null) startActionPhase(ctx);
       break;
     }

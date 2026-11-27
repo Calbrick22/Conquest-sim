@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { validate, type Action } from '../../engine/game';
+import type { RegimentState } from '../../engine/model/types';
+import { pickableZones } from '../../engine/gameM4';
 import type { GameState, PlayerId } from '../../engine/model/types';
 import { offerPendingFor, offerState } from '../../engine/factions/spiresExtras';
 import { designationPool } from '../../engine/scoring/designations';
@@ -77,6 +79,8 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
   // Master Manipulator (sp p.22): an extra Regiment after an accepted Offer, or the declined-Offer benefit.
   const [extra, setExtra] = useState<Record<PlayerId, string | null>>({ P1: null, P2: null });
   const [manip, setManip] = useState<Record<PlayerId, string>>({ P1: 'reroll', P2: 'reroll' });
+  // Priority for successful Reinforcement Rolls: they bring on the first Regiments of their Class in this order (core p.21).
+  const [prio, setPrio] = useState<Record<PlayerId, string[]>>({ P1: [], P2: [] });
   const waiting = offerPendingFor(s);
   const needText = (cls: 'Light' | 'Medium' | 'Heavy') => {
     const n = reinforcementNeed(s.round, cls);
@@ -86,7 +90,7 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
     <>
       <h3>Round {s.round}: Reinforcements</h3>
       <p className="meta">
-        Light {needText('Light')} · Medium {needText('Medium')} · Heavy {needText('Heavy')} (core p.21). Tap one Regiment to bring it on automatically; the rest roll.
+        Light {needText('Light')} · Medium {needText('Medium')} · Heavy {needText('Heavy')} (core p.21). Tap one Regiment to bring it on automatically; the rest roll one die each per Class, and each success brings on the next Regiment of that Class in your priority order (▲ to raise one).
       </p>
       <Designations s={s} dispatch={dispatch} ai={ai} />
       {waiting && waiting !== ai && (
@@ -101,7 +105,23 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
         const offer: Action = { type: 'spires', player: p, act: { option: 'offer' } };
         const os = offerState(s, p);
         if (p === ai) return <p key={p}><strong>{p}</strong> <span className="meta">the computer will choose</span></p>;
-        const reserve = reserveRegiments(s, p);
+        const order = (id: string) => {
+          const i = prio[p].indexOf(id);
+          return i < 0 ? 1000 + reserve0.findIndex((r) => r.id === id) : i;
+        };
+        const reserve0 = reserveRegiments(s, p);
+        const reserve = [...reserve0].sort((a, b) => order(a.id) - order(b.id));
+        const rolls = (r: RegimentState) => {
+          const need = reinforcementNeed(s.round, reinforcementClass(s, r));
+          return typeof need === 'number' && auto[p] !== r.id && !r.flags.autoArrive && !flankChoices(s, p).some((f) => f.id === r.id);
+        };
+        const rollers = reserve.filter(rolls);
+        const raise = (id: string) => {
+          const ids = reserve.map((r) => r.id);
+          const i = ids.indexOf(id);
+          if (i > 0) [ids[i - 1], ids[i]] = [ids[i]!, ids[i - 1]!];
+          setPrio({ ...prio, [p]: ids });
+        };
         const eligible = new Set(reinforcementChoices(s, p).map((r) => r.id));
         const flank = new Set(flankChoices(s, p).map((r) => r.id));
         return (
@@ -127,6 +147,11 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
                 return (
                   <li key={r.id} className={`reinf-row ${isAuto ? 'chosen' : ''}`}>
                     <span>
+                      {rolls(r) && rollers.filter((x) => x.cls === r.cls).length > 1 && (
+                        <button type="button" className="secondary small prio" onClick={() => raise(r.id)} aria-label={`Raise ${r.name}'s priority`} title="Successful rolls of this Class bring on Regiments in this order (core p.21)">
+                          {rollers.filter((x) => x.cls === r.cls).indexOf(r) + 1} ▲
+                        </button>
+                      )}{' '}
                       {r.name} <span className="meta">{r.cls}</span>
                     </span>
                     <span className="meta">{status}</span>
@@ -203,6 +228,7 @@ function Reinforcements({ s, dispatch, ai }: { s: GameState; dispatch: (a: Actio
                         }
                       : null,
                   flank: Object.fromEntries([...flank].map((id) => [id, !flankStay[id]])),
+                  priority: reserve.map((r) => r.id),
                 })
               }
               data-testid={`reinforce-${p}`}
@@ -293,6 +319,7 @@ function ZonePicks({ s, dispatch }: { s: GameState; dispatch: (a: Action) => boo
   const second: PlayerId = first === 'P1' ? 'P2' : 'P1';
   const next = s.zonePicks[first] === null ? first : second;
   const zones = s.scenario.zones.filter((z) => !zp.eligibleZoneIds || zp.eligibleZoneIds.includes(z.id));
+  const ok = pickableZones(s, next);
   const what = zp.mode === 'bonusPick' ? 'a 6″ zone with none of your Regiments in range: +3 VP if you Seize it' : zp.mode === 'vetoSecret' ? 'a zone in secret: no VP for it this Round' : 'a zone: no VP for it this Round';
   return (
     <>
@@ -301,10 +328,15 @@ function ZonePicks({ s, dispatch }: { s: GameState; dispatch: (a: Action) => boo
       </p>
       <div className="actions wrap">
         {zones.map((z) => (
-          <button key={z.id} type="button" className="secondary small" onClick={() => dispatch({ type: 'pickZone', player: next, zoneId: z.id })} data-testid={`pick-${z.id}`}>
+          <button key={z.id} type="button" className="secondary small" disabled={!ok.includes(z.id)} onClick={() => dispatch({ type: 'pickZone', player: next, zoneId: z.id })} data-testid={`pick-${z.id}`}>
             {z.label ?? z.id} ({z.x}, {z.y})
           </button>
         ))}
+        {!ok.length && (
+          <button type="button" className="small" onClick={() => dispatch({ type: 'pickZone', player: next, zoneId: '' })} data-testid="pick-none">
+            No zone can be picked: continue
+          </button>
+        )}
       </div>
     </>
   );
