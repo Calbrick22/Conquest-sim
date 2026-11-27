@@ -16,7 +16,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         <Toggle label="Reduce motion" hint="No sliding or fading notifications." on={settings.reduceMotion} set={(v) => update({ reduceMotion: v })} />
         <Toggle label="Confirm ending an Activation early" hint="Ask before ending an Activation with Actions left." on={settings.confirmEarlyEnd} set={(v) => update({ confirmEarlyEnd: v })} />
         <Toggle label="Stand role icons" hint="Bow, swords or star on each Stand." on={settings.standIcons} set={(v) => update({ standIcons: v })} />
-        <Toggle label="Roll my own dice" hint="The dice box waits for you to press Roll for every roll that is yours: attacks, Charges, saves, Morale and Reinforcements." on={settings.rollOwnDice} set={(v) => update({ rollOwnDice: v })} />
+        <Toggle label="Press Roll for every roll" hint="The dice box sets out the dice for each roll and waits for you to press Roll, including the computer's rolls." on={settings.rollOwnDice} set={(v) => update({ rollOwnDice: v })} />
         <Toggle label="Odds before rolling" hint="Expected Wounds and chances while choosing a target." on={settings.previews} set={(v) => update({ previews: v })} />
         <Toggle label="Portrait table on phones" hint="Turn the table so its long side runs down the screen." on={settings.portraitTable} set={(v) => update({ portraitTable: v })} />
       </div>

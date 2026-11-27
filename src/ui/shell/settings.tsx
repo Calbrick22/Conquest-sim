@@ -12,7 +12,7 @@ export interface Settings {
   portraitTable: boolean;
   /** Show the odds while choosing a Charge, Volley or Clash target. */
   previews: boolean;
-  /** Press Roll for every roll that is yours in the dice box, rather than seeing them settle by themselves. */
+  /** The dice box waits for the player to press Roll for every roll (the computer's included). */
   rollOwnDice: boolean;
   /** Desktop panel widths in CSS pixels (resizable). */
   sideWidth: number;

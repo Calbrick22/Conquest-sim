@@ -4,10 +4,9 @@ import type { RollStep } from './rolls';
 
 /**
  * The dice box: plays the rolls of the last Action one by one. The right number of dice wait in
- * the tray; for a roll that is the player's, nothing happens until they press Roll. Then the dice
- * are thrown: each tumbles, bounces, slows and settles on its own, and once all have landed the
- * passing dice are highlighted with the outcome underneath. The computer's rolls are thrown by
- * themselves. The results come from the engine's seeded dice, so a saved game replays exactly.
+ * the tray and nothing happens until the player presses Roll (for every roll, the computer's too,
+ * unless the setting is off). Then the dice are thrown: each tumbles, bounces, slows and settles on its own, and once all have landed the
+ * passing dice are highlighted with the outcome underneath. The results come from the engine's seeded dice, so a saved game replays exactly.
  */
 
 /** Pip positions on a 3×3 grid for each face. */
@@ -39,6 +38,7 @@ export function DiceBox({
   steps: RollStep[];
   /** The Action this playback belongs to (the parent keys the box on it, so a new Action restarts it). */
   stamp: number;
+  /** Does this roll wait for the player's Roll button? */
   mustRoll: (s: RollStep) => boolean;
   reduceMotion: boolean;
   onDone: (stamp: number) => void;
@@ -149,7 +149,6 @@ export function DiceBox({
           <span className="meta">
             {show.values.length} {label} {show.values.length === 1 ? 'die' : 'dice'}
             {show.need !== null ? `, need ${show.need} or less` : ''}
-            {yours ? '' : ' · the computer rolls…'}
           </span>
         ) : settled ? (
           <strong className="dice-outcome">{show.outcome}</strong>

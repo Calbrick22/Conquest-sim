@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.2] - 2026-11-27 (every roll waits for Roll)
+
+### Changed
+- **Every roll waits for you to press Roll**, including the computer's: the dice box appears with the right number of dice set out, and nothing is thrown until you press Roll. The computer waits for its dice to be rolled before its next move. The setting "Press Roll for every roll" turns this off.
+
 ## [2.5.1] - 2026-11-27 (rolling your own dice, dealing cards)
 
 ### Changed

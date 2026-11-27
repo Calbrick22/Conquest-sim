@@ -3,7 +3,7 @@ import { getScenario } from '../../scenarios';
 import { apply, createGame } from '../../engine/game';
 import { entry, list } from '../../engine/testing/fixtures';
 import { refreshRules } from '../../engine/rules/special/grants';
-import { attackSummaries, playerRolls, rollSteps } from './rolls';
+import { attackSummaries, rollSteps } from './rolls';
 
 function clash() {
   const A = list('A', [{ regiments: [entry({ name: 'Axes', stands: 3 })] }]);
@@ -44,13 +44,4 @@ describe('dice box and callout summaries', () => {
     expect(a!.saved + a!.wounds).toBe(a!.hits);
   });
 
-  it('a human rolls every roll that is theirs; the computer\'s rolls play by themselves', () => {
-    const steps = rollSteps(clash());
-    const save = steps.find((x) => x.kind === 'save')!;
-    expect(save.owner).toBe('P2');
-    expect(playerRolls(save, ['P2'], 'P1')).toBe(true);
-    expect(playerRolls(save, ['P1'], 'P1')).toBe(false);
-    expect(playerRolls(steps[0]!, ['P1'], 'P1')).toBe(true);
-    expect(playerRolls(steps[0]!, ['P2'], 'P1')).toBe(false);
-  });
 });

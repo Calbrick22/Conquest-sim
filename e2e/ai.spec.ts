@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { closeCallout, endActivation } from './helpers';
+import { closeCallout, endActivation, rollDice } from './helpers';
 
 test('play against the computer: it takes its own decisions and explains them', async ({ page }) => {
   // The computer now pauses while each of its cards is dealt, so a Round takes longer.
@@ -14,7 +14,11 @@ test('play against the computer: it takes its own decisions and explains them', 
 
   // Our Reinforcements; the computer (P2) does its own.
   await page.getByTestId('reinforce-P1').click();
+  // Every roll waits in the dice box for Roll, the computer's included.
+  await expect(page.getByTestId('roll-dice')).toBeVisible();
+  await rollDice(page);
   await expect(page.getByTestId('log')).toContainText('AI: ', { timeout: 15_000 });
+  await rollDice(page);
   await page.getByTestId('ai-next').click();
   await page.getByTestId('stack-P1').click();
   await page.getByTestId('supremacy-roll').click();
@@ -25,6 +29,7 @@ test('play against the computer: it takes its own decisions and explains them', 
   // Play our activations (march on 3″, else end) until the Round can be ended; the computer plays its own.
   for (let i = 0; i < 200; i++) {
     if (await page.getByTestId('end-round').isVisible()) break;
+    await rollDice(page);
     if (await page.getByTestId('ai-next').isVisible().catch(() => false)) {
       await page.getByTestId('ai-next').click();
       continue;

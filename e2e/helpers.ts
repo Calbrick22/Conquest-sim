@@ -36,8 +36,19 @@ export async function endActivation(page: Page) {
 }
 
 
+/** Presses Roll in the dice box for every roll that is waiting. */
+export async function rollDice(page: Page) {
+  for (let i = 0; i < 20; i++) {
+    const roll = page.getByTestId('roll-dice');
+    if (!(await roll.isVisible().catch(() => false))) return;
+    await roll.click();
+    await page.waitForTimeout(150);
+  }
+}
+
 /** Closes a finished on-table action callout and any unit card, if showing. */
 export async function closeCallout(page: Page) {
+  await rollDice(page);
   for (const id of ['action-callout', 'unit-callout']) {
     const c = page.getByTestId(id).getByRole('button', { name: 'Close' });
     if (await c.isVisible().catch(() => false)) await c.click();

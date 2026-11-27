@@ -17,7 +17,7 @@ import {
 import { clampFiles, footprint, legalFiles } from '../../engine/formation';
 import { dist, dot, type Vec } from '../../engine/geometry/vec';
 import { applyPath, parseMoveText, pathCost, type MoveSeg } from '../../engine/movement';
-import type { Edge, GameState, PlayerId, Pose, RegimentState } from '../../engine/model/types';
+import type { Edge, PlayerId, Pose, RegimentState } from '../../engine/model/types';
 import { AttackOptions, PractitionerButtons, SpiresBar, type AttackOpts } from './SpiresPanel';
 import { duellist, duelTargets, enemiesInContact, withdrawPose } from '../../engine/actions';
 import { baseName, CHARACTER_ABILITIES_AUTOMATED, DRAW_EVENTS_AUTOMATED } from '../../engine/activation';
@@ -25,7 +25,7 @@ import { isEngaged } from '../../engine/queries';
 import { barrageOf } from '../../engine/rules/special/rules';
 import { DiceTray } from './DiceTray';
 import { DiceBox } from './DiceBox';
-import { playerRolls, rollSteps, type RollStep } from './rolls';
+import { rollSteps } from './rolls';
 import { gameLogMarkdown } from '../../engine/log/markdown';
 import { markerAttackProblems, markerInContact, MARKER_PREFIX } from '../../engine/markers';
 import { saveGame } from '../../storage/db';
@@ -84,14 +84,6 @@ type TargetKind = 'charge' | 'volley' | 'clash' | 'Snapshot' | 'Mighty Swing';
 
 const deg = (d: number) => (d * Math.PI) / 180;
 const fmt = (n: number) => `${(Math.round(n * 100) / 100).toFixed(2)}″`;
-
-/** The player whose Action it was (for whose dice the dice box waits). */
-function actorOf(s: GameState, a: Action): PlayerId | null {
-  if ('player' in a && (a.player === 'P1' || a.player === 'P2')) return a.player;
-  const id = 'regimentId' in a ? a.regimentId : 'casterId' in a ? a.casterId : 'characterId' in a ? a.characterId : undefined;
-  if (typeof id === 'string') return (s.regiments[id]?.owner ?? (id.startsWith('P1') ? 'P1' : id.startsWith('P2') ? 'P2' : null)) as PlayerId | null;
-  return s.activation ? s.regiments[s.activation.regimentId]?.owner ?? null : null;
-}
 
 export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQuit: () => void; onSettings?: () => void }) {
   const { session, dispatch, undo, undoHuman, error, setError } = useGame(game.session);
@@ -164,13 +156,12 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
   const [diceDone, setDiceDone] = useState(0);
   const steps = useMemo(() => rollSteps(session.last?.events ?? []), [session.last]);
   const humans: PlayerId[] = aiPlayer ? [aiPlayer === 'P1' ? 'P2' : 'P1'] : ['P1', 'P2'];
-  const actor = session.last ? actorOf(s, session.last.action) : null;
-  const humanKey = humans.join();
-  const mustRoll = useCallback((st: RollStep) => settings.rollOwnDice && playerRolls(st, humanKey.split(',') as PlayerId[], actor), [settings.rollOwnDice, humanKey, actor]);
+  // Every roll waits in the box until the player presses Roll, the computer's included.
+  const mustRoll = useCallback(() => settings.rollOwnDice, [settings.rollOwnDice]);
   const diceReady = !steps.length || diceDone === session.actions.length || auto.running;
   const [menuOpen, setMenuOpen] = useState(false);
   // The computer waits while the pause menu is open.
-  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused || auto.running || menuOpen, dispatch, needsAck || dealing, game.difficulty);
+  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused || auto.running || menuOpen, dispatch, needsAck || dealing || !diceReady, game.difficulty);
   // Wide screens show the selected Regiment in a side panel instead of a floating card.
   const [wide, setWide] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(min-width: 1280px)').matches);
   useEffect(() => {
