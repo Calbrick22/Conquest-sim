@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 import { closeCallout, endActivation } from './helpers';
 
 test('play against the computer: it takes its own decisions and explains them', async ({ page }) => {
+  // The computer now pauses while each of its cards is dealt, so a Round takes longer.
+  test.setTimeout(240_000);
   await page.goto('/#play');
   await expect(page.getByTestId('mode')).toHaveValue('ai');
   await page.getByLabel('Seed').fill('4242');
@@ -21,7 +23,7 @@ test('play against the computer: it takes its own decisions and explains them', 
   if (await first.isVisible().catch(() => false)) await first.click();
 
   // Play our activations (march on 3″, else end) until the Round can be ended; the computer plays its own.
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 200; i++) {
     if (await page.getByTestId('end-round').isVisible()) break;
     if (await page.getByTestId('ai-next').isVisible().catch(() => false)) {
       await page.getByTestId('ai-next').click();

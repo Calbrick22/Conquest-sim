@@ -34,7 +34,7 @@ import type { NewGame } from './SetupScreen';
 import { ManualTools } from './ManualTools';
 import { PhasePanel } from './PhasePanel';
 import { ActionCallout, UnitCallout } from './Callouts';
-import { DrawDeck, DrawFlash, StackPeek, StackBuilder } from './CommandDeck';
+import { DrawDeck, StackPeek, StackBuilder } from './CommandDeck';
 import { OdActivation, PowerBar } from './OldDominionPanel';
 import { RitualBar, SkActivation } from './SorcererKingsPanel';
 import { DwActivation, ElementalPowerBar } from './DweghomPanel';
@@ -134,6 +134,23 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
   // The computer waits for "Next" after each Action that gets a callout.
   const [ackedAt, setAckedAt] = useState(0);
   const lastAct = session.last?.action;
+  // The last card drawn (re-keys the dealing animation) and a pause so the computer's draws can be seen.
+  const dealtAt = useMemo(() => {
+    for (let i = session.actions.length - 1; i >= 0; i--) if (session.actions[i]!.type === 'drawCard' || session.actions[i]!.type === 'lobotomy') return i + 1;
+    return 0;
+  }, [session.actions]);
+  const [dealing, setDealing] = useState(false);
+  // Only a new draw starts (or restarts) the pause; later Actions never cancel its end.
+  useEffect(() => {
+    if (!dealtAt) return;
+    const on = setTimeout(() => setDealing(true), 0);
+    const off = setTimeout(() => setDealing(false), 1700);
+    return () => {
+      clearTimeout(on);
+      clearTimeout(off);
+      setTimeout(() => setDealing(false), 0);
+    };
+  }, [dealtAt]);
   const needsAck = !!aiPlayer && !!lastAct?.why && showsCallout(lastAct.type, session.last?.events ?? []) && ackedAt !== session.actions.length;
   const [closedCallout, setClosedCallout] = useState(-1);
   const [showUnit, setShowUnit] = useState(true);
@@ -150,12 +167,10 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
   const actor = session.last ? actorOf(s, session.last.action) : null;
   const humanKey = humans.join();
   const mustRoll = useCallback((st: RollStep) => settings.rollOwnDice && playerRolls(st, humanKey.split(',') as PlayerId[], actor), [settings.rollOwnDice, humanKey, actor]);
-  // A Command Card drawn by the last Action (for the draw animation).
-  const drawn = session.last && (session.last.action.type === 'drawCard' || session.last.action.type === 'lobotomy') ? s.drawn ?? null : null;
   const diceReady = !steps.length || diceDone === session.actions.length || auto.running;
   const [menuOpen, setMenuOpen] = useState(false);
   // The computer waits while the pause menu is open.
-  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused || auto.running || menuOpen, dispatch, needsAck, game.difficulty);
+  const { thinking, aiError, clearAiError } = useAi(s, aiPlayer, paused || auto.running || menuOpen, dispatch, needsAck || dealing, game.difficulty);
   // Wide screens show the selected Regiment in a side panel instead of a floating card.
   const [wide, setWide] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(min-width: 1280px)').matches);
   useEffect(() => {
@@ -848,10 +863,9 @@ export function TableScreen({ game, onQuit, onSettings }: { game: NewGame; onQui
         lines={mode === 'target' && targetKind === 'volley' && sel ? volleyLines(s, sel).map((l) => ({ a: l.a, b: l.b, cls: l.kind, ...(l.label ? { label: l.label } : {}) })) : undefined}
         overlays={overlays}
       >
-        {s.phase === 'play' && !needsAck && <DrawDeck s={s} dispatch={dispatch} onSelect={setSelectedId} aiPlayer={paused ? null : aiPlayer} onHover={setHoverId} />}
+        {s.phase === 'play' && <DrawDeck s={s} dispatch={dispatch} onSelect={setSelectedId} aiPlayer={paused ? null : aiPlayer} onHover={setHoverId} dealt={dealtAt} />}
         {!auto.running && <Toasts events={session.last?.events ?? []} stamp={session.actions.length} />}
         {/* The card just drawn slides off the deck and turns over (both players). */}
-        {!auto.running && drawn && <DrawFlash key={session.actions.length} stamp={session.actions.length} name={drawn.card.name} player={drawn.player} kind={drawn.card.kind} />}
         {!auto.running && steps.length > 0 && <DiceBox key={session.actions.length} steps={steps} stamp={session.actions.length} mustRoll={mustRoll} reduceMotion={settings.reduceMotion} onDone={setDiceDone} />}
       </TableView>
       </div>

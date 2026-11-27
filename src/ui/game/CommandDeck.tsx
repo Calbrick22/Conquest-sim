@@ -66,7 +66,7 @@ export function StackBuilder({ s, p, dispatch, onPreview }: { s: GameState; p: P
 }
 
 /** The deck during the Action Phase: draw, then activate with the drawn card. */
-export function DrawDeck({ s, dispatch, onSelect, aiPlayer, onHover }: { s: GameState; dispatch: (a: Action) => boolean; onSelect: (id: string) => void; aiPlayer: PlayerId | null; onHover?: (regimentId: string | null) => void }) {
+export function DrawDeck({ s, dispatch, onSelect, aiPlayer, onHover, dealt }: { s: GameState; dispatch: (a: Action) => boolean; onSelect: (id: string) => void; aiPlayer: PlayerId | null; onHover?: (regimentId: string | null) => void; dealt: number }) {
   // Hovering or focusing an Activate button highlights that Regiment on the table.
   const hover = (regimentId: string | null) => ({
     onMouseEnter: () => onHover?.(regimentId),
@@ -74,33 +74,66 @@ export function DrawDeck({ s, dispatch, onSelect, aiPlayer, onHover }: { s: Game
     onFocus: () => onHover?.(regimentId),
     onBlur: () => onHover?.(null),
   });
-  if (s.step !== 'action' || s.activation) return null;
-  if (s.drawn) {
-    const { player, card } = s.drawn;
-    if (player === aiPlayer) return null;
-    // A Ritual card is resolved, not Activated (sk p.5).
-    if (card.kind === 'ritual') return <RitualCard s={s} dispatch={dispatch} />;
-    const targets = cardTargets(s, player, card);
-    return (
-      <div className="deck-panel draw">
-        <div className={`ccard face ${card.kind} owner-${player}`}>
-          <span className="pos">{player}</span>
-          <span className="cname">{card.name}</span>
-          {card.kind === 'character' && <span className="ckind">Character</span>}
+  if (s.step !== 'action') return null;
+  // The card beside the deck: the one just drawn, or the one whose Activation is under way.
+  const act = s.activation;
+  const face: { player: PlayerId; name: string; kind: string } | null = s.drawn
+    ? { player: s.drawn.player, name: s.drawn.card.name, kind: s.drawn.card.kind }
+    : act
+      ? act.characterId
+        ? { player: s.regiments[act.regimentId]!.owner, name: s.characters[act.characterId]!.name, kind: 'character' }
+        : { player: s.regiments[act.regimentId]!.owner, name: s.regiments[act.regimentId]!.name, kind: 'regiment' }
+      : null;
+  const deckOf: PlayerId | null = face?.player ?? s.turn;
+  if (!deckOf) return null;
+  const canDraw = !s.drawn && !act && s.turn === deckOf && deckOf !== aiPlayer;
+  const human = s.drawn && s.drawn.player !== aiPlayer ? s.drawn : null;
+  if (human?.card.kind === 'ritual') return <RitualCard s={s} dispatch={dispatch} />;
+  const targets = human ? cardTargets(s, human.player, human.card) : [];
+  const left = s.players[deckOf].stack.length;
+  return (
+    <div className="deck-panel draw">
+      <div className="deck-row">
+        {canDraw ? (
+          <button type="button" className={`ccard back owner-${deckOf}`} onClick={() => dispatch({ type: 'drawCard', player: deckOf })} data-testid="draw-card">
+            <span className="pos">{deckOf}</span>
+            <span className="cname">Draw</span>
+            <span className="ckind">{left} left</span>
+          </button>
+        ) : (
+          <div className={`ccard back owner-${deckOf} ${left ? '' : 'empty'}`} aria-label={`${deckOf}'s Command Stack: ${left} left`}>
+            <span className="pos">{deckOf}</span>
+            <span className="ckind">{left} left</span>
+          </div>
+        )}
+        {/* Dealt from the deck: lifted off, slid alongside and turned over (re-keyed on every draw). */}
+        <div className="card-slot">
+          {face && (
+            <div key={dealt} className="deal">
+              <div className={`ccard back owner-${face.player} deal-back`} aria-hidden="true" />
+              <div className={`ccard face ${face.kind} owner-${face.player} deal-front`}>
+                <span className="pos">{face.player}</span>
+                <span className="cname">{face.name}</span>
+                {face.kind === 'character' && <span className="ckind">Character</span>}
+              </div>
+            </div>
+          )}
         </div>
+      </div>
+      {human && (
         <div className="actions wrap">
-          {sectOf(s, player) === 'directorate' && !s.players[player].lobotomyUsed && s.players[player].stack.length > 0 && (
+          {sectOf(s, human.player) === 'directorate' && !s.players[human.player].lobotomyUsed && s.players[human.player].stack.length > 0 && (
             <span className="actions">
-              <button type="button" className="secondary small" onClick={() => dispatch({ type: 'lobotomy', player, place: 'top' })} title="Set this card aside, draw the next; this card goes on top (Strain without Decay)">
+              <button type="button" className="secondary small" onClick={() => dispatch({ type: 'lobotomy', player: human.player, place: 'top' })} title="Set this card aside, draw the next; this card goes on top (Strain without Decay)">
                 Lobotomytic: to top
               </button>
-              <button type="button" className="secondary small" onClick={() => dispatch({ type: 'lobotomy', player, place: 'bottom' })} title="Set this card aside, draw the next; this card goes to the bottom (+2 Attacks)">
+              <button type="button" className="secondary small" onClick={() => dispatch({ type: 'lobotomy', player: human.player, place: 'bottom' })} title="Set this card aside, draw the next; this card goes to the bottom (+2 Attacks)">
                 to bottom
               </button>
             </span>
           )}
           {targets.map((id) =>
-            card.kind === 'character' ? (
+            human.card.kind === 'character' ? (
               <button
                 key={id}
                 type="button"
@@ -133,21 +166,12 @@ export function DrawDeck({ s, dispatch, onSelect, aiPlayer, onHover }: { s: Game
             ),
           )}
         </div>
-      </div>
-    );
-  }
-  const p = s.turn;
-  if (!p || p === aiPlayer) return null;
-  return (
-    <div className="deck-panel draw">
-      <button type="button" className={`ccard back owner-${p}`} onClick={() => dispatch({ type: 'drawCard', player: p })} data-testid="draw-card">
-        <span className="pos">{p}</span>
-        <span className="cname">Draw</span>
-        <span className="ckind">{s.players[p].stack.length} left</span>
-      </button>
-      <span className="meta">
-        {p}'s turn · P1 {s.players.P1.stack.length} cards, P2 {s.players.P2.stack.length} cards
-      </span>
+      )}
+      {!face && (
+        <span className="meta">
+          {deckOf}'s turn · P1 {s.players.P1.stack.length} cards, P2 {s.players.P2.stack.length} cards
+        </span>
+      )}
     </div>
   );
 }
@@ -189,18 +213,5 @@ export function StackPeek({ s, players, onHover }: { s: GameState; players: Play
         );
       })}
     </>
-  );
-}
-
-/** A card sliding off the deck and turning over, shown briefly whenever a Command Card is drawn. */
-export function DrawFlash({ name, player, kind, stamp }: { name: string; player: PlayerId; kind: string; stamp: number }) {
-  return (
-    <div key={stamp} className="draw-flash" aria-hidden="true" data-testid="draw-flash">
-      <div className={`ccard face ${kind} owner-${player} flying`}>
-        <span className="pos">{player}</span>
-        <span className="cname">{name}</span>
-        {kind === 'character' && <span className="ckind">Character</span>}
-      </div>
-    </div>
   );
 }

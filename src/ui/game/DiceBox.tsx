@@ -1,12 +1,34 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { RollStep } from './rolls';
 
 /**
- * The dice box: plays the rolls of the last Action one by one. Each roll tumbles, then settles on
- * the engine's seeded result, with passing dice highlighted and the outcome underneath. When a roll
- * belongs to the player (their Defence or Morale against the other side), it waits for them to roll
- * it. The results themselves come from the engine's seeded dice, so a saved game replays exactly.
+ * The dice box: plays the rolls of the last Action one by one. The right number of dice wait in
+ * the tray; for a roll that is the player's, nothing happens until they press Roll. Then the dice
+ * are thrown: each tumbles, bounces, slows and settles on its own, and once all have landed the
+ * passing dice are highlighted with the outcome underneath. The computer's rolls are thrown by
+ * themselves. The results come from the engine's seeded dice, so a saved game replays exactly.
  */
+
+/** Pip positions on a 3×3 grid for each face. */
+const PIPS: Record<number, number[]> = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+
+function Die({ v, cls, style }: { v: number | null; cls?: string; style?: CSSProperties }) {
+  return (
+    <span className={`pip-die ${cls ?? ''}`} style={style} role="img" aria-label={v ? String(v) : 'die'}>
+      {Array.from({ length: 9 }, (_, i) => (
+        <span key={i} className={`dpip ${v && PIPS[v]!.includes(i) ? "on" : ""}`} />
+      ))}
+    </span>
+  );
+}
+
+/** Small seeded wobble so the resting dice and the throw differ from roll to roll. */
+const wobble = (i: number, k: number) => {
+  const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+};
+
 export function DiceBox({
   steps,
   stamp,
@@ -24,41 +46,59 @@ export function DiceBox({
   const [cur, setCur] = useState(0);
   const [phase, setPhase] = useState<'waiting' | 'rolling' | 'shown'>('waiting');
   const [faces, setFaces] = useState<number[]>([]);
-  const tumble = reduceMotion ? 0 : 650;
-  const hold = reduceMotion ? 250 : 750;
-
+  const [landed, setLanded] = useState<boolean[]>([]);
+  const start = useRef(0);
   const step = steps[cur];
-  // Start each roll by itself unless the player rolls it; report when every roll is shown.
+  const n = step?.values.length ?? 0;
+  // Each die's own throw: how far it travels, how it spins and how long it takes to land.
+  const throws = useMemo(
+    () => Array.from({ length: n }, (_, i) => ({ dur: reduceMotion ? 0 : 900 + Math.round(wobble(i, cur + stamp) * 650), dx: -120 - wobble(i, 7 + cur) * 140, dy: -30 + wobble(i, 3 + cur) * 60, rot: 360 + Math.round(wobble(i, 5 + cur) * 540) })),
+    [n, cur, stamp, reduceMotion],
+  );
+
+  // A roll that is not the player's is thrown by itself; report when every roll has been shown.
   useEffect(() => {
     if (cur >= steps.length) {
       onDone(stamp);
       return;
     }
     if (phase !== 'waiting' || mustRoll(steps[cur]!)) return;
-    const t = setTimeout(() => setPhase('rolling'), 0);
+    const t = setTimeout(() => throwDice(), reduceMotion ? 0 : 450);
     return () => clearTimeout(t);
-  }, [cur, phase, steps, mustRoll, onDone, stamp]);
+  }, [cur, phase, steps, mustRoll, onDone, stamp, reduceMotion]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Tumbling faces, then the real result, then the next roll.
+  function throwDice() {
+    start.current = performance.now();
+    setFaces(steps[cur]!.values.map(() => 1 + Math.floor(Math.random() * 6)));
+    setLanded(steps[cur]!.values.map(() => false));
+    setPhase('rolling');
+  }
+
+  // Tumbling: faces change quickly at first and slow down; each die lands at the end of its own throw.
   useEffect(() => {
-    if (!step) return;
-    if (phase === 'rolling') {
-      const spin = tumble ? setInterval(() => setFaces(step.values.map(() => 1 + Math.floor(Math.random() * 6))), 70) : undefined;
-      const stop = setTimeout(() => setPhase('shown'), tumble);
-      return () => {
-        if (spin) clearInterval(spin);
-        clearTimeout(stop);
-      };
-    }
-    if (phase === 'shown') {
-      const t = setTimeout(() => {
-        setCur((c) => c + 1);
-        setPhase('waiting');
-      }, hold);
-      return () => clearTimeout(t);
-    }
-    return undefined;
-  }, [phase, step, tumble, hold]);
+    if (!step || phase !== 'rolling') return;
+    const longest = Math.max(0, ...throws.map((t) => t.dur));
+    const tick = setInterval(() => {
+      const t = performance.now() - start.current;
+      setFaces((f) => f.map((v, i) => (t >= throws[i]!.dur ? step.values[i]! : Math.random() < 1 - (t / throws[i]!.dur) * 0.8 ? 1 + Math.floor(Math.random() * 6) : v)));
+      setLanded(throws.map((x) => t >= x.dur));
+    }, 70);
+    const stop = setTimeout(() => setPhase('shown'), longest + 250);
+    return () => {
+      clearInterval(tick);
+      clearTimeout(stop);
+    };
+  }, [phase, step, throws]);
+
+  // A moment to read the result, then the next roll.
+  useEffect(() => {
+    if (phase !== 'shown') return;
+    const t = setTimeout(() => {
+      setCur((c) => c + 1);
+      setPhase('waiting');
+    }, reduceMotion ? 400 : 1300);
+    return () => clearTimeout(t);
+  }, [phase, reduceMotion]);
 
   // Once every roll is shown, the box fades away after a moment so it does not cover the table.
   const [gone, setGone] = useState(false);
@@ -69,41 +109,52 @@ export function DiceBox({
     return () => clearTimeout(t);
   }, [finished, reduceMotion]);
   if (!steps.length || gone) return null;
-  const done = cur >= steps.length;
+  const done = finished;
   const show = done ? steps[steps.length - 1]! : step!;
-  const values = phase === 'rolling' && !done ? faces : show.values;
   const settled = done || phase === 'shown';
-  const waitingForPlayer = !done && phase === 'waiting' && mustRoll(show);
+  const waiting = !done && phase === 'waiting';
+  const yours = waiting && mustRoll(show);
   const label = show.kind === 'hit' ? 'To hit' : show.kind === 'save' ? 'Defence' : show.kind === 'morale' ? 'Morale' : 'Roll';
   return (
     <div className={`dice-box ${show.kind}`} data-testid="dice-box" aria-live="polite">
       <div className="dice-box-head">
         <span className="dice-kind">{label}</span>
-        <span className="dice-title">{show.title.replace(/: (Defense|Morale|Duel Defense|Duel Resolve)$/, '')}</span>
+        <span className="dice-title">{show.title.replace(/: (Defense|Morale|Duel Defense|Duel Resolve)$/, '').replace(/\s*\([^)]*\)/g, '').replace(/ to hit$/, '')}</span>
         <span className="meta">
           {Math.min(cur + 1, steps.length)}/{steps.length}
         </span>
       </div>
-      <div className={`dice-box-tray ${phase === 'rolling' && !done ? 'tumbling' : ''}`}>
-        {waitingForPlayer
-          ? show.values.map((_, i) => <span key={i} className="die blank">?</span>)
-          : values.length
-            ? values.map((v, i) => (
-                <span key={i} className={`die ${settled ? (show.pass[i] ? 'pass' : 'fail') : ''}`}>
-                  {v}
-                </span>
-              ))
-            : <span className="meta">no dice: automatic</span>}
+      <div className="dice-box-tray">
+        {show.values.length === 0 ? (
+          <span className="meta">no dice: automatic</span>
+        ) : (
+          show.values.map((v, i) => {
+            const th = throws[i];
+            if (waiting) return <Die key={i} v={null} cls="resting" style={{ transform: `rotate(${Math.round((wobble(i, 11) - 0.5) * 24)}deg)` }} />;
+            if (!settled && th) {
+              const vars = { '--dx': `${th.dx}px`, '--dy': `${th.dy}px`, '--rot': `${th.rot}deg`, '--dur': `${th.dur}ms` } as CSSProperties;
+              return <Die key={i} v={faces[i] ?? v} cls={landed[i] ? 'landed' : 'thrown'} style={vars} />;
+            }
+            return <Die key={i} v={v} cls={`landed ${show.pass[i] ? 'pass' : 'fail'}`} />;
+          })
+        )}
       </div>
       <div className="dice-box-foot">
-        {waitingForPlayer ? (
-          <button type="button" className="roll-btn" onClick={() => setPhase('rolling')} data-testid="roll-dice">
-            Roll {show.values.length} {label} dice{show.need !== null ? ` (need ${show.need} or less)` : ''}
+        {yours ? (
+          <button type="button" className="roll-btn" onClick={throwDice} data-testid="roll-dice" autoFocus>
+            Roll
           </button>
+        ) : null}
+        {waiting ? (
+          <span className="meta">
+            {show.values.length} {label} {show.values.length === 1 ? 'die' : 'dice'}
+            {show.need !== null ? `, need ${show.need} or less` : ''}
+            {yours ? '' : ' · the computer rolls…'}
+          </span>
         ) : settled ? (
           <strong className="dice-outcome">{show.outcome}</strong>
         ) : (
-          <span className="meta">Rolling{show.need !== null ? `, need ${show.need} or less` : ''}…</span>
+          <span className="meta">Rolling…</span>
         )}
         {!done && (
           <button type="button" className="secondary small" onClick={() => { setCur(steps.length); onDone(stamp); }} data-testid="dice-skip">

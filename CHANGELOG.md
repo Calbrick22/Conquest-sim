@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.5.1] - 2026-11-27 (rolling your own dice, dealing cards)
+
+### Changed
+- **You roll your own dice.** The dice box sets out the right number of blank dice and waits for you to press **Roll**, for every roll that is yours: attacks, Charges, Spells, Reinforcements, saves and Morale. Then the dice are thrown: each tumbles, bounces, slows and lands on its own, and the passing dice light up with the result underneath. The computer's rolls are thrown by themselves. The dice show pips.
+- **Dealing a Command Card.** A drawn card lifts off the deck, slides alongside, turns over and is laid face up beside the deck, where it stays for the Activation. The computer pauses while its cards are dealt so you can see them.
+
+### Fixed
+- Callouts sit above the deck, so the computer's Next button is never covered on a phone.
+
 ## [2.5.0] - 2026-11-27 (dice box, clearer results, a computer with a plan)
 
 ### Added

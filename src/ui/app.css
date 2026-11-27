@@ -184,6 +184,8 @@ select, input, textarea { max-width: 100%; }
   .ccard { width: 64px; height: 88px; }
 }
 .deck-panel { z-index: 6; }
+/* Callouts (with the computer's Next button) sit above the deck and its dealt card. */
+.callout { z-index: 7; }
 
 /* Command Stack below the table (not over it), so the battlefield stays in view. */
 .deck-panel.stack { position: static; margin: 8px 0; background: var(--card); }

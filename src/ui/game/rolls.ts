@@ -124,7 +124,12 @@ export function attackSummaries(events: GameEvent[]): AttackSummary[] {
   return out.filter((a) => a.hitDice > 0 || a.target);
 }
 
-/** Does the player roll these dice themselves (their own saves and Morale against the other side's Action)? */
+/**
+ * Does the player roll these dice themselves? Every roll that belongs to a human player: their own
+ * attacks, Charges, Spells and Reinforcements, and their saves and Morale against the other side.
+ * Rolls with no owner in the log (Duels) belong to whoever took the Action.
+ */
 export function playerRolls(step: RollStep, human: PlayerId[], actor: PlayerId | null): boolean {
-  return (step.kind === 'save' || step.kind === 'morale') && !!step.owner && human.includes(step.owner) && step.owner !== actor;
+  const owner = step.owner ?? actor;
+  return !!owner && human.includes(owner);
 }

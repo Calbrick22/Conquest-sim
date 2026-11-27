@@ -12,7 +12,7 @@ export interface Settings {
   portraitTable: boolean;
   /** Show the odds while choosing a Charge, Volley or Clash target. */
   previews: boolean;
-  /** Roll your own Defence and Morale dice in the dice box, rather than seeing them settle by themselves. */
+  /** Press Roll for every roll that is yours in the dice box, rather than seeing them settle by themselves. */
   rollOwnDice: boolean;
   /** Desktop panel widths in CSS pixels (resizable). */
   sideWidth: number;
